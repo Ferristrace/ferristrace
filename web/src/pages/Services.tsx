@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { Table, Td, Tr, Kbd } from '@/components/ui/misc'
+import { Table, Td, Tr, Kbd, SortTh } from '@/components/ui/misc'
 import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { ERROR_THRESHOLD, useServiceTable } from '@/data/services'
 import { useWindow } from '@/lib/window'
@@ -17,7 +17,7 @@ import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
-import { Note, PagedFooter, PanelEmpty, Pill, Pills, SEARCH, SkeletonRows, SortHead, Toolbar, usePaged } from './backend/kit'
+import { Note, PagedFooter, PanelEmpty, Pill, Pills, SEARCH, SkeletonRows, Toolbar, usePaged } from './backend/kit'
 import { serviceValue, textFirst, type ServiceKey } from './backend/sortKeys'
 
 const SORTS = [
@@ -76,7 +76,7 @@ export function Services() {
         ) : (
           <div className="overflow-x-auto">
             <Table aria-label="Services">
-              <thead><tr><SortHead label="Service" dir={dirOf('name')} onSort={() => sortBy('name')} /><SortHead label="Requests" numeric dir={dirOf('rps')} onSort={() => sortBy('rps')} className="w-[100px]" /><SortHead label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[110px]" /><SortHead label="p50" numeric dir={dirOf('p50')} onSort={() => sortBy('p50')} className="w-[80px]" /><SortHead label="p95" numeric dir={dirOf('p95')} onSort={() => sortBy('p95')} className="w-[80px]" /><SortHead label="p99" numeric dir={dirOf('p99')} onSort={() => sortBy('p99')} className="w-[80px]" /><SortHead label="Last span" dir={dirOf('seen')} onSort={() => sortBy('seen')} className="w-[120px]" /></tr></thead>
+              <thead><tr><SortTh label="Service" dir={dirOf('name')} onSort={() => sortBy('name')} /><SortTh label="Requests" numeric dir={dirOf('rps')} onSort={() => sortBy('rps')} className="w-[100px]" /><SortTh label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[110px]" /><SortTh label="p50" numeric dir={dirOf('p50')} onSort={() => sortBy('p50')} className="w-[80px]" /><SortTh label="p95" numeric dir={dirOf('p95')} onSort={() => sortBy('p95')} className="w-[80px]" /><SortTh label="p99" numeric dir={dirOf('p99')} onSort={() => sortBy('p99')} className="w-[80px]" /><SortTh label="Last span" dir={dirOf('seen')} onSort={() => sortBy('seen')} className="w-[120px]" /></tr></thead>
               <tbody>
                 {paged.shown.map((s) => {
                   const bad = (s.err ?? 0) >= ERROR_THRESHOLD

@@ -2,14 +2,13 @@ import { Gauge, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
-import { Alert, Table, Td, Tr } from '@/components/ui/misc'
+import { Alert, Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { isForbidden, isNotConfigured } from '@/data/alerts'
 import { useIncidentInsights, type InsightGroup, type Timing } from '@/data/incidents'
 import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { groupValue, type GroupKey } from './alerting/sorting'
-import { SortHead } from './alerting/SortHead'
 import { SeverityPill } from './Incidents'
 
 const DAYS = [7, 30, 90] as const
@@ -54,11 +53,11 @@ function Header({ title, sort }: { title: string; sort: Sort }) {
   return (
     <thead>
       <tr>
-        <SortHead label={title} dir={dirOf('label')} onSort={by('label', 'asc')} />
-        <SortHead label="Incidents" dir={dirOf('incidents')} onSort={by('incidents')} className="w-[90px]" />
-        <SortHead label="Open" dir={dirOf('open')} onSort={by('open')} className="w-[70px]" />
-        <SortHead label="Time to acknowledge" dir={dirOf('acknowledge')} onSort={by('acknowledge', 'asc')} />
-        <SortHead label="Time to resolve" dir={dirOf('resolve')} onSort={by('resolve', 'asc')} />
+        <SortTh label={title} dir={dirOf('label')} onSort={by('label', 'asc')} />
+        <SortTh label="Incidents" dir={dirOf('incidents')} onSort={by('incidents')} className="w-[90px]" />
+        <SortTh label="Open" dir={dirOf('open')} onSort={by('open')} className="w-[70px]" />
+        <SortTh label="Time to acknowledge" dir={dirOf('acknowledge')} onSort={by('acknowledge', 'asc')} />
+        <SortTh label="Time to resolve" dir={dirOf('resolve')} onSort={by('resolve', 'asc')} />
       </tr>
     </thead>
   )

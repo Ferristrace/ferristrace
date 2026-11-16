@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td } from '@/components/ui/misc'
+import { Table, Td, SortTh } from '@/components/ui/misc'
 import { Pager } from '@/components/ui/pager'
 import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { StackedChart, stackColour, type Marker } from '@/components/ft/charts'
@@ -31,7 +31,6 @@ import { pagesOf } from '@/lib/paging'
 import { sorted } from '@/lib/sorting'
 import { FiltersBar } from './FiltersBar'
 import { useSortState } from './useSortState'
-import { SortHead } from './SortHead'
 import { useSettled } from '@/lib/settle'
 import { cn } from '@/lib/utils'
 
@@ -162,7 +161,7 @@ function Calls({ windowMs, groupBy, selected, filters }: { windowMs: number; gro
       {calls.length > 0 ? (
         <div className="overflow-x-auto">
           <Table aria-label={`Calls of ${named(selected, groupBy)}`}>
-            <thead><tr><SortHead label="Time" dir={dir('time')} onSort={on('time', 'desc')} className="w-[170px]" /><SortHead label="Model" dir={dir('model')} onSort={on('model')} /><SortHead label="Feature" dir={dir('feature')} onSort={on('feature')} /><SortHead numeric label="Tokens in" dir={dir('in')} onSort={on('in', 'desc')} className="w-[90px]" /><SortHead numeric label="Tokens out" dir={dir('out')} onSort={on('out', 'desc')} className="w-[90px]" /><SortHead numeric label="Duration" dir={dir('duration')} onSort={on('duration', 'desc')} className="w-[90px]" /><SortHead numeric label="Cost" dir={dir('cost')} onSort={on('cost', 'desc')} className="w-[90px]" /></tr></thead>
+            <thead><tr><SortTh label="Time" dir={dir('time')} onSort={on('time', 'desc')} className="w-[170px]" /><SortTh label="Model" dir={dir('model')} onSort={on('model')} /><SortTh label="Feature" dir={dir('feature')} onSort={on('feature')} /><SortTh numeric label="Tokens in" dir={dir('in')} onSort={on('in', 'desc')} className="w-[90px]" /><SortTh numeric label="Tokens out" dir={dir('out')} onSort={on('out', 'desc')} className="w-[90px]" /><SortTh numeric label="Duration" dir={dir('duration')} onSort={on('duration', 'desc')} className="w-[90px]" /><SortTh numeric label="Cost" dir={dir('cost')} onSort={on('cost', 'desc')} className="w-[90px]" /></tr></thead>
             <tbody>
               {ordered.slice((at - 1) * size, at * size).map((call) => {
                 const to = `/traces/${call.traceId}`
@@ -288,7 +287,7 @@ export function Ai() {
             <CardHeader><CardTitle>Breakdown by {groupLabel.toLowerCase()}</CardTitle><CardKind>Table</CardKind></CardHeader>
             <div className="overflow-x-auto">
               <Table aria-label="Spend by group">
-                <thead><tr><SortHead label={groupLabel} dir={spendSort.dir('key')} onSort={spendSort.on('key')} /><SortHead numeric label="Cost" dir={spendSort.dir('cost')} onSort={spendSort.on('cost', 'desc')} className="w-[100px]" /><SortHead numeric label="Calls" dir={spendSort.dir('calls')} onSort={spendSort.on('calls', 'desc')} className="w-[80px]" /><SortHead numeric label="Tokens in" dir={spendSort.dir('in')} onSort={spendSort.on('in', 'desc')} className="w-[90px]" /><SortHead numeric label="Tokens out" dir={spendSort.dir('out')} onSort={spendSort.on('out', 'desc')} className="w-[90px]" /><SortHead numeric label="p50" dir={spendSort.dir('p50')} onSort={spendSort.on('p50', 'desc')} className="w-[80px]" /><SortHead numeric label="p95" dir={spendSort.dir('p95')} onSort={spendSort.on('p95', 'desc')} className="w-[80px]" /><SortHead numeric label="Errors" dir={spendSort.dir('errors')} onSort={spendSort.on('errors', 'desc')} className="w-[80px]" /></tr></thead>
+                <thead><tr><SortTh label={groupLabel} dir={spendSort.dir('key')} onSort={spendSort.on('key')} /><SortTh numeric label="Cost" dir={spendSort.dir('cost')} onSort={spendSort.on('cost', 'desc')} className="w-[100px]" /><SortTh numeric label="Calls" dir={spendSort.dir('calls')} onSort={spendSort.on('calls', 'desc')} className="w-[80px]" /><SortTh numeric label="Tokens in" dir={spendSort.dir('in')} onSort={spendSort.on('in', 'desc')} className="w-[90px]" /><SortTh numeric label="Tokens out" dir={spendSort.dir('out')} onSort={spendSort.on('out', 'desc')} className="w-[90px]" /><SortTh numeric label="p50" dir={spendSort.dir('p50')} onSort={spendSort.on('p50', 'desc')} className="w-[80px]" /><SortTh numeric label="p95" dir={spendSort.dir('p95')} onSort={spendSort.on('p95', 'desc')} className="w-[80px]" /><SortTh numeric label="Errors" dir={spendSort.dir('errors')} onSort={spendSort.on('errors', 'desc')} className="w-[80px]" /></tr></thead>
                 <tbody>
                   {rows.slice((at - 1) * size, at * size).map((g) => (
                     <tr key={g.key} onClick={() => toggle(g.key)} className={cn('cursor-pointer hover:[&>td]:bg-row-hover', g.key === selected && '[&>td]:bg-accent-subtle')}>

@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
-import { Avatar, Table, Td, Th } from '@/components/ui/misc'
+import { Avatar, Table, Td, Th, SortTh } from '@/components/ui/misc'
 import { Pager } from '@/components/ui/pager'
 import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { useMembers } from '@/data/members'
@@ -27,7 +27,6 @@ import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
 import { FiltersButton } from './alerting/FiltersButton'
 import { issueValue, type IssueKey } from './alerting/sorting'
-import { SortHead } from './alerting/SortHead'
 
 const TABS: [IssueStatus, string][] = [
   ['unresolved', 'Unresolved'],
@@ -234,11 +233,11 @@ export function Issues() {
                         className="size-4 accent-[var(--primary)]"
                       />
                     </Th>
-                    <SortHead label="Issue" dir={dirOf('issue')} onSort={() => sortBy('issue', 'asc')} />
-                    <SortHead label="Service" dir={dirOf('service')} onSort={() => sortBy('service', 'asc')} className="w-[180px]" />
-                    <SortHead numeric label="Events" dir={dirOf('events')} onSort={() => sortBy('events')} className="w-[90px]" />
-                    <SortHead label="Last seen" dir={dirOf('last')} onSort={() => sortBy('last')} className="w-[170px]" />
-                    <SortHead label="Owner" dir={dirOf('owner')} onSort={() => sortBy('owner', 'asc')} className="w-[90px]" />
+                    <SortTh label="Issue" dir={dirOf('issue')} onSort={() => sortBy('issue', 'asc')} />
+                    <SortTh label="Service" dir={dirOf('service')} onSort={() => sortBy('service', 'asc')} className="w-[180px]" />
+                    <SortTh numeric label="Events" dir={dirOf('events')} onSort={() => sortBy('events')} className="w-[90px]" />
+                    <SortTh label="Last seen" dir={dirOf('last')} onSort={() => sortBy('last')} className="w-[170px]" />
+                    <SortTh label="Owner" dir={dirOf('owner')} onSort={() => sortBy('owner', 'asc')} className="w-[90px]" />
                   </tr>
                 </thead>
                 <tbody>

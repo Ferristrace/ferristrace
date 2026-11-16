@@ -3,7 +3,7 @@ import { TriangleAlert } from 'lucide-react'
 import { Link } from '@/lib/router'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup } from '@/components/ui/input'
-import { Table, Td, Tr } from '@/components/ui/misc'
+import { Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { ERROR_THRESHOLD, useServiceDependencies, useServiceTable } from '@/data/services'
 import { svcIndex } from '@/lib/otel'
@@ -14,7 +14,7 @@ import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
-import { Note, PagedFooter, Pill, Pills, SkeletonRows, SortHead, Toolbar, usePaged } from './backend/kit'
+import { Note, PagedFooter, Pill, Pills, SkeletonRows, Toolbar, usePaged } from './backend/kit'
 import { edgeFirst, edgeValue, type EdgeKey } from './backend/sortKeys'
 import { NodePanel } from './services/NodePanel'
 import { neighbours } from './services/serviceView'
@@ -169,7 +169,7 @@ export function ServiceMap() {
             <CardHeader><CardTitle>Dependencies</CardTitle><CardKind>Table</CardKind><span className="text-caption text-muted-foreground">{rows.length} call {rows.length === 1 ? 'path' : 'paths'}</span></CardHeader>
             <div className="overflow-x-auto">
             <Table aria-label="Dependencies">
-              <thead><tr><SortHead label="Caller" dir={dirOf('caller')} onSort={() => sortBy('caller')} /><SortHead label="Callee" dir={dirOf('callee')} onSort={() => sortBy('callee')} /><SortHead label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[90px]" /><SortHead label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[100px]" /></tr></thead>
+              <thead><tr><SortTh label="Caller" dir={dirOf('caller')} onSort={() => sortBy('caller')} /><SortTh label="Callee" dir={dirOf('callee')} onSort={() => sortBy('callee')} /><SortTh label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[90px]" /><SortTh label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[100px]" /></tr></thead>
               <tbody>
                 {paged.shown.map((edge) => {
                   const bad = (edge.err ?? 0) >= ERROR_THRESHOLD

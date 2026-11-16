@@ -5,14 +5,13 @@ import { PageHeader } from '@/components/ft/bits'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td, Tr } from '@/components/ui/misc'
+import { Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { Button } from '@/components/ui/button'
 import { HOUR, SIGNALS, bytes, count, dailyOf, projected, startOfMonth, startOfNextMonth, useMetered, type Signal } from '@/data/usage'
 import { pagesOf } from '@/lib/paging'
 import { Link } from '@/lib/router'
 import { sorted } from '@/lib/sorting'
 import { useSortState } from './useSortState'
-import { SortHead } from './SortHead'
 
 const DAY = 86_400_000
 
@@ -131,8 +130,8 @@ export function Cost() {
                 <Table aria-label="Ingested per period and signal">
                   <thead>
                     <tr>
-                      <SortHead label={step === HOUR ? 'Hour' : 'Day'} dir={dir('at')} onSort={on('at', 'desc')} />
-                      {SIGNALS.map((signal) => <SortHead key={signal.key} numeric label={signal.label} dir={dir(signal.key)} onSort={on(signal.key, 'desc')} className="w-[160px]" />)}
+                      <SortTh label={step === HOUR ? 'Hour' : 'Day'} dir={dir('at')} onSort={on('at', 'desc')} />
+                      {SIGNALS.map((signal) => <SortTh key={signal.key} numeric label={signal.label} dir={dir(signal.key)} onSort={on(signal.key, 'desc')} className="w-[160px]" />)}
                     </tr>
                   </thead>
                   <tbody>

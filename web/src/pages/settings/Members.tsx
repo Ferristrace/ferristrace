@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input, NativeSelect } from '@/components/ui/input'
 import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
-import { Alert, Avatar, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Alert, Avatar, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { because } from '@/auth/client'
 import { type Role } from '@/auth/api'
 import { useAccount, useOrganisations } from '@/auth/session'
@@ -21,7 +21,6 @@ import { pagesOf } from '@/lib/paging'
 import { sorted } from '@/lib/sorting'
 import { FiltersBar } from '../FiltersBar'
 import { useSortState } from '../useSortState'
-import { SortHead } from '../SortHead'
 import { H, saved } from './parts'
 
 export function Members() {
@@ -83,7 +82,7 @@ export function Members() {
       </FiltersBar>
       <Card className="overflow-x-auto">
         <Table aria-label="Members">
-          <thead><tr><SortHead label="Member" dir={dir('member')} onSort={on('member')} /><SortHead label="Email" dir={dir('email')} onSort={on('email')} className="w-[260px]" /><SortHead label="Role" dir={dir('role')} onSort={on('role')} className="w-[160px]" /><SortHead label="Joined" dir={dir('joined')} onSort={on('joined', 'desc')} className="w-[190px]" /><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
+          <thead><tr><SortTh label="Member" dir={dir('member')} onSort={on('member')} /><SortTh label="Email" dir={dir('email')} onSort={on('email')} className="w-[260px]" /><SortTh label="Role" dir={dir('role')} onSort={on('role')} className="w-[160px]" /><SortTh label="Joined" dir={dir('joined')} onSort={on('joined', 'desc')} className="w-[190px]" /><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
           <tbody>{visible.map((m) => {
             const you = m.account === me?.account
             const last = theLastOwner(roll, m)

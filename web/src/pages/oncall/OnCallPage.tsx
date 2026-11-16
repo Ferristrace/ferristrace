@@ -4,7 +4,7 @@ import { EmptyState, PageHeader } from '@/components/ft/bits'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
-import { Avatar, Table, Td, Tr } from '@/components/ui/misc'
+import { Avatar, Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { Segmented } from '@/components/ui/segmented'
 import { personOf, type Person } from '@/data/incidents'
 import { useMembers } from '@/data/members'
@@ -15,7 +15,6 @@ import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { Link } from '@/lib/router'
 import { cn } from '@/lib/utils'
 import { overrideValue, pageValue, type OverrideKey, type PageKey } from '../alerting/sorting'
-import { SortHead } from '../alerting/SortHead'
 import { DAY_MS, days, gaps, place, startOfDay } from './timeline'
 
 const SPAN_DAYS = 14
@@ -181,7 +180,7 @@ function Overrides({ schedules }: { schedules: Named[] }) {
       ) : (
         <div className="overflow-x-auto">
           <Table>
-            <thead><tr><SortHead label="Who covers" dir={dirOf('who')} onSort={() => sortBy('who', 'asc')} /><SortHead label="Schedule" dir={dirOf('schedule')} onSort={() => sortBy('schedule', 'asc')} /><SortHead label="From" dir={dirOf('from')} onSort={() => sortBy('from', 'asc')} /><SortHead label="To" dir={dirOf('to')} onSort={() => sortBy('to', 'asc')} /></tr></thead>
+            <thead><tr><SortTh label="Who covers" dir={dirOf('who')} onSort={() => sortBy('who', 'asc')} /><SortTh label="Schedule" dir={dirOf('schedule')} onSort={() => sortBy('schedule', 'asc')} /><SortTh label="From" dir={dirOf('from')} onSort={() => sortBy('from', 'asc')} /><SortTh label="To" dir={dirOf('to')} onSort={() => sortBy('to', 'asc')} /></tr></thead>
             <tbody>
               {rows.map(({ cover, schedule }) => (
                 <Tr key={cover.id}>
@@ -249,7 +248,7 @@ function Pages() {
         <CardHeader><CardTitle>Pages</CardTitle><CardKind>Table</CardKind></CardHeader>
         <div className="overflow-x-auto">
           <Table>
-            <thead><tr><SortHead label="Page" dir={dirOf('page')} onSort={() => sortBy('page', 'asc')} /><SortHead label="Status" dir={dirOf('status')} onSort={() => sortBy('status')} /><SortHead label="Paged" dir={dirOf('paged')} onSort={() => sortBy('paged', 'asc')} /><SortHead numeric label="Step" dir={dirOf('step')} onSort={() => sortBy('step')} /><SortHead numeric label="To acknowledge" dir={dirOf('acknowledge')} onSort={() => sortBy('acknowledge', 'asc')} /><SortHead label="When" dir={dirOf('when')} onSort={() => sortBy('when')} /></tr></thead>
+            <thead><tr><SortTh label="Page" dir={dirOf('page')} onSort={() => sortBy('page', 'asc')} /><SortTh label="Status" dir={dirOf('status')} onSort={() => sortBy('status')} /><SortTh label="Paged" dir={dirOf('paged')} onSort={() => sortBy('paged', 'asc')} /><SortTh numeric label="Step" dir={dirOf('step')} onSort={() => sortBy('step')} /><SortTh numeric label="To acknowledge" dir={dirOf('acknowledge')} onSort={() => sortBy('acknowledge', 'asc')} /><SortTh label="When" dir={dirOf('when')} onSort={() => sortBy('when')} /></tr></thead>
             <tbody>
               {list.map((page) => (
                 <Tr key={page.id} className={cn('cursor-pointer', page.id === shown?.id && '[&>td]:bg-accent-subtle')} onClick={() => setPicked(page.id)}>

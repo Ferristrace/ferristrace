@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input, InputGroup, NativeSelect } from '@/components/ui/input'
-import { Alert, Table, Td, Tr } from '@/components/ui/misc'
+import { Alert, Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
 import { Switch } from '@/components/ui/switch'
@@ -28,7 +28,6 @@ import { Link, useNavigate } from '@/lib/router'
 import { cn } from '@/lib/utils'
 import { FiltersButton } from './alerting/FiltersButton'
 import { incidentValue, type IncidentKey } from './alerting/sorting'
-import { SortHead } from './alerting/SortHead'
 
 export const SeverityPill = ({ severity }: { severity: IncidentSeverity }) => <Badge variant={severityVariant(severity)} mono>{severity.toUpperCase()}</Badge>
 
@@ -102,12 +101,12 @@ export function Incidents() {
           <Table aria-label="Incidents">
             <thead>
               <tr>
-                <SortHead label="Incident" dir={dirOf('incident')} onSort={() => sortBy('incident', 'asc')} />
-                <SortHead label="Severity" dir={dirOf('severity')} onSort={() => sortBy('severity')} className="w-[100px]" />
-                <SortHead label="Status" dir={dirOf('status')} onSort={() => sortBy('status')} className="w-[130px]" />
-                <SortHead label="Owner" dir={dirOf('owner')} onSort={() => sortBy('owner', 'asc')} className="w-[180px]" />
-                <SortHead label="Project" dir={dirOf('project')} onSort={() => sortBy('project', 'asc')} className="w-[140px]" />
-                <SortHead label="Opened" dir={dirOf('opened')} onSort={() => sortBy('opened')} className="w-[170px]" />
+                <SortTh label="Incident" dir={dirOf('incident')} onSort={() => sortBy('incident', 'asc')} />
+                <SortTh label="Severity" dir={dirOf('severity')} onSort={() => sortBy('severity')} className="w-[100px]" />
+                <SortTh label="Status" dir={dirOf('status')} onSort={() => sortBy('status')} className="w-[130px]" />
+                <SortTh label="Owner" dir={dirOf('owner')} onSort={() => sortBy('owner', 'asc')} className="w-[180px]" />
+                <SortTh label="Project" dir={dirOf('project')} onSort={() => sortBy('project', 'asc')} className="w-[140px]" />
+                <SortTh label="Opened" dir={dirOf('opened')} onSort={() => sortBy('opened')} className="w-[170px]" />
               </tr>
             </thead>
             <tbody>

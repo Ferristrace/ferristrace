@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input, NativeSelect } from '@/components/ui/input'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { useCatalogue, useAssignProject, useCreateProject, projectNameProblem } from '@/data/projects'
 import { useTeams } from '@/data/teams'
 import { stamp } from '@/lib/format'
@@ -15,7 +15,6 @@ import { Link } from '@/lib/router'
 import { useScope } from '@/lib/scope'
 import { sorted } from '@/lib/sorting'
 import { useSortState } from '../useSortState'
-import { SortHead } from '../SortHead'
 import { H } from './parts'
 
 export function Projects() {
@@ -42,7 +41,7 @@ export function Projects() {
       </H>
       <Card className="overflow-x-auto">
         <Table aria-label="Projects">
-          <thead><tr><SortHead label="Name" dir={dir('name')} onSort={on('name')} /><SortHead label="Owner team" dir={dir('team')} onSort={on('team')} className="w-[180px]" /><SortHead numeric label="Api keys" dir={dir('keys')} onSort={on('keys', 'desc')} className="w-[110px]" /><SortHead label="Created" dir={dir('created')} onSort={on('created', 'desc')} className="w-[190px]" /><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
+          <thead><tr><SortTh label="Name" dir={dir('name')} onSort={on('name')} /><SortTh label="Owner team" dir={dir('team')} onSort={on('team')} className="w-[180px]" /><SortTh numeric label="Api keys" dir={dir('keys')} onSort={on('keys', 'desc')} className="w-[110px]" /><SortTh label="Created" dir={dir('created')} onSort={on('created', 'desc')} className="w-[190px]" /><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
           <tbody>{catalogue.map((p) => (
             <Tr key={p.id}>
               <Td className="h-11"><Link to="/settings/project/general" className="font-mono font-semibold text-accent-text" onClick={() => chooseProject(p.id)}>{p.name}</Link></Td>

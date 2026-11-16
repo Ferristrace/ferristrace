@@ -8,7 +8,7 @@ import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
-import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
@@ -20,7 +20,7 @@ import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, SortHead, usePaged } from './kit'
+import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
 import { CACHE_KEYS, cacheFirst, cacheValue } from './sortKeys'
 import { useUrlSort } from './useUrlSort'
 
@@ -191,12 +191,12 @@ export function CachePage() {
             <Table aria-label={`Cache ${noun}s`}>
               <thead>
                 <tr>
-                  <SortHead label={noun === 'store' ? 'Store' : noun === 'key pattern' ? 'Key pattern' : 'Operation'} dir={dirOf(group === 'store' ? 'store' : 'name')} onSort={() => sortBy(group === 'store' ? 'store' : 'name')} />
-                  {group === 'store' ? null : <SortHead label="Store" dir={dirOf('store')} onSort={() => sortBy('store')} className="w-[130px]" />}
-                  <SortHead label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[100px]" />
-                  <SortHead label="Hits" numeric dir={dirOf('hits')} onSort={() => sortBy('hits')} className="w-[90px]" />
-                  <SortHead label="Misses" numeric dir={dirOf('misses')} onSort={() => sortBy('misses')} className="w-[90px]" />
-                  <SortHead label="Hit rate" dir={dirOf('rate')} onSort={() => sortBy('rate')} className="w-[160px]" />
+                  <SortTh label={noun === 'store' ? 'Store' : noun === 'key pattern' ? 'Key pattern' : 'Operation'} dir={dirOf(group === 'store' ? 'store' : 'name')} onSort={() => sortBy(group === 'store' ? 'store' : 'name')} />
+                  {group === 'store' ? null : <SortTh label="Store" dir={dirOf('store')} onSort={() => sortBy('store')} className="w-[130px]" />}
+                  <SortTh label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[100px]" />
+                  <SortTh label="Hits" numeric dir={dirOf('hits')} onSort={() => sortBy('hits')} className="w-[90px]" />
+                  <SortTh label="Misses" numeric dir={dirOf('misses')} onSort={() => sortBy('misses')} className="w-[90px]" />
+                  <SortTh label="Hit rate" dir={dirOf('rate')} onSort={() => sortBy('rate')} className="w-[160px]" />
                   <Th numeric className="w-[80px]">p50</Th>
                   <Th numeric className="w-[80px]">p95</Th>
                 </tr>

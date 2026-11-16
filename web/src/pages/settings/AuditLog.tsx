@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { NativeSelect } from '@/components/ui/input'
 import { Pager } from '@/components/ui/pager'
-import { Table, Td, Tr } from '@/components/ui/misc'
+import { Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { AUDIT_ACTIONS, OPERATOR, actorName, useAuditLog, type AuditEntry, type AuditFilter } from '@/data/audit'
 import { useMembers } from '@/data/members'
 import { stamp } from '@/lib/format'
@@ -13,7 +13,6 @@ import { pagesOf } from '@/lib/paging'
 import { sorted } from '@/lib/sorting'
 import { FiltersBar } from '../FiltersBar'
 import { useSortState } from '../useSortState'
-import { SortHead } from '../SortHead'
 import { H } from './parts'
 
 function details(entry: AuditEntry) {
@@ -63,7 +62,7 @@ export function AuditLog() {
       <Card className="overflow-x-auto">
         {entries ? (
           <Table>
-            <thead><tr><SortHead label="Time" dir={dir('time')} onSort={on('time', 'desc')} className="w-[170px]" /><SortHead label="Actor" dir={dir('actor')} onSort={on('actor')} className="w-[200px]" /><SortHead label="Action" dir={dir('action')} onSort={on('action')} className="w-[190px]" /><SortHead label="Target" dir={dir('target')} onSort={on('target')} className="w-[220px]" /><SortHead label="Detail" dir={dir('detail')} onSort={on('detail')} /></tr></thead>
+            <thead><tr><SortTh label="Time" dir={dir('time')} onSort={on('time', 'desc')} className="w-[170px]" /><SortTh label="Actor" dir={dir('actor')} onSort={on('actor')} className="w-[200px]" /><SortTh label="Action" dir={dir('action')} onSort={on('action')} className="w-[190px]" /><SortTh label="Target" dir={dir('target')} onSort={on('target')} className="w-[220px]" /><SortTh label="Detail" dir={dir('detail')} onSort={on('detail')} /></tr></thead>
             <tbody>
               {roll.length === 0 ? <Tr><Td colSpan={5} className="text-muted-foreground">Nothing has been recorded{filter.action || filter.actor ? ' for this filter' : ' yet'}.</Td></Tr> : null}
               {visible.map((entry) => (

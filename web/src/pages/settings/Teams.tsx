@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/input'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { useMembers } from '@/data/members'
 import { useSchedules } from '@/data/oncall'
 import { useOnCallNowOf } from '@/data/oncallNow'
@@ -25,7 +25,6 @@ import {
 } from '@/data/teams'
 import { sorted } from '@/lib/sorting'
 import { useSortState } from '../useSortState'
-import { SortHead } from '../SortHead'
 import { dutiesOf, dutyText, type Duty } from './duties'
 import { OnCall } from './OnCall'
 import { H } from './parts'
@@ -54,7 +53,7 @@ export function Teams() {
       </H>
       <Card className="overflow-x-auto">
         <Table aria-label="Teams">
-          <thead><tr><SortHead label="Team" dir={dir('team')} onSort={on('team')} /><SortHead numeric label="Members" dir={dir('members')} onSort={on('members', 'desc')} className="w-[100px]" /><SortHead label="Projects" dir={dir('projects')} onSort={on('projects')} className="w-[260px]" /><SortHead label="On call now" dir={dir('oncall')} onSort={on('oncall')} className="w-[240px]" /><Th className="w-[180px]"><span className="sr-only">Actions</span></Th></tr></thead>
+          <thead><tr><SortTh label="Team" dir={dir('team')} onSort={on('team')} /><SortTh numeric label="Members" dir={dir('members')} onSort={on('members', 'desc')} className="w-[100px]" /><SortTh label="Projects" dir={dir('projects')} onSort={on('projects')} className="w-[260px]" /><SortTh label="On call now" dir={dir('oncall')} onSort={on('oncall')} className="w-[240px]" /><Th className="w-[180px]"><span className="sr-only">Actions</span></Th></tr></thead>
           <tbody>{roll.map((t) => (
             <Tr key={t.id}>
               <Td className="h-11"><span className="inline-flex items-center gap-2.5"><span className="inline-flex size-7 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground" aria-hidden>{initialsOf(t.name)}</span><span className="font-semibold">{t.name}</span></span></Td>

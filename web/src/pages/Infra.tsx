@@ -7,7 +7,7 @@ import { Card, CardKind } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td, Th } from '@/components/ui/misc'
+import { Table, Td, Th, SortTh } from '@/components/ui/misc'
 import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { bytes, collectorConfig, isReporting, useCluster, type ClusterNode, type ClusterPod, type ClusterWorkload } from '@/data/infra'
 import { placementSearch } from '@/data/placement'
@@ -15,7 +15,6 @@ import { pagesOf } from '@/lib/paging'
 import { sorted } from '@/lib/sorting'
 import { ApiError, because } from '@/auth/client'
 import { cn } from '@/lib/utils'
-import { SortHead } from './SortHead'
 import { KUBE_TABS, filterNodes, filterWorkloads, memoryShare as nodeMemoryShare, nodeValue, tabOf, workloadValue, type KubeTab, type NodeKey, type WorkloadKey } from './kubeTables'
 import { useSortState } from './useSortState'
 import { usePaged } from './usePaged'
@@ -365,11 +364,11 @@ export function PodTable({ pods, workloads, by, sort, desc, prefix, set }: { pod
       <Table aria-label="Pods" className="min-w-[760px]">
         <thead>
           <tr>
-            <SortHead label="Pod" dir={sort === 'name' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('name')} className="min-w-[280px]" />
+            <SortTh label="Pod" dir={sort === 'name' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('name')} className="min-w-[280px]" />
             <Th className="w-[220px]">Status</Th>
-            <SortHead label="Restarts" numeric dir={sort === 'restarts' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('restarts')} className="w-[100px]" />
-            <SortHead label="CPU" numeric dir={sort === 'cpu' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('cpu')} className="w-[80px]" />
-            <SortHead label="Memory" numeric dir={sort === 'memory' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('memory')} className="w-[90px]" />
+            <SortTh label="Restarts" numeric dir={sort === 'restarts' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('restarts')} className="w-[100px]" />
+            <SortTh label="CPU" numeric dir={sort === 'cpu' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('cpu')} className="w-[80px]" />
+            <SortTh label="Memory" numeric dir={sort === 'memory' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('memory')} className="w-[90px]" />
             <Th className="w-[150px]"><span className="sr-only">Open</span></Th>
           </tr>
         </thead>
@@ -472,11 +471,11 @@ function NodesTab({ nodes, prefix, q }: { nodes: ClusterNode[]; prefix: string; 
         <Table aria-label="Nodes" className="min-w-[640px]">
           <thead>
             <tr>
-              <SortHead label="Node" dir={dir('name')} onSort={on('name')} className="min-w-[240px]" />
-              <SortHead label="Status" dir={dir('status')} onSort={on('status')} className="w-[140px]" />
-              <SortHead numeric label="Pods" dir={dir('pods')} onSort={on('pods', 'desc')} className="w-[90px]" />
-              <SortHead numeric label="CPU" dir={dir('cpu')} onSort={on('cpu', 'desc')} className="w-[90px]" />
-              <SortHead numeric label="Memory" dir={dir('memory')} onSort={on('memory', 'desc')} className="w-[200px]" />
+              <SortTh label="Node" dir={dir('name')} onSort={on('name')} className="min-w-[240px]" />
+              <SortTh label="Status" dir={dir('status')} onSort={on('status')} className="w-[140px]" />
+              <SortTh numeric label="Pods" dir={dir('pods')} onSort={on('pods', 'desc')} className="w-[90px]" />
+              <SortTh numeric label="CPU" dir={dir('cpu')} onSort={on('cpu', 'desc')} className="w-[90px]" />
+              <SortTh numeric label="Memory" dir={dir('memory')} onSort={on('memory', 'desc')} className="w-[200px]" />
             </tr>
           </thead>
           <tbody>
@@ -512,11 +511,11 @@ function WorkloadsTab({ workloads, q, onPods }: { workloads: ClusterWorkload[]; 
         <Table aria-label="Workloads" className="min-w-[720px]">
           <thead>
             <tr>
-              <SortHead label="Workload" dir={dir('name')} onSort={on('name')} className="min-w-[240px]" />
-              <SortHead label="Kind" dir={dir('kind')} onSort={on('kind')} className="w-[140px]" />
-              <SortHead label="Namespace" dir={dir('namespace')} onSort={on('namespace')} className="w-[180px]" />
-              <SortHead numeric label="Ready" dir={dir('ready')} onSort={on('ready')} className="w-[110px]" />
-              <SortHead numeric label="Pods" dir={dir('pods')} onSort={on('pods', 'desc')} className="w-[90px]" />
+              <SortTh label="Workload" dir={dir('name')} onSort={on('name')} className="min-w-[240px]" />
+              <SortTh label="Kind" dir={dir('kind')} onSort={on('kind')} className="w-[140px]" />
+              <SortTh label="Namespace" dir={dir('namespace')} onSort={on('namespace')} className="w-[180px]" />
+              <SortTh numeric label="Ready" dir={dir('ready')} onSort={on('ready')} className="w-[110px]" />
+              <SortTh numeric label="Pods" dir={dir('pods')} onSort={on('pods', 'desc')} className="w-[90px]" />
               <Th className="w-[120px]"><span className="sr-only">Open</span></Th>
             </tr>
           </thead>

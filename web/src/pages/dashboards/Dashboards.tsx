@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Pager } from '@/components/ui/pager'
 import { InputGroup } from '@/components/ui/input'
-import { Skeleton, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Skeleton, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { FIXTURE_ID, useCloneDashboard, useDashboards, useDeleteDashboard, type DashboardSummary } from '@/data/dashboards'
 import { stamp } from '@/lib/format'
 import { pagesOf } from '@/lib/paging'
@@ -21,7 +21,6 @@ import { ConfirmDelete, ImportDialog, NewDashboardDialog } from './editor/Dashbo
 import { describeSave, type SaveFailure } from './editor/saveError'
 import { FiltersBar } from '../FiltersBar'
 import { useSortState } from '../useSortState'
-import { SortHead } from '../SortHead'
 import { PickProject } from './PickProject'
 
 export const matching = (dashboards: DashboardSummary[], text: string, tags: string[]): DashboardSummary[] => {
@@ -94,9 +93,9 @@ export function Dashboards() {
                 <Table aria-label="Dashboards" className="min-w-[560px]">
                   <thead>
                     <tr>
-                      <SortHead label="Name" dir={dir('name')} onSort={on('name')} className="pl-4" />
-                      <SortHead label="Tags" dir={dir('tags')} onSort={on('tags')} />
-                      <SortHead label="Last edited" dir={dir('edited')} onSort={on('edited', 'desc')} />
+                      <SortTh label="Name" dir={dir('name')} onSort={on('name')} className="pl-4" />
+                      <SortTh label="Tags" dir={dir('tags')} onSort={on('tags')} />
+                      <SortTh label="Last edited" dir={dir('edited')} onSort={on('edited', 'desc')} />
                       <Th className="w-[120px] pr-4"><span className="sr-only">Actions</span></Th>
                     </tr>
                   </thead>

@@ -4,7 +4,7 @@ import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { Link } from '@/lib/router'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
-import { Table, Td, Tr } from '@/components/ui/misc'
+import { Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { SeverityBadge, ServiceDot } from '@/components/ft/bits'
 import { ANY as ANY_LOGS, msOf, useLogs } from '@/data/logs'
 import { ERROR_THRESHOLD, type Edge } from '@/data/services'
@@ -14,7 +14,7 @@ import { because } from '@/auth/client'
 import { num } from '@/lib/format'
 import { toggled, sorted, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
-import { PagedFooter, SortHead, usePaged } from '../backend/kit'
+import { PagedFooter, usePaged } from '../backend/kit'
 import { edgeFirst, edgeValue, type EdgeKey } from '../backend/sortKeys'
 import { TABS, logFirst, logValue, neighbours, serviceQuery, tabSearch, traceFirst, traceValue, type LogKey, type Tab, type TraceKey } from './serviceView'
 
@@ -92,12 +92,12 @@ export function ServiceTraces({ name, windowMs, label, placement, where }: { nam
           <Table aria-label={`Recent traces of ${name}`}>
             <thead>
               <tr>
-                <SortHead label="Root span" dir={dirOf('root')} onSort={() => sortBy('root')} />
-                <SortHead label="Status" numeric dir={dirOf('code')} onSort={() => sortBy('code')} className="w-[90px]" />
-                <SortHead label="Started" dir={dirOf('started')} onSort={() => sortBy('started')} className="w-[130px]" />
-                <SortHead label="Duration" numeric dir={dirOf('duration')} onSort={() => sortBy('duration')} className="w-[100px]" />
-                <SortHead label="Spans" numeric dir={dirOf('spans')} onSort={() => sortBy('spans')} className="w-[80px]" />
-                <SortHead label="Errors" numeric dir={dirOf('errors')} onSort={() => sortBy('errors')} className="w-[80px]" />
+                <SortTh label="Root span" dir={dirOf('root')} onSort={() => sortBy('root')} />
+                <SortTh label="Status" numeric dir={dirOf('code')} onSort={() => sortBy('code')} className="w-[90px]" />
+                <SortTh label="Started" dir={dirOf('started')} onSort={() => sortBy('started')} className="w-[130px]" />
+                <SortTh label="Duration" numeric dir={dirOf('duration')} onSort={() => sortBy('duration')} className="w-[100px]" />
+                <SortTh label="Spans" numeric dir={dirOf('spans')} onSort={() => sortBy('spans')} className="w-[80px]" />
+                <SortTh label="Errors" numeric dir={dirOf('errors')} onSort={() => sortBy('errors')} className="w-[80px]" />
               </tr>
             </thead>
             <tbody>
@@ -144,9 +144,9 @@ export function ServiceLogs({ name, windowMs, label, placement, where }: { name:
           <Table aria-label={`Recent logs of ${name}`}>
             <thead>
               <tr>
-                <SortHead label="Time" dir={dirOf('time')} onSort={() => sortBy('time')} className="w-[130px]" />
-                <SortHead label="Severity" dir={dirOf('severity')} onSort={() => sortBy('severity')} className="w-[100px]" />
-                <SortHead label="Message" dir={dirOf('body')} onSort={() => sortBy('body')} />
+                <SortTh label="Time" dir={dirOf('time')} onSort={() => sortBy('time')} className="w-[130px]" />
+                <SortTh label="Severity" dir={dirOf('severity')} onSort={() => sortBy('severity')} className="w-[100px]" />
+                <SortTh label="Message" dir={dirOf('body')} onSort={() => sortBy('body')} />
               </tr>
             </thead>
             <tbody>
@@ -181,10 +181,10 @@ function Neighbours({ title, hint, edges, side, kept, pending }: { title: string
           <Table aria-label={title}>
             <thead>
               <tr>
-                <SortHead label="Service" dir={dirOf(side)} onSort={() => sortBy(side)} />
-                <SortHead label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[90px]" />
-                <SortHead label="Errors" numeric dir={dirOf('errors')} onSort={() => sortBy('errors')} className="w-[80px]" />
-                <SortHead label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[100px]" />
+                <SortTh label="Service" dir={dirOf(side)} onSort={() => sortBy(side)} />
+                <SortTh label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[90px]" />
+                <SortTh label="Errors" numeric dir={dirOf('errors')} onSort={() => sortBy('errors')} className="w-[80px]" />
+                <SortTh label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[100px]" />
               </tr>
             </thead>
             <tbody>

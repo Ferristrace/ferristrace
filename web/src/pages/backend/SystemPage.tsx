@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Kbd, Table, Td, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { MetricChart } from '@/components/ft/MetricChart'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
@@ -14,7 +14,7 @@ import { sorted } from '@/lib/sorting'
 import { useWindow } from '@/lib/window'
 import { because } from '@/auth/client'
 import { cn } from '@/lib/utils'
-import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, SortHead, usePaged } from './kit'
+import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
 import { HOST_KEYS, hostValue, textFirst } from './sortKeys'
 import { useUrlSort } from './useUrlSort'
 
@@ -210,11 +210,11 @@ export function SystemPage() {
             <Table aria-label="Hosts">
               <thead>
                 <tr>
-                  <SortHead label="Host" dir={dirOf('name')} onSort={() => sortBy('name')} />
-                  <SortHead label="CPU" dir={dirOf('cpu')} onSort={() => sortBy('cpu')} className="w-[160px]" />
-                  <SortHead label="Memory" dir={dirOf('memory')} onSort={() => sortBy('memory')} className="w-[160px]" />
-                  <SortHead label="Disk" dir={dirOf('disk')} onSort={() => sortBy('disk')} className="w-[160px]" />
-                  <SortHead label="Load 1m" numeric dir={dirOf('load')} onSort={() => sortBy('load')} className="w-[90px]" />
+                  <SortTh label="Host" dir={dirOf('name')} onSort={() => sortBy('name')} />
+                  <SortTh label="CPU" dir={dirOf('cpu')} onSort={() => sortBy('cpu')} className="w-[160px]" />
+                  <SortTh label="Memory" dir={dirOf('memory')} onSort={() => sortBy('memory')} className="w-[160px]" />
+                  <SortTh label="Disk" dir={dirOf('disk')} onSort={() => sortBy('disk')} className="w-[160px]" />
+                  <SortTh label="Load 1m" numeric dir={dirOf('load')} onSort={() => sortBy('load')} className="w-[90px]" />
                 </tr>
               </thead>
               <tbody>

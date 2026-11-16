@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/input'
-import { Alert, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Alert, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { KEY_SCOPES, keyNameProblem, useIssueKey, useKeys, useRevokeKey, type ApiKey, type IssuedKey, type KeyScope } from '@/data/keys'
 import { useCatalogue } from '@/data/projects'
 import { stamp } from '@/lib/format'
@@ -16,7 +16,6 @@ import { Link } from '@/lib/router'
 import { useScope } from '@/lib/scope'
 import { sorted } from '@/lib/sorting'
 import { useSortState } from '../useSortState'
-import { SortHead } from '../SortHead'
 import { H } from './parts'
 
 const SCOPE_HINT: Record<KeyScope, string> = {
@@ -76,7 +75,7 @@ export function ProjectApiKeys() {
       <Card className="overflow-x-auto">
         {keys ? (
           <Table>
-            <thead><tr><SortHead label="Name" dir={dir('name')} onSort={on('name')} /><SortHead label="Key" dir={dir('prefix')} onSort={on('prefix')} className="w-[200px]" /><SortHead label="Scopes" dir={dir('scopes')} onSort={on('scopes')} className="w-[140px]" /><SortHead label="Created" dir={dir('created')} onSort={on('created', 'desc')} className="w-[170px]" /><SortHead label="Last used" dir={dir('used')} onSort={on('used', 'desc')} className="w-[170px]" />{mayChange ? <Th className="w-[100px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
+            <thead><tr><SortTh label="Name" dir={dir('name')} onSort={on('name')} /><SortTh label="Key" dir={dir('prefix')} onSort={on('prefix')} className="w-[200px]" /><SortTh label="Scopes" dir={dir('scopes')} onSort={on('scopes')} className="w-[140px]" /><SortTh label="Created" dir={dir('created')} onSort={on('created', 'desc')} className="w-[170px]" /><SortTh label="Last used" dir={dir('used')} onSort={on('used', 'desc')} className="w-[170px]" />{mayChange ? <Th className="w-[100px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
             <tbody>
               {held.length === 0 ? <Tr><Td colSpan={mayChange ? 6 : 5} className="text-muted-foreground">No key authenticates for this project yet.</Td></Tr> : null}
               {held.map((k) => (

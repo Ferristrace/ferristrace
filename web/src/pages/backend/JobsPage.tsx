@@ -8,7 +8,7 @@ import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
-import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
@@ -20,7 +20,7 @@ import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, SortHead, usePaged } from './kit'
+import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
 import { RUN_KEYS, runFirst, runValue } from './sortKeys'
 import { useUrlSort } from './useUrlSort'
 
@@ -197,12 +197,12 @@ export function JobsPage() {
             <Table aria-label={`Jobs by ${noun}`}>
               <thead>
                 <tr>
-                  <SortHead label={noun === 'queue' ? 'Queue' : noun === 'system' ? 'System' : 'Job'} dir={dirOf(group === 'queue' ? 'queue' : group === 'system' ? 'system' : 'name')} onSort={() => sortBy(group === 'queue' ? 'queue' : group === 'system' ? 'system' : 'name')} />
-                  {group === 'queue' ? null : <SortHead label="Queue" dir={dirOf('queue')} onSort={() => sortBy('queue')} className="w-[130px]" />}
-                  {group === 'system' ? null : <SortHead label="System" dir={dirOf('system')} onSort={() => sortBy('system')} className="w-[110px]" />}
-                  <SortHead label="Processed" numeric dir={dirOf('processed')} onSort={() => sortBy('processed')} className="w-[100px]" />
-                  <SortHead label="Failed" numeric dir={dirOf('failed')} onSort={() => sortBy('failed')} className="w-[90px]" />
-                  <SortHead label="Share of time" dir={dirOf('share')} onSort={() => sortBy('share')} className="w-[160px]" />
+                  <SortTh label={noun === 'queue' ? 'Queue' : noun === 'system' ? 'System' : 'Job'} dir={dirOf(group === 'queue' ? 'queue' : group === 'system' ? 'system' : 'name')} onSort={() => sortBy(group === 'queue' ? 'queue' : group === 'system' ? 'system' : 'name')} />
+                  {group === 'queue' ? null : <SortTh label="Queue" dir={dirOf('queue')} onSort={() => sortBy('queue')} className="w-[130px]" />}
+                  {group === 'system' ? null : <SortTh label="System" dir={dirOf('system')} onSort={() => sortBy('system')} className="w-[110px]" />}
+                  <SortTh label="Processed" numeric dir={dirOf('processed')} onSort={() => sortBy('processed')} className="w-[100px]" />
+                  <SortTh label="Failed" numeric dir={dirOf('failed')} onSort={() => sortBy('failed')} className="w-[90px]" />
+                  <SortTh label="Share of time" dir={dirOf('share')} onSort={() => sortBy('share')} className="w-[160px]" />
                   <Th numeric className="w-[80px]">p50</Th>
                   <Th numeric className="w-[80px]">p95</Th>
                 </tr>

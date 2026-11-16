@@ -8,7 +8,7 @@ import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
-import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
@@ -28,7 +28,7 @@ import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, SortHead, usePaged } from './kit'
+import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
 import { STATEMENT_KEYS, fanoutFirst, fanoutValue, statementFirst, statementValue, type FanoutKey } from './sortKeys'
 import { useUrlSort } from './useUrlSort'
 
@@ -161,10 +161,10 @@ export function QueriesPage() {
             <Table aria-label="Statements that fan out inside a trace">
               <thead>
                 <tr>
-                  <SortHead label="Statement" dir={fanDir('statement')} onSort={() => fanBy('statement')} />
-                  <SortHead label="Worst trace" numeric dir={fanDir('worst')} onSort={() => fanBy('worst')} className="w-[110px]" />
-                  <SortHead label="Traces" numeric dir={fanDir('traces')} onSort={() => fanBy('traces')} className="w-[90px]" />
-                  <SortHead label="Calls" numeric dir={fanDir('calls')} onSort={() => fanBy('calls')} className="w-[90px]" />
+                  <SortTh label="Statement" dir={fanDir('statement')} onSort={() => fanBy('statement')} />
+                  <SortTh label="Worst trace" numeric dir={fanDir('worst')} onSort={() => fanBy('worst')} className="w-[110px]" />
+                  <SortTh label="Traces" numeric dir={fanDir('traces')} onSort={() => fanBy('traces')} className="w-[90px]" />
+                  <SortTh label="Calls" numeric dir={fanDir('calls')} onSort={() => fanBy('calls')} className="w-[90px]" />
                 </tr>
               </thead>
               <tbody>
@@ -255,14 +255,14 @@ export function QueriesPage() {
             <Table aria-label={`Database ${noun}s`}>
               <thead>
                 <tr>
-                  <SortHead label={noun === 'database' ? 'Database' : noun === 'operation' ? 'Operation' : 'Statement'} dir={dirOf(group === 'database' ? 'database' : 'name')} onSort={() => sortBy(group === 'database' ? 'database' : 'name')} />
-                  {group === 'database' ? null : <SortHead label="Database" dir={dirOf('database')} onSort={() => sortBy('database')} className="w-[130px]" />}
-                  <SortHead label="System" dir={dirOf('system')} onSort={() => sortBy('system')} className="w-[90px]" />
-                  <SortHead label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[100px]" />
-                  <SortHead label="Errors" numeric dir={dirOf('errors')} onSort={() => sortBy('errors')} className="w-[90px]" />
+                  <SortTh label={noun === 'database' ? 'Database' : noun === 'operation' ? 'Operation' : 'Statement'} dir={dirOf(group === 'database' ? 'database' : 'name')} onSort={() => sortBy(group === 'database' ? 'database' : 'name')} />
+                  {group === 'database' ? null : <SortTh label="Database" dir={dirOf('database')} onSort={() => sortBy('database')} className="w-[130px]" />}
+                  <SortTh label="System" dir={dirOf('system')} onSort={() => sortBy('system')} className="w-[90px]" />
+                  <SortTh label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[100px]" />
+                  <SortTh label="Errors" numeric dir={dirOf('errors')} onSort={() => sortBy('errors')} className="w-[90px]" />
                   <Th numeric className="w-[80px]">p50</Th>
                   <Th numeric className="w-[80px]">p95</Th>
-                  <SortHead label="Share of time" dir={dirOf('time')} onSort={() => sortBy('time')} className="w-[160px]" />
+                  <SortTh label="Share of time" dir={dirOf('time')} onSort={() => sortBy('time')} className="w-[160px]" />
                 </tr>
               </thead>
               <tbody>

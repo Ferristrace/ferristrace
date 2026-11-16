@@ -8,13 +8,12 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input, NativeSelect } from '@/components/ui/input'
-import { Alert, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Alert, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { AGENT_SCOPES, agentNameProblem, clientIdProblem, useAgents, useRegisterAgent, useRevokeAgent, type Agent, type AgentScope } from '@/data/agents'
 import { useProjects } from '@/data/projects'
 import { stamp } from '@/lib/format'
 import { sorted } from '@/lib/sorting'
 import { useSortState } from '../useSortState'
-import { SortHead } from '../SortHead'
 import { H } from './parts'
 
 export const SCOPE_HINT: Record<AgentScope, string> = {
@@ -75,7 +74,7 @@ export function Agents() {
       <Card className="overflow-x-auto">
         {roll ? (
           <Table>
-            <thead><tr><SortHead label="Name" dir={dir('name')} onSort={on('name')} /><SortHead label="Client id" dir={dir('client')} onSort={on('client')} className="w-[160px]" /><SortHead label="Scopes" dir={dir('scopes')} onSort={on('scopes')} className="w-[200px]" /><SortHead label="Project" dir={dir('project')} onSort={on('project')} className="w-[120px]" /><SortHead label="Last used" dir={dir('used')} onSort={on('used', 'desc')} className="w-[170px]" /><SortHead label="State" dir={dir('state')} onSort={on('state')} className="w-[100px]" /><Th className="w-[100px]"><span className="sr-only">Actions</span></Th></tr></thead>
+            <thead><tr><SortTh label="Name" dir={dir('name')} onSort={on('name')} /><SortTh label="Client id" dir={dir('client')} onSort={on('client')} className="w-[160px]" /><SortTh label="Scopes" dir={dir('scopes')} onSort={on('scopes')} className="w-[200px]" /><SortTh label="Project" dir={dir('project')} onSort={on('project')} className="w-[120px]" /><SortTh label="Last used" dir={dir('used')} onSort={on('used', 'desc')} className="w-[170px]" /><SortTh label="State" dir={dir('state')} onSort={on('state')} className="w-[100px]" /><Th className="w-[100px]"><span className="sr-only">Actions</span></Th></tr></thead>
             <tbody>
               {agents.length === 0 ? <Tr><Td colSpan={7} className="text-muted-foreground">No agent is registered yet.</Td></Tr> : null}
               {agents.map((agent) => (

@@ -4,7 +4,7 @@ import { Link, useParams, useSearchParam } from '@/lib/router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { EmptyState, PageHeader, ServiceDot, svcBg } from '@/components/ft/bits'
 import type { FrameStatus } from '@/components/ft/ChartFrame'
 import { percentileLines } from '@/components/ft/percentiles'
@@ -21,7 +21,7 @@ import { because } from '@/auth/client'
 import { num } from '@/lib/format'
 import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
-import { PagedFooter, SortHead, usePaged } from './backend/kit'
+import { PagedFooter, usePaged } from './backend/kit'
 import { operationValue, textFirst, type OperationKey } from './backend/sortKeys'
 import { ServiceDependencies, ServiceLogs, ServicePanel, ServiceTabStrip, ServiceTraces } from './services/ServiceTabs'
 import { tabOf } from './services/serviceView'
@@ -112,7 +112,7 @@ export function ServiceDetail() {
         {!opsFailed && operations.length === 0 ? <p className="m-0 px-3.5 py-3 text-control text-muted-foreground">No operation served in the last {label}.</p> : null}
         <div className={cn('overflow-x-auto', operations.length === 0 && 'hidden')}>
           <Table aria-label="Operations">
-            <thead><tr><SortHead label="Span name" dir={dirOf('name')} onSort={() => sortBy('name')} /><SortHead label="Requests" numeric dir={dirOf('rps')} onSort={() => sortBy('rps')} className="w-[90px]" /><SortHead label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[90px]" /><Th numeric className="w-[80px]">p50</Th><Th numeric className="w-[80px]">p95</Th><Th numeric className="w-[80px]">p99</Th><Th className="w-[110px]">Last seen</Th></tr></thead>
+            <thead><tr><SortTh label="Span name" dir={dirOf('name')} onSort={() => sortBy('name')} /><SortTh label="Requests" numeric dir={dirOf('rps')} onSort={() => sortBy('rps')} className="w-[90px]" /><SortTh label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[90px]" /><Th numeric className="w-[80px]">p50</Th><Th numeric className="w-[80px]">p95</Th><Th numeric className="w-[80px]">p99</Th><Th className="w-[110px]">Last seen</Th></tr></thead>
             <tbody>
               {paged.shown.map((o) => (
                 <Tr key={o.name}>

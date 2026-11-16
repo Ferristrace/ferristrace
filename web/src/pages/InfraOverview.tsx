@@ -6,7 +6,7 @@ import { Card, CardKind } from '@/components/ui/card'
 import { NativeSelect } from '@/components/ui/input'
 import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { Seen } from '@/pages/Infra'
 import { bytes, collectorConfig, KIND_LABEL, RECEIVER, useCluster, useInfrastructure, type ClusterPod, type InfraResource, type ResourceKind } from '@/data/infra'
@@ -14,7 +14,6 @@ import { ApiError, because } from '@/auth/client'
 import { sorted } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
 import { FiltersBar } from './FiltersBar'
-import { SortHead } from './SortHead'
 import { usePaged } from './usePaged'
 import { useSortState } from './useSortState'
 
@@ -140,11 +139,11 @@ function HostTable({ hosts }: { hosts: InfraResource[] }) {
         <Table aria-label="Hosts" className="min-w-[640px]">
           <thead>
             <tr>
-              <SortHead label="Host" dir={dir('name')} onSort={on('name')} className="min-w-[200px] pl-4" />
-              <SortHead label="Where" dir={dir('where')} onSort={on('where')} />
-              <SortHead label="Environment" dir={dir('environment')} onSort={on('environment')} className="w-[130px]" />
-              <SortHead label="Services" dir={dir('services')} onSort={on('services')} className="min-w-[160px]" />
-              <SortHead label="Status" dir={dir('status')} onSort={on('status')} className="w-[200px]" />
+              <SortTh label="Host" dir={dir('name')} onSort={on('name')} className="min-w-[200px] pl-4" />
+              <SortTh label="Where" dir={dir('where')} onSort={on('where')} />
+              <SortTh label="Environment" dir={dir('environment')} onSort={on('environment')} className="w-[130px]" />
+              <SortTh label="Services" dir={dir('services')} onSort={on('services')} className="min-w-[160px]" />
+              <SortTh label="Status" dir={dir('status')} onSort={on('status')} className="w-[200px]" />
               <Th className="w-[130px] pr-4"><span className="sr-only">Open</span></Th>
             </tr>
           </thead>
@@ -180,13 +179,13 @@ function ContainerTable({ containers }: { containers: InfraResource[] }) {
         <Table aria-label="Containers" className="min-w-[700px]">
           <thead>
             <tr>
-              <SortHead label="Container" dir={dir('name')} onSort={on('name')} className="min-w-[200px] pl-4" />
-              <SortHead label="Where" dir={dir('where')} onSort={on('where')} />
-              <SortHead label="Environment" dir={dir('environment')} onSort={on('environment')} className="w-[130px]" />
-              <SortHead label="Services" dir={dir('services')} onSort={on('services')} className="min-w-[160px]" />
-              <SortHead numeric label="CPU" dir={dir('cpu')} onSort={on('cpu', 'desc')} className="w-[80px]" />
-              <SortHead numeric label="Memory" dir={dir('memory')} onSort={on('memory', 'desc')} className="w-[90px]" />
-              <SortHead label="Status" dir={dir('status')} onSort={on('status')} className="w-[200px] pl-6 pr-4" />
+              <SortTh label="Container" dir={dir('name')} onSort={on('name')} className="min-w-[200px] pl-4" />
+              <SortTh label="Where" dir={dir('where')} onSort={on('where')} />
+              <SortTh label="Environment" dir={dir('environment')} onSort={on('environment')} className="w-[130px]" />
+              <SortTh label="Services" dir={dir('services')} onSort={on('services')} className="min-w-[160px]" />
+              <SortTh numeric label="CPU" dir={dir('cpu')} onSort={on('cpu', 'desc')} className="w-[80px]" />
+              <SortTh numeric label="Memory" dir={dir('memory')} onSort={on('memory', 'desc')} className="w-[90px]" />
+              <SortTh label="Status" dir={dir('status')} onSort={on('status')} className="w-[200px] pl-6 pr-4" />
             </tr>
           </thead>
           <tbody>

@@ -8,7 +8,7 @@ import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
-import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
@@ -26,7 +26,7 @@ import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, SortHead, usePaged } from './kit'
+import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
 import { ROUTE_KEYS, routeFirst, routeValue } from './sortKeys'
 import { useUrlSort } from './useUrlSort'
 
@@ -203,15 +203,15 @@ export function RequestsPage() {
             <Table aria-label={`Requests by ${noun}`}>
               <thead>
                 <tr>
-                  <SortHead label={noun === 'service' ? 'Service' : noun === 'method' ? 'Method' : 'Route'} dir={dirOf(group === 'service' ? 'service' : group === 'method' ? 'method' : 'name')} onSort={() => sortBy(group === 'service' ? 'service' : group === 'method' ? 'method' : 'name')} />
-                  {group === 'service' ? null : <SortHead label="Service" dir={dirOf('service')} onSort={() => sortBy('service')} className="w-[130px]" />}
-                  {group === 'method' ? null : <SortHead label="Method" dir={dirOf('method')} onSort={() => sortBy('method')} className="w-[90px]" />}
-                  <SortHead label="Requests" numeric dir={dirOf('traffic')} onSort={() => sortBy('traffic')} className="w-[100px]" />
-                  <SortHead label="4xx" numeric dir={dirOf('refused')} onSort={() => sortBy('refused')} className="w-[80px]" />
-                  <SortHead label="5xx" numeric dir={dirOf('broken')} onSort={() => sortBy('broken')} className="w-[80px]" />
-                  <SortHead label="Share of time" dir={dirOf('share')} onSort={() => sortBy('share')} className="w-[160px]" />
+                  <SortTh label={noun === 'service' ? 'Service' : noun === 'method' ? 'Method' : 'Route'} dir={dirOf(group === 'service' ? 'service' : group === 'method' ? 'method' : 'name')} onSort={() => sortBy(group === 'service' ? 'service' : group === 'method' ? 'method' : 'name')} />
+                  {group === 'service' ? null : <SortTh label="Service" dir={dirOf('service')} onSort={() => sortBy('service')} className="w-[130px]" />}
+                  {group === 'method' ? null : <SortTh label="Method" dir={dirOf('method')} onSort={() => sortBy('method')} className="w-[90px]" />}
+                  <SortTh label="Requests" numeric dir={dirOf('traffic')} onSort={() => sortBy('traffic')} className="w-[100px]" />
+                  <SortTh label="4xx" numeric dir={dirOf('refused')} onSort={() => sortBy('refused')} className="w-[80px]" />
+                  <SortTh label="5xx" numeric dir={dirOf('broken')} onSort={() => sortBy('broken')} className="w-[80px]" />
+                  <SortTh label="Share of time" dir={dirOf('share')} onSort={() => sortBy('share')} className="w-[160px]" />
                   <Th numeric className="w-[80px]">p50</Th>
-                  <SortHead label="p95" numeric dir={dirOf('p95')} onSort={() => sortBy('p95')} className="w-[80px]" />
+                  <SortTh label="p95" numeric dir={dirOf('p95')} onSort={() => sortBy('p95')} className="w-[80px]" />
                 </tr>
               </thead>
               <tbody>

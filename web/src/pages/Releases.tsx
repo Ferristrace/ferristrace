@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
-import { Kbd, Table, Td, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { EmptyState, Kpi, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { RELEASE_WINDOWS, errorRateOf, releasePath, useRelease, useReleases, type Release, type Traffic } from '@/data/releases'
 import { ApiError, because } from '@/auth/client'
@@ -13,7 +13,7 @@ import { num, pct, stamp } from '@/lib/format'
 import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
 import { NotFound } from './NotFound'
-import { Note, PagedFooter, PanelEmpty, Pill, Pills, SEARCH, SkeletonRows, SortHead, Toolbar, usePaged } from './backend/kit'
+import { Note, PagedFooter, PanelEmpty, Pill, Pills, SEARCH, SkeletonRows, Toolbar, usePaged } from './backend/kit'
 import { releaseFirst, releaseValue, type ReleaseKey } from './backend/sortKeys'
 import { ReleaseAround } from './services/ReleaseAround'
 
@@ -72,7 +72,7 @@ export function Releases() {
           ) : (
             <div className="overflow-x-auto">
               <Table aria-label="Releases">
-                <thead><tr><SortHead label="Release" dir={dirOf('release')} onSort={() => sortBy('release')} /><SortHead label="Environments" dir={dirOf('environments')} onSort={() => sortBy('environments')} className="w-[160px]" /><SortHead label="First seen" dir={dirOf('first')} onSort={() => sortBy('first')} className="w-[170px]" /><SortHead label="Last seen" dir={dirOf('last')} onSort={() => sortBy('last')} className="w-[170px]" /><SortHead label="Requests" numeric dir={dirOf('requests')} onSort={() => sortBy('requests')} className="w-[100px]" /><SortHead label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[100px]" /><SortHead label="New issues" numeric dir={dirOf('issues')} onSort={() => sortBy('issues')} className="w-[100px]" /></tr></thead>
+                <thead><tr><SortTh label="Release" dir={dirOf('release')} onSort={() => sortBy('release')} /><SortTh label="Environments" dir={dirOf('environments')} onSort={() => sortBy('environments')} className="w-[160px]" /><SortTh label="First seen" dir={dirOf('first')} onSort={() => sortBy('first')} className="w-[170px]" /><SortTh label="Last seen" dir={dirOf('last')} onSort={() => sortBy('last')} className="w-[170px]" /><SortTh label="Requests" numeric dir={dirOf('requests')} onSort={() => sortBy('requests')} className="w-[100px]" /><SortTh label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[100px]" /><SortTh label="New issues" numeric dir={dirOf('issues')} onSort={() => sortBy('issues')} className="w-[100px]" /></tr></thead>
                 <tbody>
                   {paged.shown.map((r) => {
                     const to = releasePath(r.service, r.version)

@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
-import { Alert, Table, Td, Tr } from '@/components/ui/misc'
+import { Alert, Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { Pager } from '@/components/ui/pager'
 import { Switch } from '@/components/ui/switch'
 import { EmptyState, PageHeader } from '@/components/ft/bits'
@@ -19,7 +19,6 @@ import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
 import { FiltersButton } from './alerting/FiltersButton'
 import { notifiesLabel, ruleValue, type RuleKey, type RuleLine } from './alerting/sorting'
-import { SortHead } from './alerting/SortHead'
 import { StateBadge } from './alerts/bits'
 import { RuleDetail } from './alerts/RuleDetail'
 import { RuleEditor } from './alerts/RuleEditor'
@@ -87,13 +86,13 @@ export function Alerts() {
           <Table aria-label="Alert rules">
             <thead>
               <tr>
-                <SortHead label="Rule" dir={dirOf('rule')} onSort={() => sortBy('rule', 'asc')} />
-                <SortHead label="Signal" dir={dirOf('signal')} onSort={() => sortBy('signal', 'asc')} className="w-[90px]" />
-                <SortHead label="Severity" dir={dirOf('severity')} onSort={() => sortBy('severity')} className="w-[100px]" />
-                <SortHead label="State" dir={dirOf('state')} onSort={() => sortBy('state')} className="w-[210px]" />
-                <SortHead label="Notifies" dir={dirOf('notifies')} onSort={() => sortBy('notifies', 'asc')} className="w-[170px]" />
-                <SortHead label="Project" dir={dirOf('project')} onSort={() => sortBy('project', 'asc')} className="w-[140px]" />
-                {mayChange ? <SortHead numeric label="On" dir={dirOf('on')} onSort={() => sortBy('on')} className="w-[70px]" /> : null}
+                <SortTh label="Rule" dir={dirOf('rule')} onSort={() => sortBy('rule', 'asc')} />
+                <SortTh label="Signal" dir={dirOf('signal')} onSort={() => sortBy('signal', 'asc')} className="w-[90px]" />
+                <SortTh label="Severity" dir={dirOf('severity')} onSort={() => sortBy('severity')} className="w-[100px]" />
+                <SortTh label="State" dir={dirOf('state')} onSort={() => sortBy('state')} className="w-[210px]" />
+                <SortTh label="Notifies" dir={dirOf('notifies')} onSort={() => sortBy('notifies', 'asc')} className="w-[170px]" />
+                <SortTh label="Project" dir={dirOf('project')} onSort={() => sortBy('project', 'asc')} className="w-[140px]" />
+                {mayChange ? <SortTh numeric label="On" dir={dirOf('on')} onSort={() => sortBy('on')} className="w-[70px]" /> : null}
               </tr>
             </thead>
             <tbody>

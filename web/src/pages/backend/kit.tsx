@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Pager } from '@/components/ui/pager'
-import type { ComponentProps } from 'react'
-import { Skeleton, SortTh } from '@/components/ui/misc'
-import type { Direction } from '@/lib/sorting'
+import { Skeleton } from '@/components/ui/misc'
 import { pagesOf } from '@/lib/paging'
 import { cn } from '@/lib/utils'
 
@@ -75,9 +73,3 @@ export function PagedFooter({ paged, noun, className }: { paged: { page: number;
 export const Note = ({ children }: { children: React.ReactNode }) => (
   <p className="m-0 border-t px-3.5 py-2.5 text-caption text-muted-foreground">{children}</p>
 )
-
-type Head = ComponentProps<typeof SortTh>
-
-export function SortHead({ dir, ...p }: Omit<Head, 'dir'> & { dir: Direction | null }) {
-  return <SortTh dir={dir as Head['dir']} {...p} />
-}

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
 import { conditionOf, duration, scopeOf, signalLink, unitOf, useAlertHistory, useChannels, useDeleteRule, useSilenceRule, useUnsilenceRule, withUnit, SILENCE_MAX_DAYS, type AlertStatus, type Rule } from '@/data/alerts'
@@ -18,7 +18,6 @@ import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { Link, useNavigate } from '@/lib/router'
 import { labelOf } from '@/components/ft/MetricChart'
 import { eventValue, seriesValue, type EventKey, type SeriesKey } from '../alerting/sorting'
-import { SortHead } from '../alerting/SortHead'
 import { AlertContext, StateBadge } from './bits'
 
 const SHOWN = 100
@@ -147,9 +146,9 @@ export function RuleDetail({ rule, project, mayChange, onEdit, onClose }: { rule
               <Card className="overflow-x-auto">
                 <Table aria-label="State per series">
                   <thead><tr>
-                    <SortHead label="Series" dir={seriesDir('series')} onSort={() => setSeriesSorting((was) => toggled(was, 'series', 'asc'))} />
-                    <SortHead label="State" dir={seriesDir('state')} onSort={() => setSeriesSorting((was) => toggled(was, 'state'))} className="w-[110px]" />
-                    <SortHead numeric label="Value" dir={seriesDir('value')} onSort={() => setSeriesSorting((was) => toggled(was, 'value'))} className="w-[140px]" />
+                    <SortTh label="Series" dir={seriesDir('series')} onSort={() => setSeriesSorting((was) => toggled(was, 'series', 'asc'))} />
+                    <SortTh label="State" dir={seriesDir('state')} onSort={() => setSeriesSorting((was) => toggled(was, 'state'))} className="w-[110px]" />
+                    <SortTh numeric label="Value" dir={seriesDir('value')} onSort={() => setSeriesSorting((was) => toggled(was, 'value'))} className="w-[140px]" />
                   </tr></thead>
                   <tbody>{sorted(state.series, seriesSorting, (one, key) => seriesValue({ label: labelOf(one.labels), status: one.status, value: one.value }, key)).map((one) => (
                     <Tr key={labelOf(one.labels)}><Td className="font-mono">{labelOf(one.labels)}</Td><Td><StateBadge status={one.status} /></Td><Td numeric>{withUnit(one.value, unit)}</Td></Tr>
@@ -164,9 +163,9 @@ export function RuleDetail({ rule, project, mayChange, onEdit, onClose }: { rule
                   <div className="max-h-[260px] overflow-auto">
                     <Table aria-label="Rule history">
                       <thead><tr>
-                        <SortHead label="When" dir={eventDir('when')} onSort={() => setEventSorting((was) => toggled(was, 'when'))} className="w-[170px]" />
+                        <SortTh label="When" dir={eventDir('when')} onSort={() => setEventSorting((was) => toggled(was, 'when'))} className="w-[170px]" />
                         <Th>Change</Th>
-                        <SortHead numeric label="Value" dir={eventDir('value')} onSort={() => setEventSorting((was) => toggled(was, 'value'))} className="w-[110px]" />
+                        <SortTh numeric label="Value" dir={eventDir('value')} onSort={() => setEventSorting((was) => toggled(was, 'value'))} className="w-[110px]" />
                       </tr></thead>
                       <tbody>{sorted(history.events, eventSorting, (one, key) => eventValue(one, key)).slice(0, SHOWN).map((one) => (
                         <Tr key={`${one.at_ms}-${labelOf(one.labels)}-${one.to}`}>
