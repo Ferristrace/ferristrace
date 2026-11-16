@@ -115,7 +115,7 @@ export function useDashboard(id: string | undefined) {
     staleTime: FRESH_MS,
     queryFn: async () => json<Dashboard>(await get(`${base}/${encodeURIComponent(id ?? '')}`)),
   })
-  return { dashboard: found.data ?? null, pending: found.isPending && Boolean(id), failed: found.error }
+  return { dashboard: found.data ?? null, pending: found.isPending && Boolean(id), fetching: found.isFetching, failed: found.error }
 }
 
 function useChanged() {
@@ -136,10 +136,15 @@ export function useCreateDashboard() {
 }
 
 export function useReplaceDashboard() {
+  const client = useQueryClient()
   const changed = useChanged()
   return useMutation({
     mutationFn: async ({ id, ...file }: DashboardFile & { id: string }) => json<Dashboard>(await put(`${base}/${encodeURIComponent(id)}`, file)),
-    onSuccess: (saved) => changed(saved.id),
+    onSuccess: (saved) => {
+      client.setQueryData(['dashboard', saved.id], saved)
+      void client.invalidateQueries({ queryKey: ['dashboards'] })
+      changed()
+    },
   })
 }
 
