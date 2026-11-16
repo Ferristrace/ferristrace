@@ -36,7 +36,7 @@ export function SeriesPanel({ items, rangeMs, measure, group, onChange }: {
           {loading ? 'Asking the span store.' : 'No span matches in this window. Try fewer filters or a wider window.'}
         </EmptyState>
       ) : (
-        <MetricChart series={lines} exemplars={[]} unit={unit} aria={`${label} over time${group ? `, by ${groupLabel(group)}` : ''}`} />
+        <MetricChart title={`${label}${group ? ` by ${groupLabel(group)}` : ''}`} series={lines} exemplars={[]} unit={unit} aria={`${label} over time${group ? `, by ${groupLabel(group)}` : ''}`} />
       )}
     </div>
   )

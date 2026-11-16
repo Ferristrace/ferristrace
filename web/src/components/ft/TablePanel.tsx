@@ -2,6 +2,7 @@ import { ArrowDown } from 'lucide-react'
 import { because } from '@/auth/client'
 import { EmptyState } from '@/components/ft/bits'
 import { GroupSelect } from '@/components/ft/GroupSelect'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Table, Td, Th } from '@/components/ui/misc'
 import { groupLabel } from '@/data/spanSeries'
 import { useSpanTable } from '@/data/spanTable'
@@ -45,34 +46,41 @@ export function TablePanel({ items, rangeMs, order, group, onChange, onPick }: {
           {loading ? 'Asking the span store.' : 'No span with this field matches in this window. Try fewer filters or another group.'}
         </EmptyState>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table aria-label={`Spans by ${groupLabel(by)}`}>
-            <thead>
-              <tr>
-                <Th>{groupLabel(by)}</Th>
-                {COLUMNS.map((column) => (
-                  <Th key={column.measure} numeric className="w-[100px]" aria-sort={order === column.measure ? 'descending' : 'none'}>
-                    <button type="button" onClick={() => onChange({ m: column.measure })} className={cn('inline-flex cursor-pointer items-center gap-1 bg-transparent p-0 font-semibold hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring', order === column.measure ? 'text-foreground' : 'text-muted-foreground')}>
-                      {order === column.measure ? <ArrowDown className="size-3" aria-hidden /> : null}{column.label}
-                    </button>
-                  </Th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.group} onClick={() => onPick(row.group)} className="cursor-pointer hover:[&>td]:bg-row-hover">
-                  <Td className="max-w-[360px]">
-                    <button type="button" onClick={(event) => { event.stopPropagation(); onPick(row.group) }} className="max-w-full cursor-pointer truncate bg-transparent p-0 text-left font-semibold text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring" title={`Filter on ${row.group}`}>
-                      {row.group}
-                    </button>
-                  </Td>
-                  {COLUMNS.map((column) => <Td key={column.measure} numeric className={cn(row.errors > 0 && (column.measure === 'errors' || column.measure === 'error_rate') && 'text-destructive-text')}>{column.show(row)}</Td>)}
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <CardTitle>{`Spans by ${groupLabel(by)}`}</CardTitle>
+            <CardKind>Table</CardKind>
+            <span className="ml-auto text-caption text-muted-foreground">{rows.length.toLocaleString('en-US')} {rows.length === 1 ? 'row' : 'rows'}</span>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <Table aria-label={`Spans by ${groupLabel(by)}`}>
+              <thead>
+                <tr>
+                  <Th>{groupLabel(by)}</Th>
+                  {COLUMNS.map((column) => (
+                    <Th key={column.measure} numeric className="w-[100px]" aria-sort={order === column.measure ? 'descending' : 'none'}>
+                      <button type="button" onClick={() => onChange({ m: column.measure })} className={cn('inline-flex cursor-pointer items-center gap-1 bg-transparent p-0 font-semibold hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring', order === column.measure ? 'text-foreground' : 'text-muted-foreground')}>
+                        {order === column.measure ? <ArrowDown className="size-3" aria-hidden /> : null}{column.label}
+                      </button>
+                    </Th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </Table>
-        </div>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.group} onClick={() => onPick(row.group)} className="cursor-pointer hover:[&>td]:bg-row-hover">
+                    <Td className="max-w-[360px]">
+                      <button type="button" onClick={(event) => { event.stopPropagation(); onPick(row.group) }} className="max-w-full cursor-pointer truncate bg-transparent p-0 text-left font-semibold text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring" title={`Filter on ${row.group}`}>
+                        {row.group}
+                      </button>
+                    </Td>
+                    {COLUMNS.map((column) => <Td key={column.measure} numeric className={cn(row.errors > 0 && (column.measure === 'errors' || column.measure === 'error_rate') && 'text-destructive-text')}>{column.show(row)}</Td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        </Card>
       )}
     </div>
   )

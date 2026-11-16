@@ -13,7 +13,7 @@ export function Filters({ active = 0, children, className }: { active?: number; 
         aria-controls={id}
         onClick={() => setOpen((was) => !was)}
         className={cn(
-          'flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-lg border bg-background px-3 text-[15px] font-semibold text-foreground md:hidden',
+          'flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-md border bg-background px-3 text-[15px] font-semibold text-foreground md:hidden',
           active > 0 && 'border-accent-text/40 bg-accent-subtle',
         )}
       >

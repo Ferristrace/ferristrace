@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react'
 import { Link } from '@/lib/router'
 import { shortId } from '@/lib/format'
 import { MarkerLayer } from './MarkerLayer'
+import { CardHeader, CardKind } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { Exemplar, MetricLine } from '@/data/metrics'
 
-const PALETTE = ['#4f46e5', '#0891b2', '#d97706', '#059669', '#db2777', '#7c3aed', '#65a30d', '#dc2626', '#0284c7', '#a16207']
+const PALETTE = Array.from({ length: 8 }, (_, index) => `var(--svc-${index + 1})`)
 const HEIGHT = 220
 const WIDTH = 600
 
@@ -41,7 +42,7 @@ function segments(points: [number, number | null][], x: (t: number) => number, y
 
 export type DeployMark = { atNs: number; label: string; to: string }
 
-export function MetricChart({ series, exemplars, unit, aria, threshold, deploys = [] }: { series: MetricLine[]; exemplars: Exemplar[]; unit: string; aria: string; threshold?: number; deploys?: DeployMark[] }) {
+export function MetricChart({ title, kind = 'Time series', series, exemplars, unit, aria, threshold, deploys = [] }: { title?: string; kind?: string; series: MetricLine[]; exemplars: Exemplar[]; unit: string; aria: string; threshold?: number; deploys?: DeployMark[] }) {
   const [pinned, setPinned] = useState<string[]>([])
   const [hover, setHover] = useState<number | null>(null)
   const keys = series.map((s) => labelOf(s.labels))
@@ -77,75 +78,83 @@ export function MetricChart({ series, exemplars, unit, aria, threshold, deploys 
   }
 
   return (
-    <figure className="m-0 flex min-w-0 flex-col gap-3 rounded-lg border bg-card px-3 pb-3 pt-3">
-      <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-1.5">
-        <div className="flex flex-col justify-between text-right font-mono text-[10px] leading-3 text-faint-foreground" style={{ height: HEIGHT }}>
-          <span>{frame.hi.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
-          <span>{((frame.hi + frame.lo) / 2).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
-          <span>{frame.lo.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+    <figure className="m-0 flex min-w-0 flex-col rounded-md border bg-card">
+      <figcaption>
+        <CardHeader>
+          {title ? <span className="min-w-0 truncate text-[13px] font-semibold leading-5">{title}</span> : null}
+          <CardKind>{kind}</CardKind>
+        </CardHeader>
+      </figcaption>
+      <div className="flex min-w-0 flex-col gap-3 px-3 pb-3 pt-3">
+        <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-1.5">
+          <div className="flex flex-col justify-between text-right font-mono text-micro tabular-nums text-chart-axis" style={{ height: HEIGHT }}>
+            <span>{frame.hi.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+            <span>{((frame.hi + frame.lo) / 2).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+            <span>{frame.lo.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+          </div>
+          <div className="relative" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+            <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" width="100%" height={HEIGHT} role="img" aria-label={aria} className="block overflow-visible">
+              <line x1="0" y1="0.5" x2={WIDTH} y2="0.5" stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
+              <line x1="0" y1={HEIGHT / 2} x2={WIDTH} y2={HEIGHT / 2} stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
+              <line x1="0" y1={HEIGHT - 0.5} x2={WIDTH} y2={HEIGHT - 0.5} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
+              {series.map((s, i) => visible[i]
+                ? segments(s.points, x, y).map((points, n) => (
+                    points.includes(' ')
+                      ? <polyline key={`${keys[i]}-${n}`} points={points} fill="none" stroke={PALETTE[i % PALETTE.length]} strokeWidth="1.75" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                      : <circle key={`${keys[i]}-${n}`} cx={points.split(',')[0]} cy={points.split(',')[1]} r="1.5" fill={PALETTE[i % PALETTE.length]} />
+                  ))
+                : null)}
+              {threshold !== undefined ? <line x1="0" x2={WIDTH} y1={y(threshold)} y2={y(threshold)} stroke="var(--destructive-text)" strokeDasharray="6 4" strokeWidth="1.5" vectorEffect="non-scaling-stroke"><title>{`Threshold ${formatValue(threshold, unit)}`}</title></line> : null}
+              {at !== null ? <line x1={x(at)} x2={x(at)} y1="0" y2={HEIGHT} stroke="var(--muted-foreground)" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" /> : null}
+            </svg>
+            <MarkerLayer pins={deployed.map((d) => ({ frac: x(d.atNs) / WIDTH, label: d.label, to: d.to }))} />
+            {shown.map((e) => (
+              <Link
+                key={`${e.trace_id}-${e.span_id}-${e.time_ns}`}
+                to={`/traces/${e.trace_id}`}
+                aria-label={`Exemplar ${formatValue(e.value, unit)}, open trace ${shortId(e.trace_id)}`}
+                title={`${formatValue(e.value, unit)} · trace ${shortId(e.trace_id)}`}
+                className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                style={{ left: `${(x(e.time_ns) / WIDTH) * 100}%`, top: `${(Math.min(Math.max(y(e.value), 0), HEIGHT) / HEIGHT) * 100}%` }}
+              />
+            ))}
+            {at !== null ? (
+              <div role="tooltip" className="pointer-events-none absolute top-0 z-10 flex max-w-[320px] flex-col gap-0.5 rounded-md border bg-popover px-2 py-1.5 text-caption text-popover-foreground shadow-md" style={{ left: `${(x(at) / WIDTH) * 100}%`, transform: x(at) > WIDTH / 2 ? 'translateX(calc(-100% - 8px))' : 'translateX(8px)' }}>
+                <span className="font-mono text-muted-foreground">{clock(at)}</span>
+                {series.map((s, i) => {
+                  const point = visible[i] ? s.points.find((p) => p[0] === at) : undefined
+                  if (!point) return null
+                  return (
+                    <span key={keys[i]} className="flex items-center gap-1.5">
+                      <span className="size-2 shrink-0 rounded-full" style={{ background: PALETTE[i % PALETTE.length] }} aria-hidden />
+                      <span className="truncate font-mono">{keys[i]}</span>
+                      <span className="ml-auto pl-2 font-mono font-semibold">{point[1] === null ? 'no data' : formatValue(point[1], unit)}</span>
+                    </span>
+                  )
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
-        <div className="relative" onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
-          <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" width="100%" height={HEIGHT} role="img" aria-label={aria} className="block overflow-visible">
-            <line x1="0" y1="0.5" x2={WIDTH} y2="0.5" stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
-            <line x1="0" y1={HEIGHT / 2} x2={WIDTH} y2={HEIGHT / 2} stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
-            <line x1="0" y1={HEIGHT - 0.5} x2={WIDTH} y2={HEIGHT - 0.5} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
-            {series.map((s, i) => visible[i]
-              ? segments(s.points, x, y).map((points, n) => (
-                  points.includes(' ')
-                    ? <polyline key={`${keys[i]}-${n}`} points={points} fill="none" stroke={PALETTE[i % PALETTE.length]} strokeWidth="1.75" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                    : <circle key={`${keys[i]}-${n}`} cx={points.split(',')[0]} cy={points.split(',')[1]} r="1.5" fill={PALETTE[i % PALETTE.length]} />
-                ))
-              : null)}
-            {threshold !== undefined ? <line x1="0" x2={WIDTH} y1={y(threshold)} y2={y(threshold)} stroke="var(--destructive-text)" strokeDasharray="6 4" strokeWidth="1.5" vectorEffect="non-scaling-stroke"><title>{`Threshold ${formatValue(threshold, unit)}`}</title></line> : null}
-            {at !== null ? <line x1={x(at)} x2={x(at)} y1="0" y2={HEIGHT} stroke="var(--muted-foreground)" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" /> : null}
-          </svg>
-          <MarkerLayer pins={deployed.map((d) => ({ frac: x(d.atNs) / WIDTH, label: d.label, to: d.to }))} />
-          {shown.map((e) => (
-            <Link
-              key={`${e.trace_id}-${e.span_id}-${e.time_ns}`}
-              to={`/traces/${e.trace_id}`}
-              aria-label={`Exemplar ${formatValue(e.value, unit)}, open trace ${shortId(e.trace_id)}`}
-              title={`${formatValue(e.value, unit)} · trace ${shortId(e.trace_id)}`}
-              className="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-foreground focus-visible:outline-2 focus-visible:outline-ring"
-              style={{ left: `${(x(e.time_ns) / WIDTH) * 100}%`, top: `${(Math.min(Math.max(y(e.value), 0), HEIGHT) / HEIGHT) * 100}%` }}
-            />
-          ))}
-          {at !== null ? (
-            <div role="tooltip" className="pointer-events-none absolute top-0 z-10 flex max-w-[320px] flex-col gap-0.5 rounded-md border bg-background px-2 py-1.5 text-caption shadow-md" style={{ left: `${(x(at) / WIDTH) * 100}%`, transform: x(at) > WIDTH / 2 ? 'translateX(calc(-100% - 8px))' : 'translateX(8px)' }}>
-              <span className="font-mono text-muted-foreground">{clock(at)}</span>
-              {series.map((s, i) => {
-                const point = visible[i] ? s.points.find((p) => p[0] === at) : undefined
-                if (!point) return null
-                return (
-                  <span key={keys[i]} className="flex items-center gap-1.5">
-                    <span className="size-2 shrink-0 rounded-full" style={{ background: PALETTE[i % PALETTE.length] }} aria-hidden />
-                    <span className="truncate font-mono">{keys[i]}</span>
-                    <span className="ml-auto pl-2 font-mono font-semibold">{point[1] === null ? 'no data' : formatValue(point[1], unit)}</span>
-                  </span>
-                )
-              })}
-            </div>
-          ) : null}
+        <div className="flex justify-between pl-[62px] font-mono text-micro tabular-nums text-chart-axis">
+          <span>{clock(frame.t0)}</span>
+          <span>{clock(frame.t1)}</span>
         </div>
+        <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label="Legend, select a series to pin it">
+          {series.map((_, i) => {
+            const on = pinned.includes(keys[i])
+            return (
+              <li key={keys[i]}>
+                <button type="button" aria-pressed={on} onClick={() => toggle(keys[i])} className={cn('inline-flex max-w-[360px] cursor-pointer items-center gap-1.5 rounded-sm border px-1.5 py-0.5 font-mono text-caption hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring', on && 'bg-muted', !visible[i] && 'opacity-45')}>
+                  <span className="size-2 shrink-0 rounded-full" style={{ background: PALETTE[i % PALETTE.length] }} aria-hidden />
+                  <span className="truncate">{keys[i]}</span>
+                </button>
+              </li>
+            )
+          })}
+          {pinned.length > 0 ? <li><button type="button" onClick={() => setPinned([])} className="cursor-pointer rounded-sm px-1.5 py-0.5 text-caption text-muted-foreground hover:bg-muted">Show all</button></li> : null}
+        </ul>
       </div>
-      <div className="flex justify-between pl-[62px] font-mono text-[10px] text-faint-foreground">
-        <span>{clock(frame.t0)}</span>
-        <span>{clock(frame.t1)}</span>
-      </div>
-      <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label="Legend, select a series to pin it">
-        {series.map((_, i) => {
-          const on = pinned.includes(keys[i])
-          return (
-            <li key={keys[i]}>
-              <button type="button" aria-pressed={on} onClick={() => toggle(keys[i])} className={cn('inline-flex max-w-[360px] cursor-pointer items-center gap-1.5 rounded-sm border px-1.5 py-0.5 font-mono text-caption hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring', on && 'bg-muted', !visible[i] && 'opacity-45')}>
-                <span className="size-2 shrink-0 rounded-full" style={{ background: PALETTE[i % PALETTE.length] }} aria-hidden />
-                <span className="truncate">{keys[i]}</span>
-              </button>
-            </li>
-          )
-        })}
-        {pinned.length > 0 ? <li><button type="button" onClick={() => setPinned([])} className="cursor-pointer rounded-sm px-1.5 py-0.5 text-caption text-muted-foreground hover:bg-muted">Show all</button></li> : null}
-      </ul>
     </figure>
   )
 }
