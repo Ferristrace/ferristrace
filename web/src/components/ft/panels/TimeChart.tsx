@@ -7,7 +7,7 @@ import {
   type TooltipRow,
 } from './geometry'
 import { Legend } from './Legend'
-import { MarkerLayer } from './MarkerLayer'
+import { MarkerLayer, releasesNear } from './MarkerLayer'
 import { labelOf, isEmpty } from './result'
 import { SeriesTooltip, useHoverPin } from './Tooltip'
 import type { Of, PanelProps } from './types'
@@ -250,6 +250,7 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
               pinned={pinned !== null}
               drillable={drill !== undefined}
               onOpen={(row) => open(row.at)}
+              releases={releasesNear(markers, when, frame.t1 - frame.t0).map((mark) => ({ label: mark.label, to: mark.to, when: axisTime(mark.atNs, frame.t1 - frame.t0) }))}
               className="top-1"
               style={{ left: `${guide}%`, transform: flip ? 'translateX(calc(-100% - 8px))' : 'translateX(8px)' }}
             />
