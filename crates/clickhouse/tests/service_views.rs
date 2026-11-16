@@ -333,6 +333,8 @@ async fn a_service_series_counts_the_requests_and_errors_of_each_step() {
             requests: 0,
             errors: 0,
             p95_nanos: None,
+            p50_nanos: None,
+            p99_nanos: None,
         }
     );
     assert_eq!((checkout.requests, checkout.errors), (5, 1));
@@ -717,4 +719,56 @@ async fn a_service_is_sighted_in_its_latest_project_and_every_environment_it_ran
     assert_eq!(loose.environments, vec![Box::<str>::from("prod")]);
     assert_eq!(unknown, ferristrace_domain::Sighting::default());
     assert_eq!(later, ferristrace_domain::Sighting::default());
+}
+
+#[tokio::test]
+async fn a_series_point_orders_its_percentiles_and_an_empty_one_has_none_at_l18_1() {
+    let Some(client) = prepared("ferristrace_views_percentiles_l18").await else {
+        return;
+    };
+    let mut spans: Vec<Sent> = (1..=100)
+        .map(|n| Sent::served(n, "checkout", "pay", 10 * SECOND, u64::from(n) * MILLI))
+        .collect();
+    spans.push(Sent::served(200, "checkout", "pay", 3 * MINUTE, 7 * MILLI));
+    written(&client, Scope::of(org(MINE)), &spans).await;
+
+    let series = ClickhouseReader::new(client)
+        .series(org(MINE), Some("checkout"), &the_hour())
+        .await
+        .expect("the series reads")
+        .filled(&the_hour());
+
+    let busy = &series.points[0];
+    let (p50, p95, p99) = (
+        busy.p50_nanos.expect("a p50"),
+        busy.p95_nanos.expect("a p95"),
+        busy.p99_nanos.expect("a p99"),
+    );
+    assert!(near(p50, 50), "p50 {p50}");
+    assert!(near(p95, 95), "p95 {p95}");
+    assert!(near(p99, 99), "p99 {p99}");
+    for point in series.points.iter().filter(|point| point.requests > 0) {
+        let (p50, p95, p99) = (
+            point.p50_nanos.expect("a p50"),
+            point.p95_nanos.expect("a p95"),
+            point.p99_nanos.expect("a p99"),
+        );
+        assert!(p50 <= p95 && p95 <= p99, "{p50} <= {p95} <= {p99}");
+    }
+    let lone = &series.points[3];
+    assert_eq!(
+        (lone.p50_nanos, lone.p95_nanos, lone.p99_nanos),
+        (Some(7 * MILLI), Some(7 * MILLI), Some(7 * MILLI))
+    );
+    let idle = &series.points[1];
+    assert_eq!(
+        (
+            idle.requests,
+            idle.p50_nanos,
+            idle.p95_nanos,
+            idle.p99_nanos
+        ),
+        (0, None, None, None)
+    );
+    assert!(series.p50_nanos <= series.p95_nanos && series.p95_nanos <= series.p99_nanos);
 }

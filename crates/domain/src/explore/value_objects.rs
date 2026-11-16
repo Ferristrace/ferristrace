@@ -467,6 +467,8 @@ pub struct ServicePoint {
     pub requests: u64,
     pub errors: u64,
     pub p95_nanos: Option<u64>,
+    pub p50_nanos: Option<u64>,
+    pub p99_nanos: Option<u64>,
 }
 
 impl Slot for ServicePoint {
@@ -476,6 +478,8 @@ impl Slot for ServicePoint {
             requests: 0,
             errors: 0,
             p95_nanos: None,
+            p50_nanos: None,
+            p99_nanos: None,
         }
     }
 

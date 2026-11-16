@@ -1,7 +1,8 @@
-import { useMemo } from 'react'
+import { Fragment, useId, useMemo } from 'react'
 import { TIME_LABELS } from '@/data/series'
-import { ChartFrame } from './ChartFrame'
-import { clamp01, finite, fractionOf, lineRows, runsOf, stackRows, type Reading } from './chartMath'
+import { ChartFrame, type FrameStatus } from './ChartFrame'
+import { clamp01, finite, fractionOf, headlineOf, LINE_COLOUR, linesRows, liveSummary, runsOf, stackRows, type Line, type Reading } from './chartMath'
+import { PALETTE } from './panels/geometry'
 
 export type Marker = { at: number; label: string; to?: string }
 
@@ -13,68 +14,104 @@ const joined = (run: [number, number][]) => run.map(([x, y]) => `${x.toFixed(1)}
 
 const rowFormat = (format: (value: number) => string) => (row: { value: number | null }) => (row.value === null ? 'no data' : format(row.value))
 
-export function LineChart({ title, legend, values, second, secondLabel, threshold, lo = 0, hi, yLabels, aria, height = 140, markers = [], xLabels = TIME_LABELS, times, format = plainFormat, onZoom }: {
-  title: string; legend?: string; values: Reading[]; second?: Reading[]; secondLabel?: string; threshold?: number; lo?: number; hi: number; yLabels: [string, string, string]; aria: string; height?: number; markers?: Marker[]; xLabels?: string[]
+export type { Line } from './chartMath'
+
+const gradientId = (raw: string) => `fill-${raw.replace(/[^a-zA-Z0-9]/g, '')}`
+
+function LiveLegend({ lines, at, format }: { lines: Line[]; at: number | null; format: (value: number) => string }) {
+  return (
+    <div role="group" aria-label={liveSummary(lines, at, format)} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption">
+      {lines.map((line, index) => {
+        const value = at === null ? line.overall ?? null : finite(line.values[at])
+        return (
+          <Fragment key={line.key}>
+            {index > 0 ? <span aria-hidden className="text-muted-foreground">·</span> : null}
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+              <svg width="14" height="8" aria-hidden className="shrink-0">
+                <line x1="0" y1="4" x2="14" y2="4" stroke={line.colour ?? LINE_COLOUR} strokeWidth={Math.max(1.5, line.weight ?? 1.5)} strokeOpacity={line.opacity ?? 1} strokeDasharray={line.dash} />
+              </svg>
+              <span className="text-muted-foreground">{line.key}</span>
+              <span className="font-mono font-semibold tabular-nums text-foreground">{value === null ? '—' : format(value)}</span>
+            </span>
+          </Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
+export function LineChart({ title, legend, values, second, secondLabel, lines, live = false, overall, windowLabel, status, threshold, lo = 0, hi, yLabels, aria, height = 200, markers = [], xLabels = TIME_LABELS, times, format = plainFormat, onZoom }: {
+  title: string; legend?: string; values?: Reading[]; second?: Reading[]; secondLabel?: string; lines?: Line[]; live?: boolean; overall?: number | null; windowLabel?: string; status?: FrameStatus
+  threshold?: number; lo?: number; hi: number; yLabels: [string, string, string]; aria: string; height?: number; markers?: Marker[]; xLabels?: string[]
   times?: number[]; format?: (value: number) => string; onZoom?: (fromMs: number, toMs: number) => void
 }) {
-  const count = values.length
+  const raw = useId()
+  const shown = useMemo<Line[]>(
+    () => lines ?? [
+      { key: title, values: values ?? [], overall },
+      ...(second ? [{ key: secondLabel ?? 'Comparison', values: second, colour: 'var(--muted-foreground)', dash: '3 3' }] : []),
+    ],
+    [lines, title, values, overall, second, secondLabel],
+  )
+  const count = shown.reduce((most, line) => Math.max(most, line.values.length), 0)
   const span = hi - lo || 1
   const rise = (value: number) => clamp01((value - lo) / span)
+  const gradient = gradientId(raw)
   const drawn = useMemo(() => {
     const x = (at: number) => fractionOf(at, count) * WIDTH
     const y = (value: number) => height - clamp01((value - lo) / span) * height
-    const main = runsOf(values, x, y)
-    const other = second ? runsOf(second, x, y) : []
+    const runs = shown.map((line) => runsOf(line.values, x, y))
     const ty = threshold !== undefined ? height - clamp01((threshold - lo) / span) * height : null
+    const filled = shown.length === 1
     return (
       <svg viewBox={`0 0 ${WIDTH} ${height}`} preserveAspectRatio="none" width="100%" height={height} aria-hidden className="absolute inset-0 block overflow-visible">
+        {filled ? (
+          <defs>
+            <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={shown[0].colour ?? LINE_COLOUR} stopOpacity="0.18" />
+              <stop offset="1" stopColor={shown[0].colour ?? LINE_COLOUR} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        ) : null}
         <line x1="0" y1="0.5" x2={WIDTH} y2="0.5" stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
         <line x1="0" y1={height / 2} x2={WIDTH} y2={height / 2} stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
         <line x1="0" y1={height - 0.5} x2={WIDTH} y2={height - 0.5} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
         {ty !== null ? <line x1="0" y1={ty} x2={WIDTH} y2={ty} stroke="var(--warning-text)" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" /> : null}
-        {main.map((run, at) => (run.length > 1 ? <polygon key={`fill-${at}`} points={`${run[0][0]},${height} ${joined(run)} ${run[run.length - 1][0]},${height}`} fill="var(--chart-fill)" /> : null))}
-        {other.map((run, at) => (run.length > 1 ? <polyline key={`second-${at}`} points={joined(run)} fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" /> : null))}
-        {main.map((run, at) => (run.length > 1
-          ? <polyline key={`line-${at}`} points={joined(run)} fill="none" stroke="var(--chart-line)" strokeWidth="1.75" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          : <circle key={`dot-${at}`} cx={run[0][0]} cy={run[0][1]} r="2" fill="var(--chart-line)" />))}
+        {filled ? runs[0].map((run, at) => (run.length > 1 ? <polygon key={`fill-${at}`} points={`${run[0][0]},${height} ${joined(run)} ${run[run.length - 1][0]},${height}`} fill={`url(#${gradient})`} /> : null)) : null}
+        {shown.map((line, which) => runs[which].map((run, at) => (run.length > 1
+          ? <polyline key={`${line.key}-${at}`} points={joined(run)} fill="none" stroke={line.colour ?? LINE_COLOUR} strokeWidth={line.weight ?? 1.5} strokeOpacity={line.opacity ?? 1} strokeDasharray={line.dash} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          : <circle key={`${line.key}-dot-${at}`} cx={run[0][0]} cy={run[0][1]} r="2" fill={line.colour ?? LINE_COLOUR} />)))}
       </svg>
     )
-  }, [values, second, threshold, lo, span, height, count])
+  }, [shown, threshold, lo, span, height, count, gradient])
   return (
     <ChartFrame
       title={title}
       legend={legend}
-      headline={(at) => {
-        const value = finite(values[at ?? count - 1])
-        return value === null ? '—' : format(value)
-      }}
+      headline={live ? undefined : (at) => headlineOf(shown[0]?.overall, shown[0]?.values ?? [], at, format)}
+      windowLabel={windowLabel}
+      live={live ? (at) => <LiveLegend lines={shown} at={at} format={format} /> : undefined}
+      status={status}
       count={count}
       times={times}
       xLabels={xLabels}
       markers={markers}
       aria={aria}
       height={height}
-      gutter="narrow"
       yLabels={yLabels}
       drawn={drawn}
-      rows={(at) => lineRows({ title, values, second, secondLabel, threshold }, at)}
-      dots={(at) => {
-        const main = finite(values[at])
-        const other = second ? finite(second[at]) : null
-        return [
-          ...(other === null ? [] : [{ frac: 1 - rise(other), colour: 'var(--muted-foreground)' }]),
-          ...(main === null ? [] : [{ frac: 1 - rise(main), colour: 'var(--chart-line)' }]),
-        ]
-      }}
+      rows={(at) => linesRows(shown, threshold, at)}
+      dots={(at) => shown.flatMap((line) => {
+        const value = finite(line.values[at])
+        return value === null ? [] : [{ frac: 1 - rise(value), colour: line.colour ?? LINE_COLOUR }]
+      })}
       format={rowFormat(format)}
       onZoom={onZoom}
     />
   )
 }
 
-const STACK_PALETTE = ['#4f46e5', '#0891b2', '#d97706', '#059669', '#db2777', '#7c3aed', '#65a30d', '#dc2626']
-
-export const stackColour = (index: number) => STACK_PALETTE[index % STACK_PALETTE.length]
+export const stackColour = (index: number) => PALETTE[index % PALETTE.length]
 
 export type StackLayer = { key: string; values: number[] }
 
@@ -121,7 +158,6 @@ export function StackedChart({ title, legend, layers, yLabels, aria, height = 16
       markers={markers}
       aria={aria}
       height={height}
-      gutter="wide"
       yLabels={yLabels(top)}
       drawn={drawn}
       rows={(at) => stackRows(layers, at, colours)}

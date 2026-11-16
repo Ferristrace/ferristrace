@@ -188,6 +188,8 @@ impl SpanReader for &Asked {
                 requests: 5,
                 errors: 2,
                 p95_nanos: Some(70),
+                p50_nanos: Some(30),
+                p99_nanos: Some(90),
             }],
         })
     }
@@ -735,6 +737,8 @@ async fn a_series_has_a_point_for_every_step_even_where_nothing_was_served() {
             requests: 0,
             errors: 0,
             p95_nanos: None,
+            p50_nanos: None,
+            p99_nanos: None,
         }
     );
     assert_eq!(series.points[2].requests, 5);

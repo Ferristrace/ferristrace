@@ -33,6 +33,7 @@
   --svc-5:#7c5ce6; --svc-6:#9a7a12; --svc-7:#5f7f2c; --svc-8:#6b7689;
   --status-ok:#16a34a; --status-deg:#d97706; --status-out:#dc2626; --status-none:#e4e4e7;
   --chart-line:#4f46e5; --chart-grid:#ececef; --chart-fill:rgba(79,70,229,.08);
+  --chart-axis:var(--muted-foreground); --chart-p50:var(--chart-line); --chart-p95:var(--svc-3); --chart-p99:var(--svc-2);
   --elevation-sm:0 1px 2px rgba(9,9,11,.06);
   --elevation-md:0 4px 12px -2px rgba(9,9,11,.10),0 2px 4px -2px rgba(9,9,11,.06);
   --elevation-lg:0 16px 40px -8px rgba(9,9,11,.20),0 4px 8px -4px rgba(9,9,11,.08);
@@ -62,6 +63,7 @@
   --svc-5:#9a80f2; --svc-6:#c9a43a; --svc-7:#86a84a; --svc-8:#8e98aa;
   --status-ok:#22c55e; --status-deg:#f59e0b; --status-out:#ef4444; --status-none:#26262b;
   --chart-line:#8b93ff; --chart-grid:#222227; --chart-fill:rgba(139,147,255,.10);
+  --chart-axis:var(--muted-foreground); --chart-p50:var(--chart-line); --chart-p95:var(--svc-3); --chart-p99:var(--svc-2);
   --elevation-sm:0 1px 2px rgba(0,0,0,.4);
   --elevation-md:0 4px 12px -2px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.04);
   --elevation-lg:0 16px 40px -8px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.05);
@@ -140,7 +142,7 @@
   --color-svc-5: var(--svc-5); --color-svc-6: var(--svc-6); --color-svc-7: var(--svc-7); --color-svc-8: var(--svc-8);
   --color-status-ok: var(--status-ok); --color-status-deg: var(--status-deg);
   --color-status-out: var(--status-out); --color-status-none: var(--status-none);
-  --color-chart-line: var(--chart-line); --color-chart-grid: var(--chart-grid); --color-chart-fill: var(--chart-fill);
+  --color-chart-line: var(--chart-line); --color-chart-grid: var(--chart-grid); --color-chart-fill: var(--chart-fill); --color-chart-axis: var(--chart-axis);
   --color-overlay: var(--overlay);
 
   --shadow-sm: var(--elevation-sm);

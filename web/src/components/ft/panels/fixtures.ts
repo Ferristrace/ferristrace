@@ -50,8 +50,8 @@ export function fixtureResult(kind: PanelKind, fromNs: number, toNs: number, emp
     case 'table':
       return {
         kind: 'rows',
-        columns: ['service', 'errors', 'p95 (ms)'],
-        rows: SERVICES.map((service, index): Cell[] => [service, 120 - index * 31, 180 + index * 77.5]),
+        columns: ['service', 'count', 'p95(duration)'],
+        rows: SERVICES.map((service, index): Cell[] => [service, 120 - index * 31, (180 + index * 77.5) * 1e6]),
         truncated: false,
       }
     case 'list':

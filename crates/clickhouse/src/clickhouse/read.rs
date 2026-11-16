@@ -63,7 +63,9 @@ const STEPS: &str = "SELECT \
      toInt64(intDiv(toUnixTimestamp64Nano(start_time) - {from}, {step})) AS slot, \
      count() AS requests, \
      countIf(status = 'error') AS errors, \
-     quantile(0.95)(toUnixTimestamp64Nano(end_time) - toUnixTimestamp64Nano(start_time)) AS p95 \
+     quantiles(0.5, 0.95, 0.99)( \
+       toUnixTimestamp64Nano(end_time) - toUnixTimestamp64Nano(start_time) \
+     ) AS latency \
    {served} GROUP BY slot ORDER BY slot";
 
 const WHOLE: &str = "SELECT \
@@ -306,7 +308,7 @@ struct StepRow {
     slot: i64,
     requests: u64,
     errors: u64,
-    p95: f64,
+    latency: Vec<f64>,
 }
 
 #[derive(Debug, Row, Deserialize)]
@@ -509,7 +511,9 @@ impl SpanReader for ClickhouseReader {
                     start_unix_nanos: from + unsigned(row.slot) * step,
                     requests: row.requests,
                     errors: row.errors,
-                    p95_nanos: Some(nanos_of(row.p95)),
+                    p95_nanos: Some(quantile(&row.latency, 1)),
+                    p50_nanos: Some(quantile(&row.latency, 0)),
+                    p99_nanos: Some(quantile(&row.latency, 2)),
                 })
                 .collect(),
         })

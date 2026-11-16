@@ -16,6 +16,7 @@ import { firstDeploys, releasePath, useDeploys } from '@/data/releases'
 import { boundsOf, useZoom } from '@/lib/bounds'
 import { stamp } from '@/lib/format'
 import { Link, useLocation, useParams, useSearchParam } from '@/lib/router'
+import { useScope } from '@/lib/scope'
 import { windowOf } from '@/lib/window'
 import { exportDashboard } from './editor/actions'
 import { EditBar } from './editor/EditBar'
@@ -34,6 +35,7 @@ import { cannotWrite, describeSave, type SaveFailure } from './editor/saveError'
 import { beginPanel, edit, endPanel, failed, hasConflict, hasUnsaved, openSession, saved, select, type Session } from './editor/session'
 import { placed } from './layout'
 import { PanelCard } from './PanelCard'
+import { needsProject, PickProject } from './PickProject'
 import { VariablePicker } from './VariablePicker'
 import { choiceOf, decodeVars, encodeVars, isReserved, sentVariables, type Choice } from './variables'
 
@@ -67,6 +69,7 @@ export function DashboardPage() {
 function DashboardBody() {
   const { id } = useParams()
   const fixture = id === FIXTURE_ID
+  const { project } = useScope()
   const emptyFixture = useSearchParam('empty') !== undefined
   const live = useDashboard(fixture ? undefined : id)
   const sample = useFixtureDraft()
@@ -226,6 +229,7 @@ function DashboardBody() {
     }
   }
 
+  if (needsProject(project, fixture)) return <PickProject what="this dashboard" />
   if (!fixture && live.pending) {
     return (
       <div className="flex flex-col gap-4" aria-busy="true">

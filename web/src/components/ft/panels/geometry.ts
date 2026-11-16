@@ -1,6 +1,6 @@
-import type { Bucket, Cell, HeatRange, Labels, Pair, SeriesData } from '@/data/dashboards'
+import type { Bucket, Cell, HeatRange, Labels, Pair, QueryDoc, SeriesData } from '@/data/dashboards'
 
-export const PALETTE = ['#4f46e5', '#0891b2', '#d97706', '#059669', '#db2777', '#7c3aed', '#65a30d', '#dc2626', '#0284c7', '#a16207']
+export const PALETTE = ['var(--chart-line)', 'var(--svc-3)', 'var(--svc-2)', 'var(--svc-4)', 'var(--svc-5)', 'var(--svc-6)', 'var(--svc-7)', 'var(--svc-1)', 'var(--svc-8)']
 
 export function maxOf(values: number[], floor = -Infinity): number {
   let best = floor
@@ -343,6 +343,58 @@ export const axisValue = (value: number, unit?: string | null): string => {
   const human = unit ? scaled(value, unit) : null
   if (human !== null) return human
   return Math.abs(value) >= 10_000 ? value.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 }) : value.toLocaleString('en-US', { maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2 })
+}
+
+const AXIS_TIME = [['ns', 1], ['µs', 1e3], ['ms', 1e6], ['s', 1e9], ['min', 60e9], ['h', 3600e9]] as const
+const AXIS_BYTES = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']
+
+const digitsFor = (value: number): number => (Math.abs(value) >= 100 ? 0 : Math.abs(value) >= 10 ? 1 : 2)
+
+const trimmed = (value: number, digits = 2): string => {
+  const text = Number(value.toFixed(digits)).toLocaleString('en-US', { maximumFractionDigits: digits })
+  return text === '-0' ? '0' : text
+}
+
+const topOf = (values: number[]): number => values.reduce((best, value) => (Number.isFinite(value) && Math.abs(value) > best ? Math.abs(value) : best), 0)
+
+export function axisLabels(values: number[], unit?: string | null): string[] {
+  const key = (unit ?? '').trim().toLowerCase()
+  const top = topOf(values)
+  if (key in TIME_UNITS) {
+    const base = TIME_UNITS[key]
+    const ns = top * base
+    const chosen = [...AXIS_TIME].reverse().find(([, size]) => ns >= size) ?? (AXIS_TIME.find(([name]) => name === (key === 'us' ? 'µs' : key)) ?? AXIS_TIME[0])
+    return values.map((value) => `${trimmed((value * base) / chosen[1], digitsFor((value * base) / chosen[1]))} ${chosen[0]}`)
+  }
+  if (BYTE_UNITS.includes(key)) {
+    let at = 0
+    while (top / 1024 ** (at + 1) >= 1 && at < AXIS_BYTES.length - 1) at++
+    return values.map((value) => `${trimmed(value / 1024 ** at, digitsFor(value / 1024 ** at))} ${AXIS_BYTES[at]}`)
+  }
+  if (key === '%') return values.map((value) => `${trimmed(value, top < 1 ? 3 : 1)} %`)
+  if (key === '/s') return values.map((value) => `${trimmed(value, top < 0.1 ? 3 : top < 10 ? 2 : 1)}/s`)
+  return values.map((value) => (unit ? `${axisValue(value)} ${unit.trim()}` : axisValue(value)))
+}
+
+const SPANS_OF_TIME = new Set(['sum', 'avg', 'min', 'max', 'p50', 'p90', 'p95', 'p99'])
+
+export function durationColumns(query: QueryDoc | undefined, columns: string[]): boolean[] {
+  const groups = query?.group_by?.length ?? 0
+  return columns.map((_, index) => {
+    const one = index >= groups ? query?.aggregations[index - groups] : undefined
+    return one !== undefined && 'function' in one && SPANS_OF_TIME.has(one.function) && one.field != null && 'field' in one.field && one.field.field === 'duration'
+  })
+}
+
+export function durationText(ns: number): string {
+  if (!Number.isFinite(ns)) return '—'
+  const abs = Math.abs(ns)
+  if (abs < 1e3) return `${trimmed(ns, 0)} ns`
+  if (abs < 1e6) return `${(ns / 1e3).toFixed(1)} µs`
+  if (abs < 1e9) return `${(ns / 1e6).toFixed(1)} ms`
+  if (abs < 60e9) return `${(ns / 1e9).toFixed(2)} s`
+  if (abs < 3600e9) return `${(ns / 60e9).toFixed(1)} min`
+  return `${(ns / 3600e9).toFixed(1)} h`
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')

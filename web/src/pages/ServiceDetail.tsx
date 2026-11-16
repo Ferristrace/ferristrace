@@ -4,7 +4,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, Td, Th, Tr } from '@/components/ui/misc'
-import { EmptyState, Kpi, ServiceDot, svcBg } from '@/components/ft/bits'
+import { EmptyState, ServiceDot, svcBg } from '@/components/ft/bits'
+import type { FrameStatus } from '@/components/ft/ChartFrame'
+import { percentileLines } from '@/components/ft/percentiles'
+import { axisLabels, formatValue } from '@/components/ft/panels/geometry'
 import { LineChart } from '@/components/ft/charts'
 import { ceiling, timeLabels, useDeployMarkers } from '@/data/series'
 import { ERROR_THRESHOLD, type Edge, charted, perSecond, useOperations, useServiceDependencies, useServiceSeries, useServiceTable } from '@/data/services'
@@ -14,10 +17,20 @@ import { placementSearch, usePlacement } from '@/data/placement'
 import { PlacementPicker } from '@/components/ft/Placement'
 import { RunsOn } from '@/components/ft/RunsOn'
 import { because } from '@/auth/client'
-import { dur, num, percentage } from '@/lib/format'
+import { num } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-const axis = (hi: number, shown: (v: number) => string): [string, string, string] => [shown(hi), shown(hi / 2), '0']
+const axis = (hi: number, unit: string, blank = false): [string, string, string] => {
+  if (blank) return ['', '', '']
+  const [top, middle, bottom] = axisLabels([hi, hi / 2, 0], unit)
+  return [top, middle, bottom]
+}
+
+const errorFormat = (value: number) => (value === 0 ? '0 %' : value < 1 ? `${value.toFixed(2)} %` : `${value.toFixed(1)} %`)
+
+const latency = (ms: number) => formatValue(ms, 'ms')
+
+const inMs = (us: number | undefined): number | null => (us === undefined ? null : us / 1000)
 
 export function ServiceDetail() {
   const { ms: windowMs, label } = useWindow()
@@ -26,7 +39,7 @@ export function ServiceDetail() {
   const { placement, place } = usePlacement()
   const { services, pending } = useServiceTable(environment, windowMs, placement)
   const { operations, failed: opsFailed } = useOperations(name, environment, windowMs, placement)
-  const { series } = useServiceSeries(name, environment, windowMs, placement)
+  const { series, pending: seriesPending, failed: seriesFailed } = useServiceSeries(name, environment, windowMs, placement)
   const { issues } = useIssues({ ...ANY_ISSUE, rangeMs: windowMs, service: name, limit: 50 })
   const { edges, pending: depsPending, failed: depsFailed } = useServiceDependencies(environment, windowMs, placement)
   const markers = useDeployMarkers(series, name)
@@ -38,7 +51,16 @@ export function ServiceDetail() {
   const times = series?.points.map((point) => point.atMs)
   const rateHi = ceiling(lines.perSecond)
   const errHi = Math.max(ceiling(lines.errorRate), ERROR_THRESHOLD * 2)
-  const p95Hi = ceiling(lines.p95)
+  const latencyHi = ceiling([...lines.p50, ...lines.p95, ...lines.p99])
+  const windowLabel = `last ${label}`
+  const spread = { p50: inMs(s?.p50Us) ?? series?.p50Ms ?? null, p95: inMs(s?.p95Us) ?? series?.p95Ms ?? null, p99: inMs(s?.p99Us) ?? series?.p99Ms ?? null }
+  const status: FrameStatus | undefined = seriesFailed
+    ? { kind: 'error', text: because(seriesFailed, 'The series could not be read.') }
+    : seriesPending
+      ? { kind: 'loading', text: 'Reading the series…' }
+      : !series || series.points.length === 0
+        ? { kind: 'empty', text: `No spans in the last ${label}.` }
+        : undefined
   const open = issues.filter((issue) => issue.status === 'unresolved').slice(0, 5)
   const where = placementSearch(placement)
   const kept = { ...(environment ? { env: environment } : {}), ...where }
@@ -62,16 +84,10 @@ export function ServiceDetail() {
         {s ? <span>Last span <span className="font-mono text-foreground">{s.seen}</span></span> : null}
       </div>
       <PlacementPicker collapsible placement={placement} onChange={place} windowMs={windowMs} />
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
-        <Kpi label="Requests" value={s?.rps ?? '—'} sub="server and consumer spans" />
-        <Kpi label="Error rate" value={s?.err == null ? '—' : `${s.err.toFixed(1)} %`} sub={`amber from ${ERROR_THRESHOLD} %`} tone={bad ? 'warn' : undefined} />
-        <Kpi label="p95 latency" value={s?.p95 ?? '—'} sub={s ? `p50 ${s.p50} · p99 ${s.p99}` : undefined} tone={bad ? 'warn' : undefined} />
-        <Kpi label="Requests in range" value={s ? num(s.requests) : '—'} sub={s ? `${num(s.errors)} with errors` : undefined} />
-      </div>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] gap-3">
-        <LineChart title="Requests" legend="per second" values={lines.perSecond} hi={rateHi} yLabels={axis(rateHi, (v) => perSecond(v).replace('/s', ''))} xLabels={labels} aria={`Requests per second of ${name} over the last ${label}`} height={120} markers={markers} times={times} format={perSecond} />
-        <LineChart title="Error rate" legend={`dashed: ${ERROR_THRESHOLD} % status page threshold`} values={lines.errorRate} markers={markers} threshold={ERROR_THRESHOLD} hi={errHi} yLabels={axis(errHi, (v) => `${v.toFixed(v < 10 ? 1 : 0)} %`)} xLabels={labels} aria={`Error rate of ${name} over the last ${label}`} height={120} times={times} format={percentage} />
-        <LineChart title="Latency" legend="p95" values={lines.p95} markers={markers} hi={p95Hi} yLabels={axis(p95Hi, dur)} xLabels={labels} aria={`p95 latency of ${name} over the last ${label}`} height={120} times={times} format={dur} />
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] gap-3">
+        <LineChart title="Requests" legend={s ? `${num(s.requests)} requests` : 'server and consumer spans'} values={lines.perSecond} overall={s?.perSecond ?? null} windowLabel={windowLabel} status={status} hi={rateHi} yLabels={axis(rateHi, '/s', status !== undefined)} xLabels={labels} aria={`Requests per second of ${name} over the last ${label}`} markers={markers} times={times} format={perSecond} />
+        <LineChart title="Error rate" legend={s ? `${num(s.errors)} of ${num(s.requests)} requests · dashed: ${ERROR_THRESHOLD} % status page threshold` : `dashed: ${ERROR_THRESHOLD} % status page threshold`} values={lines.errorRate} overall={s?.err ?? null} windowLabel={windowLabel} status={status} markers={markers} threshold={ERROR_THRESHOLD} hi={errHi} yLabels={axis(errHi, '%', status !== undefined)} xLabels={labels} aria={`Error rate of ${name} over the last ${label}`} times={times} format={errorFormat} />
+        <LineChart title="Latency" lines={percentileLines({ p50: lines.p50, p95: lines.p95, p99: lines.p99, overall: spread, spread: series?.spread ?? false })} live windowLabel={windowLabel} status={status} markers={markers} hi={latencyHi} yLabels={axis(latencyHi, 'ms', status !== undefined)} xLabels={labels} aria={`p50, p95 and p99 latency of ${name} over the last ${label}`} times={times} format={latency} />
       </div>
       <Card className="overflow-hidden">
         <CardHeader><CardTitle>Operations</CardTitle><span className="text-caption text-muted-foreground">by span name, server and consumer spans</span></CardHeader>

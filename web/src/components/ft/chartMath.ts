@@ -30,6 +30,30 @@ export function lineRows(line: { title: string; values: Reading[]; second?: Read
   return rows.map((row, index) => ({ ...row, at: index }))
 }
 
+export type Line = { key: string; values: Reading[]; colour?: string; weight?: number; opacity?: number; dash?: string; overall?: number | null }
+
+export const LINE_COLOUR = 'var(--chart-line)'
+
+export function linesRows(lines: Line[], threshold: number | undefined, at: number): TooltipRow[] {
+  const rows: TooltipRow[] = lines.map((line) => ({ key: line.key, colour: line.colour ?? LINE_COLOUR, value: finite(line.values[at]), at: 0, nearest: false }))
+  if (threshold !== undefined) rows.push({ key: 'threshold', colour: 'var(--warning-text)', value: threshold, at: 0, nearest: false })
+  return rows.map((row, index) => ({ ...row, at: index }))
+}
+
+export function headlineOf(overall: number | null | undefined, values: Reading[], at: number | null, format: (value: number) => string): string {
+  const value = at !== null ? finite(values[at]) : overall === undefined ? finite(values[values.length - 1]) : overall
+  return value === null ? '—' : format(value)
+}
+
+export function liveSummary(lines: Line[], at: number | null, format: (value: number) => string): string {
+  return lines
+    .map((line) => {
+      const value = at === null ? line.overall ?? null : finite(line.values[at])
+      return `${line.key} ${value === null ? 'no data' : format(value)}`
+    })
+    .join(' · ')
+}
+
 export function stackRows(layers: { key: string; values: number[] }[], at: number, colours: string[]): TooltipRow[] {
   const parts = layers
     .map((layer, index) => ({ key: layer.key || '(none)', colour: colours[index], value: finite(layer.values[at]) }))

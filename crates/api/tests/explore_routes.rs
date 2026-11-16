@@ -169,14 +169,16 @@ impl SpanReader for TwoSpans {
             step_nanos: filter.step_nanos(),
             requests: 7,
             errors: 2,
-            p50_nanos: None,
+            p50_nanos: Some(1_000_000),
             p95_nanos: Some(3_000_000),
-            p99_nanos: None,
+            p99_nanos: Some(4_000_000),
             points: vec![ServicePoint {
                 start_unix_nanos: start,
                 requests: 7,
                 errors: 2,
                 p95_nanos: Some(3_000_000),
+                p50_nanos: Some(1_000_000),
+                p99_nanos: Some(4_000_000),
             }],
         })
     }
@@ -1229,7 +1231,7 @@ async fn the_operations_of_a_service_are_listed_with_their_measures_in_nanosecon
 }
 
 #[tokio::test]
-async fn a_service_series_has_sixty_steps_of_requests_errors_and_p95() {
+async fn a_service_series_has_sixty_steps_of_requests_errors_and_p50_p95_p99_at_l18_1() {
     let uri = format!(
         "/api/orgs/{}/services/checkout/series?from=1700000000000&to=1700003600000",
         org(MINE)
@@ -1244,15 +1246,84 @@ async fn a_service_series_has_sixty_steps_of_requests_errors_and_p95() {
     assert_eq!(points.len(), 60);
     assert_eq!(
         points[0],
-        serde_json::json!([1_700_000_000_000_000_000u64, 7, 2, 3_000_000])
+        serde_json::json!([
+            1_700_000_000_000_000_000u64,
+            7,
+            2,
+            3_000_000,
+            1_000_000,
+            4_000_000
+        ])
     );
     assert_eq!(
         points[1],
-        serde_json::json!([1_700_000_060_000_000_000u64, 0, 0, null])
+        serde_json::json!([1_700_000_060_000_000_000u64, 0, 0, null, null, null])
     );
     assert_eq!(found["requests"], 7);
     assert_eq!(found["errors"], 2);
+    assert_eq!(found["p50_ns"], 1_000_000);
     assert_eq!(found["p95_ns"], 3_000_000);
+    assert_eq!(found["p99_ns"], 4_000_000);
+}
+
+#[tokio::test]
+async fn an_organisation_series_without_a_span_has_null_percentiles_at_l18_1() {
+    let uri = format!(
+        "/api/orgs/{}/series?from=1700000000000&to=1700003600000",
+        org(MINE)
+    );
+
+    let (status, body) = served(NoSpans, looking(&uri, Some(&session()))).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let found: serde_json::Value = serde_json::from_str(&body).expect("json");
+    assert_eq!(found["requests"], 0);
+    assert!(found["p50_ns"].is_null());
+    assert!(found["p95_ns"].is_null());
+    assert!(found["p99_ns"].is_null());
+}
+
+#[tokio::test]
+async fn the_job_series_keeps_its_exact_shape_at_l18_2() {
+    let uri = format!(
+        "/api/orgs/{}/jobs/series?from=1700000000000&to=1700000100000",
+        org(MINE)
+    );
+
+    let (status, body) = served(TwoSpans, looking(&uri, Some(&session()))).await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let read: serde_json::Value = serde_json::from_str(&body).expect("json");
+    let points = read["points"].as_array().expect("points").len();
+    let mut keys: Vec<&str> = read
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        [
+            "failed",
+            "failure_rate",
+            "p50_ns",
+            "p95_ns",
+            "p99_ns",
+            "points",
+            "processed",
+            "step_ns"
+        ]
+    );
+    assert_eq!(
+        read["points"][0],
+        serde_json::json!([1_700_000_000_000_000_000u64, 8, 2, 2_100_000])
+    );
+    assert_eq!(
+        read["points"][1],
+        serde_json::json!([1_700_000_001_666_666_667u64, 0, 0, null])
+    );
+    assert_eq!(points, 60);
 }
 
 #[tokio::test]

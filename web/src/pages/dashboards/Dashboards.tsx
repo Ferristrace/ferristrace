@@ -11,11 +11,12 @@ import { InputGroup } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/misc'
 import { FIXTURE_ID, useCloneDashboard, useDashboards, useDeleteDashboard, type DashboardSummary } from '@/data/dashboards'
 import { stamp } from '@/lib/format'
-import { Link, useSearchParam } from '@/lib/router'
+import { Link } from '@/lib/router'
 import { cn } from '@/lib/utils'
 import { exportDashboard } from './editor/actions'
 import { ConfirmDelete, ImportDialog, NewDashboardDialog } from './editor/DashboardDialogs'
 import { describeSave, type SaveFailure } from './editor/saveError'
+import { PickProject } from './PickProject'
 
 export const matching = (dashboards: DashboardSummary[], text: string, tags: string[]): DashboardSummary[] => {
   const needle = text.trim().toLowerCase()
@@ -34,7 +35,6 @@ export function Dashboards() {
   const open = (id: string, edit: boolean) => void navigate({ to: `/dashboards/${id}` as never, search: (edit ? { edit: 'on' } : {}) as never })
   const [text, setText] = useState('')
   const [picked, setPicked] = useState<string[]>([])
-  const sample = useSearchParam('fixture') !== undefined || import.meta.env.DEV
   const tags = useMemo(() => [...new Set(dashboards.flatMap((one) => one.tags))].sort(), [dashboards])
   const shown = useMemo(() => matching(dashboards, text, picked), [dashboards, text, picked])
   const toggle = (tag: string) => setPicked((current) => (current.includes(tag) ? current.filter((one) => one !== tag) : [...current, tag]))
@@ -46,7 +46,7 @@ export function Dashboards() {
         <Button size="sm" variant="primary" disabled={!project} onClick={() => setCreating(true)}><Plus aria-hidden />New dashboard</Button>
       </PageHeader>
       {!project ? (
-        <EmptyState icon={<LayoutDashboard />} title="Pick a project">Dashboards belong to a project. Choose one in the top bar to see its dashboards.</EmptyState>
+        <PickProject />
       ) : failed ? (
         <EmptyState title="The dashboards could not be listed">{because(failed, 'The server did not answer.')}</EmptyState>
       ) : pending ? (
@@ -109,11 +109,16 @@ export function Dashboards() {
         failure={deleteFailure}
         onConfirm={() => target && remove.mutate(target.id, { onSuccess: () => { toast.success(`Deleted ${target.name}`); setTarget(null) }, onError: (error) => setDeleteFailure(describeSave(error)) })}
       />
-      {sample ? (
-        <p className="m-0 text-caption text-muted-foreground">
-          Sample data: <Link to={`/dashboards/${FIXTURE_ID}`}>open the fixture dashboard</Link>, which renders all eleven panel kinds from built-in data, or <Link to={`/dashboards/${FIXTURE_ID}`} search={{ empty: '' }}>the same with every query empty</Link>.
-        </p>
-      ) : null}
+      <FixtureHelp />
     </div>
+  )
+}
+
+export function FixtureHelp({ dev = import.meta.env.DEV }: { dev?: boolean }) {
+  if (!dev) return null
+  return (
+    <p className="m-0 text-caption text-muted-foreground">
+      Sample data: <Link to={`/dashboards/${FIXTURE_ID}`}>open the fixture dashboard</Link>, which renders all eleven panel kinds from built-in data, or <Link to={`/dashboards/${FIXTURE_ID}`} search={{ empty: '' }}>the same with every query empty</Link>.
+    </p>
   )
 }
