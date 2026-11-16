@@ -13,6 +13,9 @@ import { useTeams } from '@/data/teams'
 import { stamp } from '@/lib/format'
 import { Link } from '@/lib/router'
 import { useScope } from '@/lib/scope'
+import { sorted } from '@/lib/sorting'
+import { useSortState } from '../useSortState'
+import { SortHead } from '../SortHead'
 import { H } from './parts'
 
 export function Projects() {
@@ -23,7 +26,8 @@ export function Projects() {
   const { chooseProject } = useScope()
   const [adding, setAdding] = useState(false)
   const mayArrange = active?.role === 'owner' || active?.role === 'admin'
-  const catalogue = projects ?? []
+  const { sorting, dir, on } = useSortState<'name' | 'team' | 'keys' | 'created'>()
+  const catalogue = sorted(projects ?? [], sorting, (p, key) => (key === 'name' ? p.name : key === 'team' ? (p.team?.name ?? null) : key === 'keys' ? p.keys : p.created_at_ms))
 
   const hand = (project: string, team: string) =>
     assign.mutate(
@@ -38,7 +42,7 @@ export function Projects() {
       </H>
       <Card className="overflow-x-auto">
         <Table aria-label="Projects">
-          <thead><tr><Th>Name</Th><Th className="w-[180px]">Owner team</Th><Th numeric className="w-[110px]">Api keys</Th><Th className="w-[190px]">Created</Th><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
+          <thead><tr><SortHead label="Name" dir={dir('name')} onSort={on('name')} /><SortHead label="Owner team" dir={dir('team')} onSort={on('team')} className="w-[180px]" /><SortHead numeric label="Api keys" dir={dir('keys')} onSort={on('keys', 'desc')} className="w-[110px]" /><SortHead label="Created" dir={dir('created')} onSort={on('created', 'desc')} className="w-[190px]" /><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
           <tbody>{catalogue.map((p) => (
             <Tr key={p.id}>
               <Td className="h-11"><Link to="/settings/project/general" className="font-mono font-semibold text-accent-text" onClick={() => chooseProject(p.id)}>{p.name}</Link></Td>

@@ -12,6 +12,9 @@ import { Alert, Table, Td, Th, Tr } from '@/components/ui/misc'
 import { AGENT_SCOPES, agentNameProblem, clientIdProblem, useAgents, useRegisterAgent, useRevokeAgent, type Agent, type AgentScope } from '@/data/agents'
 import { useProjects } from '@/data/projects'
 import { stamp } from '@/lib/format'
+import { sorted } from '@/lib/sorting'
+import { useSortState } from '../useSortState'
+import { SortHead } from '../SortHead'
 import { H } from './parts'
 
 export const SCOPE_HINT: Record<AgentScope, string> = {
@@ -34,6 +37,7 @@ export function Agents() {
   const [scopes, setScopes] = useState<AgentScope[]>(['telemetry:read'])
   const [project, setProject] = useState('')
   const [revoking, setRevoking] = useState<Agent | null>(null)
+  const { sorting, dir, on } = useSortState<'name' | 'client' | 'scopes' | 'project' | 'used' | 'state'>()
 
   if (!mayChange) {
     return (
@@ -56,6 +60,9 @@ export function Agents() {
   const toggle = (scope: AgentScope) => setScopes((now) => (now.includes(scope) ? now.filter((one) => one !== scope) : AGENT_SCOPES.filter((one) => one === scope || now.includes(one))))
   const projectName = (id: string | null) => (id === null ? 'All projects' : (projects.find((one) => one.id === id)?.name ?? id))
   const enabled = roll?.enabled ?? false
+  const agents = sorted(roll?.agents ?? [], sorting, (a, key) =>
+    key === 'name' ? a.name : key === 'client' ? a.client_id : key === 'scopes' ? a.scopes.join(',') : key === 'project' ? projectName(a.project) : key === 'used' ? a.last_used_at_ms : a.revoked_at_ms === null ? 0 : 1,
+  )
 
   return (
     <>
@@ -68,10 +75,10 @@ export function Agents() {
       <Card className="overflow-x-auto">
         {roll ? (
           <Table>
-            <thead><tr><Th>Name</Th><Th className="w-[160px]">Client id</Th><Th className="w-[200px]">Scopes</Th><Th className="w-[120px]">Project</Th><Th className="w-[170px]">Last used</Th><Th className="w-[100px]">State</Th><Th className="w-[100px]"><span className="sr-only">Actions</span></Th></tr></thead>
+            <thead><tr><SortHead label="Name" dir={dir('name')} onSort={on('name')} /><SortHead label="Client id" dir={dir('client')} onSort={on('client')} className="w-[160px]" /><SortHead label="Scopes" dir={dir('scopes')} onSort={on('scopes')} className="w-[200px]" /><SortHead label="Project" dir={dir('project')} onSort={on('project')} className="w-[120px]" /><SortHead label="Last used" dir={dir('used')} onSort={on('used', 'desc')} className="w-[170px]" /><SortHead label="State" dir={dir('state')} onSort={on('state')} className="w-[100px]" /><Th className="w-[100px]"><span className="sr-only">Actions</span></Th></tr></thead>
             <tbody>
-              {roll.agents.length === 0 ? <Tr><Td colSpan={7} className="text-muted-foreground">No agent is registered yet.</Td></Tr> : null}
-              {roll.agents.map((agent) => (
+              {agents.length === 0 ? <Tr><Td colSpan={7} className="text-muted-foreground">No agent is registered yet.</Td></Tr> : null}
+              {agents.map((agent) => (
                 <Tr key={agent.id} className={agent.revoked_at_ms === null ? undefined : 'text-muted-foreground'}>
                   <Td><span className="font-semibold">{agent.name}</span></Td>
                   <Td className="font-mono">{agent.client_id}</Td>

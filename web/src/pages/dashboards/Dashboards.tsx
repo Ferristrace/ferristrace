@@ -14,10 +14,14 @@ import { FIXTURE_ID, useCloneDashboard, useDashboards, useDeleteDashboard, type 
 import { stamp } from '@/lib/format'
 import { pagesOf } from '@/lib/paging'
 import { Link } from '@/lib/router'
+import { sorted } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
 import { exportDashboard } from './editor/actions'
 import { ConfirmDelete, ImportDialog, NewDashboardDialog } from './editor/DashboardDialogs'
 import { describeSave, type SaveFailure } from './editor/saveError'
+import { FiltersBar } from '../FiltersBar'
+import { useSortState } from '../useSortState'
+import { SortHead } from '../SortHead'
 import { PickProject } from './PickProject'
 
 export const matching = (dashboards: DashboardSummary[], text: string, tags: string[]): DashboardSummary[] => {
@@ -39,8 +43,9 @@ export function Dashboards() {
   const [picked, setPicked] = useState<string[]>([])
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(10)
+  const { sorting, dir, on } = useSortState<'name' | 'tags' | 'edited'>()
   const tags = useMemo(() => [...new Set(dashboards.flatMap((one) => one.tags))].sort(), [dashboards])
-  const shown = useMemo(() => matching(dashboards, text, picked), [dashboards, text, picked])
+  const shown = useMemo(() => sorted(matching(dashboards, text, picked), sorting, (one, key) => (key === 'name' ? one.name : key === 'tags' ? one.tags.join(' ') || null : one.updated_at_ms)), [dashboards, text, picked, sorting])
   const toggle = (tag: string) => {
     setPage(1)
     setPicked((current) => (current.includes(tag) ? current.filter((one) => one !== tag) : [...current, tag]))
@@ -66,13 +71,16 @@ export function Dashboards() {
       ) : (
         <>
           {dashboards.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2" role="search">
+            <div className="flex flex-wrap items-start gap-2">
+              <div className="min-w-0 flex-1">
+              <FiltersBar active={(text.trim() ? 1 : 0) + picked.length} role="search">
               <InputGroup className="w-[320px] max-w-full max-md:w-full"><Search aria-hidden /><input aria-label="Search dashboards by name" placeholder="Search dashboards" value={text} onChange={(event) => { setPage(1); setText(event.target.value) }} /></InputGroup>
               {tags.map((tag) => (
                 <button key={tag} type="button" aria-pressed={picked.includes(tag)} onClick={() => toggle(tag)} className={cn('inline-flex h-8 cursor-pointer items-center rounded-md border px-2.5 font-mono text-caption hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring', picked.includes(tag) ? 'border-transparent bg-accent-subtle text-accent-text' : 'border-line-strong text-muted-foreground')}>{tag}</button>
               ))}
               {picked.length > 0 ? <Button size="sm" variant="ghost" onClick={() => { setPage(1); setPicked([]) }}>Clear tags</Button> : null}
-              <span className="flex-1" />
+              </FiltersBar>
+              </div>
               <Button disabled={!project} onClick={() => setImporting(true)}><Upload aria-hidden />Import JSON</Button>
             </div>
           ) : null}
@@ -86,9 +94,9 @@ export function Dashboards() {
                 <Table aria-label="Dashboards" className="min-w-[560px]">
                   <thead>
                     <tr>
-                      <Th className="pl-4">Name</Th>
-                      <Th>Tags</Th>
-                      <Th>Last edited</Th>
+                      <SortHead label="Name" dir={dir('name')} onSort={on('name')} className="pl-4" />
+                      <SortHead label="Tags" dir={dir('tags')} onSort={on('tags')} />
+                      <SortHead label="Last edited" dir={dir('edited')} onSort={on('edited', 'desc')} />
                       <Th className="w-[120px] pr-4"><span className="sr-only">Actions</span></Th>
                     </tr>
                   </thead>
