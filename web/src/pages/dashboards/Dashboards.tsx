@@ -1,5 +1,7 @@
-import { Download, LayoutDashboard, Plus, Search, Upload } from 'lucide-react'
+import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
+import { Copy, Download, LayoutDashboard, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { because } from '@/auth/client'
 import { EmptyState, PageHeader } from '@/components/ft/bits'
 import { Badge } from '@/components/ui/badge'
@@ -7,12 +9,13 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { InputGroup } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/misc'
-import { FIXTURE_ID, useDashboards, type DashboardSummary } from '@/data/dashboards'
+import { FIXTURE_ID, useCloneDashboard, useDashboards, useDeleteDashboard, type DashboardSummary } from '@/data/dashboards'
 import { stamp } from '@/lib/format'
 import { Link, useSearchParam } from '@/lib/router'
 import { cn } from '@/lib/utils'
-
-const LATER = 'Creating, importing and exporting come with the dashboard editor.'
+import { exportDashboard } from './editor/actions'
+import { ConfirmDelete, ImportDialog, NewDashboardDialog } from './editor/DashboardDialogs'
+import { describeSave, type SaveFailure } from './editor/saveError'
 
 export const matching = (dashboards: DashboardSummary[], text: string, tags: string[]): DashboardSummary[] => {
   const needle = text.trim().toLowerCase()
@@ -21,6 +24,14 @@ export const matching = (dashboards: DashboardSummary[], text: string, tags: str
 
 export function Dashboards() {
   const { dashboards, project, pending, failed } = useDashboards()
+  const navigate = useRouterNavigate()
+  const clone = useCloneDashboard()
+  const remove = useDeleteDashboard()
+  const [creating, setCreating] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [target, setTarget] = useState<DashboardSummary | null>(null)
+  const [deleteFailure, setDeleteFailure] = useState<SaveFailure | null>(null)
+  const open = (id: string, edit: boolean) => void navigate({ to: `/dashboards/${id}` as never, search: (edit ? { edit: 'on' } : {}) as never })
   const [text, setText] = useState('')
   const [picked, setPicked] = useState<string[]>([])
   const sample = useSearchParam('fixture') !== undefined || import.meta.env.DEV
@@ -31,8 +42,8 @@ export function Dashboards() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Dashboards" meta={project ? `${dashboards.length} in this project` : undefined}>
-        <Button size="sm" disabled title={LATER}><Upload aria-hidden />Import</Button>
-        <Button size="sm" variant="primary" disabled title={LATER}><Plus aria-hidden />New dashboard</Button>
+        <Button size="sm" disabled={!project} onClick={() => setImporting(true)}><Upload aria-hidden />Import</Button>
+        <Button size="sm" variant="primary" disabled={!project} onClick={() => setCreating(true)}><Plus aria-hidden />New dashboard</Button>
       </PageHeader>
       {!project ? (
         <EmptyState icon={<LayoutDashboard />} title="Pick a project">Dashboards belong to a project. Choose one in the top bar to see its dashboards.</EmptyState>
@@ -56,7 +67,7 @@ export function Dashboards() {
             </div>
           ) : null}
           {dashboards.length === 0 ? (
-            <EmptyState icon={<LayoutDashboard />} title="No dashboards yet">A dashboard puts traces, logs and metrics side by side with a shared time range and variables. {LATER}</EmptyState>
+            <EmptyState icon={<LayoutDashboard />} title="No dashboards yet">A dashboard puts traces, logs and metrics side by side with a shared time range and variables.</EmptyState>
           ) : shown.length === 0 ? (
             <EmptyState title="No dashboard matches" actions={<Button size="sm" onClick={() => { setText(''); setPicked([]) }}>Clear filters</Button>}>Try another name or fewer tags.</EmptyState>
           ) : (
@@ -67,7 +78,20 @@ export function Dashboards() {
                     <Link to={`/dashboards/${one.id}`} className="min-w-[160px] flex-[1_1_220px] truncate text-control font-semibold text-foreground">{one.name}</Link>
                     <span className="flex flex-wrap gap-1">{one.tags.map((tag) => <Badge key={tag} variant="outline" mono>{tag}</Badge>)}</span>
                     <time className="font-mono text-caption text-faint-foreground" dateTime={new Date(one.updated_at_ms).toISOString()}>{stamp(one.updated_at_ms)}</time>
-                    <Button size="icon-sm" variant="ghost" disabled title={LATER} aria-label={`Export ${one.name}`}><Download aria-hidden /></Button>
+                    <span className="flex gap-0.5">
+                      <Button size="icon-sm" variant="ghost" title="Export as JSON" aria-label={`Export ${one.name}`} onClick={() => void exportDashboard(one.id, one.name).catch((error) => toast.error(because(error, 'The dashboard could not be exported')))}><Download aria-hidden /></Button>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        title="Clone"
+                        aria-label={`Clone ${one.name}`}
+                        disabled={clone.isPending}
+                        onClick={() => clone.mutate(one.id, { onSuccess: (made) => toast.success(`Cloned as ${made.name}`, { action: { label: 'Open', onClick: () => open(made.id, false) } }), onError: (error) => toast.error(describeSave(error).message) })}
+                      >
+                        <Copy aria-hidden />
+                      </Button>
+                      <Button size="icon-sm" variant="ghost" title="Delete" aria-label={`Delete ${one.name}`} onClick={() => { setDeleteFailure(null); setTarget(one) }}><Trash2 aria-hidden /></Button>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -75,6 +99,16 @@ export function Dashboards() {
           )}
         </>
       )}
+      <NewDashboardDialog open={creating} onOpenChange={setCreating} onCreated={(made) => { setCreating(false); open(made.id, true) }} />
+      <ImportDialog open={importing} onOpenChange={setImporting} onImported={(made) => { setImporting(false); toast.success(`Imported ${made.name}`); open(made.id, false) }} />
+      <ConfirmDelete
+        open={target !== null}
+        onOpenChange={(next) => { if (!next) setTarget(null) }}
+        name={target?.name ?? ''}
+        pending={remove.isPending}
+        failure={deleteFailure}
+        onConfirm={() => target && remove.mutate(target.id, { onSuccess: () => { toast.success(`Deleted ${target.name}`); setTarget(null) }, onError: (error) => setDeleteFailure(describeSave(error)) })}
+      />
       {sample ? (
         <p className="m-0 text-caption text-muted-foreground">
           Sample data: <Link to={`/dashboards/${FIXTURE_ID}`}>open the fixture dashboard</Link>, which renders all eleven panel kinds from built-in data, or <Link to={`/dashboards/${FIXTURE_ID}`} search={{ empty: '' }}>the same with every query empty</Link>.
