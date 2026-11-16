@@ -4,15 +4,18 @@ import { EmptyState, PageHeader } from '@/components/ft/bits'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
-import { Avatar, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Avatar, Table, Td, Tr } from '@/components/ui/misc'
 import { Segmented } from '@/components/ui/segmented'
 import { personOf, type Person } from '@/data/incidents'
 import { useMembers } from '@/data/members'
 import { pageLink, pageStateVariant, useOnCallNow, usePages, useSchedules, useShifts, type Page, type Schedule } from '@/data/oncall'
 import { initialsOf } from '@/data/profile'
 import { dur, stamp } from '@/lib/format'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { Link } from '@/lib/router'
 import { cn } from '@/lib/utils'
+import { overrideValue, pageValue, type OverrideKey, type PageKey } from '../alerting/sorting'
+import { SortHead } from '../alerting/SortHead'
 import { DAY_MS, days, gaps, place, startOfDay } from './timeline'
 
 const SPAN_DAYS = 14
@@ -159,9 +162,12 @@ function Timeline({ schedules }: { schedules: Named[] }) {
 function Overrides({ schedules }: { schedules: Named[] }) {
   const palette = usePalette()
   const nowMs = Date.now()
-  const rows = schedules
-    .flatMap((schedule) => schedule.overrides.filter((cover) => cover.to_ms > nowMs).map((cover) => ({ cover, schedule })))
-    .sort((a, b) => a.cover.from_ms - b.cover.from_ms)
+  const [sorting, setSorting] = useState<Sorting<OverrideKey>>({ key: 'from', dir: 'asc' })
+  const upcoming = schedules
+    .flatMap((schedule) => schedule.overrides.filter((cover) => cover.to_ms > nowMs).map((cover) => ({ cover, schedule, who: palette.name(cover.account), name: schedule.name, from_ms: cover.from_ms, to_ms: cover.to_ms })))
+  const rows = sorted(upcoming, sorting, (row, key) => overrideValue({ who: row.who, schedule: row.name, from_ms: row.from_ms, to_ms: row.to_ms }, key))
+  const dirOf = (key: OverrideKey) => (sorting.key === key ? sorting.dir : null)
+  const sortBy = (key: OverrideKey, first?: 'asc' | 'desc') => setSorting((was) => toggled(was, key, first))
   return (
     <Card className="min-w-0">
       <CardHeader>
@@ -175,7 +181,7 @@ function Overrides({ schedules }: { schedules: Named[] }) {
       ) : (
         <div className="overflow-x-auto">
           <Table>
-            <thead><tr><Th>Who covers</Th><Th>Schedule</Th><Th>From</Th><Th>To</Th></tr></thead>
+            <thead><tr><SortHead label="Who covers" dir={dirOf('who')} onSort={() => sortBy('who', 'asc')} /><SortHead label="Schedule" dir={dirOf('schedule')} onSort={() => sortBy('schedule', 'asc')} /><SortHead label="From" dir={dirOf('from')} onSort={() => sortBy('from', 'asc')} /><SortHead label="To" dir={dirOf('to')} onSort={() => sortBy('to', 'asc')} /></tr></thead>
             <tbody>
               {rows.map(({ cover, schedule }) => (
                 <Tr key={cover.id}>
@@ -230,7 +236,10 @@ function PageDetail({ page }: { page: Page }) {
 function Pages() {
   const { pages, nothing } = usePages('all')
   const [picked, setPicked] = useState<string | null>(null)
-  const list = pages ?? []
+  const [sorting, setSorting] = useState<Sorting<PageKey> | null>(null)
+  const list = sorted(pages ?? [], sorting, (page, key) => pageValue({ headline: page.headline, state: page.state, target: personOf(page.target), step: page.step, acknowledgeMs: page.acknowledged_ms ? page.acknowledged_ms - page.created_ms : null, created_ms: page.created_ms }, key))
+  const dirOf = (key: PageKey) => (sorting?.key === key ? sorting.dir : null)
+  const sortBy = (key: PageKey, first?: 'asc' | 'desc') => setSorting((was) => toggled(was, key, first))
   const shown = list.find((page) => page.id === picked) ?? list[0]
   if (nothing) return <EmptyState title="No page to show">{nothing}</EmptyState>
   if (list.length === 0) return <EmptyState icon={<CalendarClock />} title="Nobody has been paged">A page is sent when an alert or an incident asks for a schedule. It moves to the next person if nobody acknowledges it.</EmptyState>
@@ -240,7 +249,7 @@ function Pages() {
         <CardHeader><CardTitle>Pages</CardTitle><CardKind>Table</CardKind></CardHeader>
         <div className="overflow-x-auto">
           <Table>
-            <thead><tr><Th>Page</Th><Th>Status</Th><Th>Paged</Th><Th numeric>Step</Th><Th numeric>To acknowledge</Th><Th>When</Th></tr></thead>
+            <thead><tr><SortHead label="Page" dir={dirOf('page')} onSort={() => sortBy('page', 'asc')} /><SortHead label="Status" dir={dirOf('status')} onSort={() => sortBy('status')} /><SortHead label="Paged" dir={dirOf('paged')} onSort={() => sortBy('paged', 'asc')} /><SortHead numeric label="Step" dir={dirOf('step')} onSort={() => sortBy('step')} /><SortHead numeric label="To acknowledge" dir={dirOf('acknowledge')} onSort={() => sortBy('acknowledge', 'asc')} /><SortHead label="When" dir={dirOf('when')} onSort={() => sortBy('when')} /></tr></thead>
             <tbody>
               {list.map((page) => (
                 <Tr key={page.id} className={cn('cursor-pointer', page.id === shown?.id && '[&>td]:bg-accent-subtle')} onClick={() => setPicked(page.id)}>
