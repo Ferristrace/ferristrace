@@ -169,7 +169,7 @@ export const isForbidden = (error: unknown) => error instanceof ApiError && erro
 export function useAlerts() {
   const found = useOrganisations()
   const { active } = found
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, dataUpdatedAt } = useQuery({
     queryKey: key(active?.org),
     enabled: Boolean(active),
     staleTime: FRESH_MS,
@@ -177,7 +177,7 @@ export function useAlerts() {
     retry: retryable,
     queryFn: async () => (await json<{ alerts: Rule[] }>(await get(`/api/orgs/${active?.org}/alerts`))).alerts,
   })
-  return { alerts: data, pending: isPending, failed: error, nothing: nothingYet(found, isPending, error, 'alert rules') }
+  return { alerts: data, updatedAt: dataUpdatedAt, pending: isPending, failed: error, nothing: nothingYet(found, isPending, error, 'alert rules') }
 }
 
 export function useAlert(id: string | null) {

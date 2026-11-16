@@ -78,7 +78,7 @@ const retryable = (count: number, error: unknown) => !(error instanceof ApiError
 export function useIncidents(scope: IncidentScope = 'open') {
   const found = useOrganisations()
   const { active } = found
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, dataUpdatedAt } = useQuery({
     queryKey: [...key(active?.org), 'list', scope],
     enabled: Boolean(active),
     staleTime: FRESH_MS,
@@ -86,7 +86,7 @@ export function useIncidents(scope: IncidentScope = 'open') {
     retry: retryable,
     queryFn: async () => (await json<{ incidents: Incident[] }>(await get(`/api/orgs/${active?.org}/incidents?status=${scope}`))).incidents,
   })
-  return { incidents: data, pending: isPending, failed: error, nothing: nothingYet(found, isPending, error, 'incidents') }
+  return { incidents: data, updatedAt: dataUpdatedAt, pending: isPending, failed: error, nothing: nothingYet(found, isPending, error, 'incidents') }
 }
 
 export function useIncident(id: string | undefined) {

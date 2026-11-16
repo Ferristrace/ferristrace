@@ -105,7 +105,7 @@ const marked = (deploy: WireDeploy): Deploy => ({
   atMs: deploy.at_ms,
 })
 
-export function useReleases(windowMs: number, service = '') {
+export function useReleases(windowMs: number, service = '', polling: { refetchInterval?: number | false } = {}) {
   const { active } = useOrganisations()
   const { project } = useScope()
   const minute = Math.floor(Date.now() / MINUTE_MS)
@@ -113,6 +113,7 @@ export function useReleases(windowMs: number, service = '') {
     queryKey: ['releases', active?.org, project, service, windowMs, minute],
     enabled: Boolean(active),
     staleTime: FRESH_MS,
+    refetchInterval: polling.refetchInterval ?? false,
     retry: false,
     queryFn: async () => {
       const to = Date.now()
@@ -123,7 +124,7 @@ export function useReleases(windowMs: number, service = '') {
       return body.releases.map(released)
     },
   })
-  return { releases: found.data ?? [], pending: found.isPending, failed: found.error }
+  return { releases: found.data ?? [], pending: found.isPending, failed: found.error, updatedAt: found.dataUpdatedAt }
 }
 
 export function useRelease(service: string | undefined, version: string | undefined) {
