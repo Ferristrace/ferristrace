@@ -1,13 +1,15 @@
 use std::sync::atomic::Ordering;
 
+use ferristrace_domain::dashboard::{DocDraft, Range, SchemaVersion};
 use ferristrace_domain::{
     AccountId, ApiKey, ApiKeys, ApiSecret, Assigned, AuditEntry, AuditFilter, AuditPage,
-    AuditTrail, ControlPlane, Created, Email, ExportSource, Fingerprint, IssueDecisions, IssuedKey,
-    KeyId, KeyName, KeyScopes, Membership, Memberships, Minted, NoPhotos, OrgName, OrgRole,
-    Organisation, Orgs, PageSize, Portrait, Project, ProjectId, ProjectName, Projects,
-    ProvisionError, ReadGrant, Recorded, Renamed, RetentionDays, Revoked, Session, SessionError,
-    SessionStore, SessionSwitch, SessionToken, Snapshot, Status, StoreError, TeamId, TenantId,
-    UnixSeconds,
+    AuditTrail, ControlPlane, Created, Dashboard, DashboardCreation, DashboardDoc, DashboardFile,
+    DashboardId, DashboardName, DashboardSaving, DashboardScope, DashboardStore, DashboardSummary,
+    DashboardTags, Email, ExportSource, Fingerprint, IssueDecisions, IssuedKey, KeyId, KeyName,
+    KeyScopes, Membership, Memberships, Minted, NoPhotos, OrgName, OrgRole, Organisation, Orgs,
+    PageSize, Portrait, Project, ProjectId, ProjectName, Projects, ProvisionError, ReadGrant,
+    Recorded, Renamed, RetentionDays, Revoked, Session, SessionError, SessionStore, SessionSwitch,
+    SessionToken, Snapshot, Status, StoreError, TeamId, TenantId, UnixSeconds,
 };
 use uuid::Uuid;
 
@@ -464,5 +466,116 @@ impl Projects for FakeProjects {
         _team: Option<TeamId>,
     ) -> Result<Assigned, StoreError> {
         Ok(Assigned::Done)
+    }
+}
+
+pub fn the_project() -> ProjectId {
+    ProjectId::new(Uuid::from_u128(3))
+}
+
+pub fn the_dashboard() -> DashboardId {
+    DashboardId::new(Uuid::from_u128(5))
+}
+
+fn the_scope() -> DashboardScope {
+    DashboardScope {
+        org: the_org(),
+        project: the_project(),
+    }
+}
+
+pub fn a_file(name: &str) -> DashboardFile {
+    DashboardFile {
+        name: DashboardName::try_from(name).expect("a name"),
+        tags: DashboardTags::default(),
+        doc: DashboardDoc::new(DocDraft {
+            schema_version: SchemaVersion::V1,
+            variables: Vec::new(),
+            panels: Vec::new(),
+            layout: Vec::new(),
+            duration: Range::try_from(3_600).expect("a duration"),
+        })
+        .expect("a document"),
+    }
+}
+
+fn kept(file: DashboardFile) -> Dashboard {
+    Dashboard {
+        id: the_dashboard(),
+        project: the_project(),
+        name: file.name,
+        tags: file.tags,
+        doc: file.doc,
+        updated_by: Some(the_account()),
+        created_at_unix_nanos: 1,
+        updated_at_unix_nanos: 1,
+    }
+}
+
+#[repository(domain = Dashboards, backend = Recording)]
+#[derive(Debug)]
+pub struct FakeDashboards {
+    handle: Handle,
+}
+
+impl FakeDashboards {
+    fn new(_backend: &Recording, tx: &Handle) -> Self {
+        tx.note_build();
+        Self { handle: tx.clone() }
+    }
+}
+
+impl DashboardStore for FakeDashboards {
+    async fn project_scope(
+        &self,
+        project: ProjectId,
+    ) -> Result<Option<DashboardScope>, StoreError> {
+        Ok((project == the_project()).then(the_scope))
+    }
+
+    async fn locate(&self, id: DashboardId) -> Result<Option<DashboardScope>, StoreError> {
+        Ok((id == the_dashboard()).then(the_scope))
+    }
+
+    async fn list(&self, _scope: DashboardScope) -> Result<Vec<DashboardSummary>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn get(
+        &self,
+        _scope: DashboardScope,
+        id: DashboardId,
+    ) -> Result<Option<Dashboard>, StoreError> {
+        Ok((id == the_dashboard()).then(|| kept(a_file("Checkout"))))
+    }
+
+    async fn count(&self, _scope: DashboardScope) -> Result<usize, StoreError> {
+        Ok(0)
+    }
+
+    async fn create(
+        &self,
+        _scope: DashboardScope,
+        _by: AccountId,
+        file: &DashboardFile,
+    ) -> Result<DashboardCreation, StoreError> {
+        self.handle.write();
+        Ok(DashboardCreation::Made(kept(file.clone())))
+    }
+
+    async fn update(
+        &self,
+        _scope: DashboardScope,
+        _id: DashboardId,
+        _by: AccountId,
+        file: &DashboardFile,
+    ) -> Result<DashboardSaving, StoreError> {
+        self.handle.write();
+        Ok(DashboardSaving::Saved(kept(file.clone())))
+    }
+
+    async fn delete(&self, _scope: DashboardScope, _id: DashboardId) -> Result<bool, StoreError> {
+        self.handle.write();
+        Ok(true)
     }
 }

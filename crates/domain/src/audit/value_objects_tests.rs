@@ -85,6 +85,9 @@ fn the_spellings_are_stable_and_dotted() {
             "agent.registered",
             "agent.revoked",
             "agent.read",
+            "dashboard.created",
+            "dashboard.updated",
+            "dashboard.deleted",
         ]
     );
 }

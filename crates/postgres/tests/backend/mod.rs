@@ -97,6 +97,10 @@ pub fn views<C>(backend: &Postgres<C>) -> Each<'_, domain::Views, C> {
     Each::over(backend)
 }
 
+pub fn dashboards<C>(backend: &Postgres<C>) -> Each<'_, domain::Dashboards, C> {
+    Each::over(backend)
+}
+
 pub fn usage<C>(backend: &Postgres<C>) -> Each<'_, domain::UsageHistory, C> {
     Each::over(backend)
 }
@@ -230,6 +234,17 @@ forward!(Views: ExplorerViews {
     fn create(&self, org: TenantId, by: AccountId, view: &NewView) -> Result<Creation, StoreError>;
     fn change(&self, org: TenantId, id: ViewId, change: &ViewChange) -> Result<Saving, StoreError>;
     fn delete(&self, org: TenantId, id: ViewId) -> Result<bool, StoreError>;
+});
+
+forward!(Dashboards: DashboardStore {
+    fn project_scope(&self, project: ProjectId) -> Result<Option<DashboardScope>, StoreError>;
+    fn locate(&self, id: DashboardId) -> Result<Option<DashboardScope>, StoreError>;
+    fn list(&self, scope: DashboardScope) -> Result<Vec<DashboardSummary>, StoreError>;
+    fn get(&self, scope: DashboardScope, id: DashboardId) -> Result<Option<Dashboard>, StoreError>;
+    fn count(&self, scope: DashboardScope) -> Result<usize, StoreError>;
+    fn create(&self, scope: DashboardScope, by: AccountId, file: &DashboardFile) -> Result<DashboardCreation, StoreError>;
+    fn update(&self, scope: DashboardScope, id: DashboardId, by: AccountId, file: &DashboardFile) -> Result<DashboardSaving, StoreError>;
+    fn delete(&self, scope: DashboardScope, id: DashboardId) -> Result<bool, StoreError>;
 });
 
 forward!(UsageHistory: UsageHistory {

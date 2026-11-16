@@ -7,6 +7,7 @@ mod alerts;
 mod alerts_llm_tests;
 mod audit;
 mod catalogue;
+mod dashboards;
 mod explore;
 mod export;
 mod identity;

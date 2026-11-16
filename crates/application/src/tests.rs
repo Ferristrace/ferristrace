@@ -1,13 +1,15 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ferristrace_domain::{
-    Action, Actor, Bootstrapped, ExportError, Fingerprint, IssueError, KeyError, KeyName,
-    KeyScopes, ProjectId, ProvisionError, SessionToken, SettingError, Status, SwitchError, Target,
-    UserRefusal,
+    Action, Actor, Bootstrapped, DashboardError, ExportError, Fingerprint, IssueError, KeyError,
+    KeyName, KeyScopes, ProjectId, ProvisionError, Reader, SessionToken, SettingError, Status,
+    SwitchError, Target, UserRefusal,
 };
 
 use crate::IssueRuling;
-use crate::fakes::{Probing, a_name, a_token, the_account, the_email, the_org};
+use crate::fakes::{
+    Probing, a_file, a_name, a_token, the_account, the_dashboard, the_email, the_org, the_project,
+};
 use crate::recording::{Handle, Recording};
 use crate::testing::{Bearers, Inert};
 use crate::{Adapters, Ferristrace, Stack, repository, transactional};
@@ -412,4 +414,76 @@ async fn a_bearer_is_handed_to_the_person_verifier_when_there_is_one() {
 
     assert_eq!(person, Ok(SessionToken::for_subject("ft.person.alice")));
     assert_eq!(stranger, Err(UserRefusal::NotAPerson));
+}
+
+#[tokio::test]
+async fn spec_l16_17_creating_a_dashboard_commits_one_write_and_one_entry_naming_the_account() {
+    let repos = Recording::default();
+
+    let made = app(&repos)
+        .create_dashboard(&a_token(), the_project(), &a_file("Checkout"))
+        .await
+        .expect("a member creates a dashboard");
+
+    assert_eq!(made.name.as_str(), "Checkout");
+    assert_eq!(count(&repos.0.opened), 1);
+    assert_eq!(count(&repos.0.commits), 1);
+    assert_eq!(count(&repos.0.writes), 1);
+    let committed = repos.0.committed();
+    assert_eq!(committed.len(), 1);
+    assert_eq!(committed[0].action, Action::DashboardCreated);
+    assert_eq!(committed[0].actor, Actor::Account(the_account()));
+    assert_eq!(committed[0].org, the_org());
+    assert_eq!(committed[0].detail.get("name"), Some(Some("Checkout")));
+}
+
+#[tokio::test]
+async fn spec_l16_17_replacing_and_deleting_a_dashboard_each_commit_their_own_entry() {
+    let repos = Recording::default();
+
+    app(&repos)
+        .replace_dashboard(&a_token(), the_dashboard(), &a_file("Renamed"))
+        .await
+        .expect("replaced");
+    app(&repos)
+        .delete_dashboard(&a_token(), the_dashboard())
+        .await
+        .expect("deleted");
+
+    let actions: Vec<_> = repos
+        .0
+        .committed()
+        .iter()
+        .map(|entry| entry.action)
+        .collect();
+    assert_eq!(
+        actions,
+        vec![Action::DashboardUpdated, Action::DashboardDeleted]
+    );
+    assert_eq!(count(&repos.0.commits), 2);
+    assert_eq!(count(&repos.0.writes), 2);
+}
+
+#[tokio::test]
+async fn reading_a_dashboard_writes_nothing_and_a_refused_creation_rolls_back() {
+    let repos = Recording::default();
+    repos.0.member_only.store(true, Ordering::SeqCst);
+
+    let read = app(&repos)
+        .dashboard(&Reader::Session(a_token()), the_dashboard())
+        .await
+        .expect("a member reads");
+    let unknown = app(&repos)
+        .create_dashboard(
+            &a_token(),
+            ProjectId::new(uuid::Uuid::from_u128(99)),
+            &a_file("x"),
+        )
+        .await;
+
+    assert_eq!(read.id, the_dashboard());
+    assert_eq!(unknown, Err(DashboardError::NotFound));
+    assert_eq!(count(&repos.0.writes), 0);
+    assert_eq!(count(&repos.0.rollbacks), 1);
+    assert!(repos.0.committed().is_empty());
 }

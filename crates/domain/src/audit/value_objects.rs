@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::access::KeyId;
 use crate::agents::AgentId;
 use crate::catalogue::ProjectId;
+use crate::dashboard::DashboardId;
 use crate::identity::AccountId;
 use crate::issue::Fingerprint;
 use crate::organisation::TeamId;
@@ -140,10 +141,13 @@ pub enum Action {
     AgentRegistered,
     AgentRevoked,
     AgentRead,
+    DashboardCreated,
+    DashboardUpdated,
+    DashboardDeleted,
 }
 
 impl Action {
-    pub const ALL: [Self; 63] = [
+    pub const ALL: [Self; 66] = [
         Self::OrgFounded,
         Self::OrgRenamed,
         Self::OrgLogoSet,
@@ -207,6 +211,9 @@ impl Action {
         Self::AgentRegistered,
         Self::AgentRevoked,
         Self::AgentRead,
+        Self::DashboardCreated,
+        Self::DashboardUpdated,
+        Self::DashboardDeleted,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -274,6 +281,9 @@ impl Action {
             Self::AgentRegistered => "agent.registered",
             Self::AgentRevoked => "agent.revoked",
             Self::AgentRead => "agent.read",
+            Self::DashboardCreated => "dashboard.created",
+            Self::DashboardUpdated => "dashboard.updated",
+            Self::DashboardDeleted => "dashboard.deleted",
         }
     }
 
@@ -307,10 +317,11 @@ pub enum TargetKind {
     StatusComponent,
     Price,
     Agent,
+    Dashboard,
 }
 
 impl TargetKind {
-    const ALL: [Self; 17] = [
+    const ALL: [Self; 18] = [
         Self::Org,
         Self::Project,
         Self::Team,
@@ -328,6 +339,7 @@ impl TargetKind {
         Self::StatusComponent,
         Self::Price,
         Self::Agent,
+        Self::Dashboard,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -349,6 +361,7 @@ impl TargetKind {
             Self::StatusComponent => "status_component",
             Self::Price => "price",
             Self::Agent => "agent",
+            Self::Dashboard => "dashboard",
         }
     }
 
@@ -405,6 +418,10 @@ impl Target {
 
     pub fn issue(print: Fingerprint) -> Self {
         Self::named(TargetKind::Issue, print)
+    }
+
+    pub fn dashboard(dashboard: DashboardId) -> Self {
+        Self::named(TargetKind::Dashboard, dashboard)
     }
 }
 

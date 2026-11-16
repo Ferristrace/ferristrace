@@ -8,6 +8,7 @@ pub mod alerts;
 pub mod audit;
 pub mod catalogue;
 pub mod cluster;
+pub mod dashboard;
 pub mod explore;
 pub mod export;
 pub mod identity;
@@ -68,6 +69,11 @@ pub use clock::{Clock, UnixSeconds};
 pub use cluster::{
     ClusterFilter, ClusterReader, ClusterSnapshot, ClusterView, FRESH_SECS, Node, Pod, PodPhase,
     PodReason, WorkloadSummary, assess, fresh_window,
+};
+pub use dashboard::{
+    Dashboard, DashboardCreation, DashboardDesk, DashboardDoc, DashboardError, DashboardFile,
+    DashboardId, DashboardName, DashboardSaving, DashboardStore, DashboardSummary,
+    Scope as DashboardScope, Tags as DashboardTags,
 };
 pub use explore::{
     AttributeFilter, AttributeKey, BadQuery, BadWindow, CacheGrouping, CachePoint, CacheSeries,
