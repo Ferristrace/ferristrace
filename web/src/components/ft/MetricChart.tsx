@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from '@/lib/router'
 import { shortId } from '@/lib/format'
+import { MarkerLayer } from './MarkerLayer'
 import { cn } from '@/lib/utils'
 import type { Exemplar, MetricLine } from '@/data/metrics'
 
@@ -98,11 +99,7 @@ export function MetricChart({ series, exemplars, unit, aria, threshold, deploys 
             {threshold !== undefined ? <line x1="0" x2={WIDTH} y1={y(threshold)} y2={y(threshold)} stroke="var(--destructive-text)" strokeDasharray="6 4" strokeWidth="1.5" vectorEffect="non-scaling-stroke"><title>{`Threshold ${formatValue(threshold, unit)}`}</title></line> : null}
             {at !== null ? <line x1={x(at)} x2={x(at)} y1="0" y2={HEIGHT} stroke="var(--muted-foreground)" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" /> : null}
           </svg>
-          {deployed.map((d) => (
-            <span key={`${d.label}-${d.atNs}`} className="absolute inset-y-0 border-l border-dashed border-foreground/60" style={{ left: `${(x(d.atNs) / WIDTH) * 100}%` }}>
-              <Link to={d.to} aria-label={`Release ${d.label}`} className="no-underline"><span className="absolute -top-0.5 left-1 whitespace-nowrap rounded-sm border bg-background px-1 font-mono text-[10px] leading-4 text-foreground shadow-sm">▲ {d.label}</span></Link>
-            </span>
-          ))}
+          <MarkerLayer pins={deployed.map((d) => ({ frac: x(d.atNs) / WIDTH, label: d.label, to: d.to }))} />
           {shown.map((e) => (
             <Link
               key={`${e.trace_id}-${e.span_id}-${e.time_ns}`}
