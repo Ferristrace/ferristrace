@@ -6,8 +6,8 @@ use ferristrace_domain::Clock;
 
 use crate::clickhouse::{
     BatchLimits, ClickhouseIssues, ClickhouseLogReader, ClickhouseLogSink, ClickhouseMetricReader,
-    ClickhouseMetricSink, ClickhouseMigrator, ClickhouseReader, ClickhouseSink, ClickhouseTiering,
-    ClickhouseVolumes, MigrateError, TieringError,
+    ClickhouseMetricSink, ClickhouseMigrator, ClickhousePanelReader, ClickhouseReader,
+    ClickhouseSink, ClickhouseTiering, ClickhouseVolumes, MigrateError, TieringError,
 };
 
 const DEFAULT_RETENTION_DAYS: u64 = 30;
@@ -67,6 +67,7 @@ pub struct SpanStore<C> {
     pub log_reader: ClickhouseLogReader,
     pub metrics: ClickhouseMetricSink<C>,
     pub metric_reader: ClickhouseMetricReader,
+    pub panel_reader: ClickhousePanelReader,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -105,6 +106,7 @@ pub async fn open<C: Clock + Clone>(
             clock.clone(),
         ),
         metric_reader: ClickhouseMetricReader::new(client.clone()),
+        panel_reader: ClickhousePanelReader::new(client.clone()),
         logs: ClickhouseLogSink::new(
             &client,
             BatchLimits::default(),

@@ -72,8 +72,9 @@ pub use cluster::{
 };
 pub use dashboard::{
     Dashboard, DashboardCreation, DashboardDesk, DashboardDoc, DashboardError, DashboardFile,
-    DashboardId, DashboardName, DashboardSaving, DashboardStore, DashboardSummary,
-    Scope as DashboardScope, Tags as DashboardTags,
+    DashboardId, DashboardName, DashboardSaving, DashboardStore, DashboardSummary, PanelDesk,
+    PanelError, PanelReader, PanelRequest, PanelResult, QueryError as PanelQueryError,
+    Scope as DashboardScope, Tags as DashboardTags, Variables as PanelVariables,
 };
 pub use explore::{
     AttributeFilter, AttributeKey, BadQuery, BadWindow, CacheGrouping, CachePoint, CacheSeries,

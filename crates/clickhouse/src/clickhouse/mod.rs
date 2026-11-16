@@ -11,6 +11,7 @@ mod metric_read;
 mod metric_rows;
 mod metric_sink;
 mod migrate;
+mod panel;
 mod placement;
 mod query;
 mod read;
@@ -28,6 +29,7 @@ pub use log_sink::ClickhouseLogSink;
 pub use metric_read::ClickhouseMetricReader;
 pub use metric_sink::ClickhouseMetricSink;
 pub use migrate::{ClickhouseMigrator, MIGRATIONS, MigrateError, Migration};
+pub use panel::ClickhousePanelReader;
 pub use read::ClickhouseReader;
 pub use sink::{BatchLimits, ClickhouseSink};
 pub use tiering::{

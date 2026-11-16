@@ -20,6 +20,7 @@ mod logs;
 mod metrics;
 mod oncall;
 mod organisation;
+mod panel_queries;
 mod postmortems;
 mod profile;
 mod provisioning;
