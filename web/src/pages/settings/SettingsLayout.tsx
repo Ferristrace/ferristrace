@@ -20,7 +20,7 @@ export function SettingsLayout() {
   const { active } = useOrganisations()
   const administers = active?.role === 'owner' || active?.role === 'admin'
   return (
-    <div className="flex items-start gap-8 max-md:flex-col max-md:gap-4">
+    <div className="flex items-start gap-8 max-md:flex-col max-md:items-stretch max-md:gap-4">
       <nav aria-label="Settings sections" className="flex shrink-0 flex-col gap-0.5 max-md:scrollbar-none max-md:-mx-[max(16px,env(safe-area-inset-left))] max-md:-mt-3.5 max-md:w-auto max-md:flex-row max-md:items-center max-md:gap-1.5 max-md:self-stretch max-md:overflow-x-auto max-md:border-b max-md:px-3 max-md:py-2 md:sticky md:top-[51px] md:-mb-10 md:-ml-5 md:-mt-3.5 md:min-h-[calc(100vh-51px)] md:w-[224px] md:border-r md:px-3 md:py-3.5">
         <h1 className="mb-1 px-2.5 text-title max-md:hidden">Settings</h1>
         {GROUPS.map((g) => (
@@ -41,7 +41,7 @@ export function SettingsLayout() {
           </div>
         ))}
       </nav>
-      <div className="flex min-w-0 max-w-[900px] flex-[999_1_560px] flex-col gap-4">
+      <div className="flex min-w-0 max-w-[900px] flex-[999_1_560px] flex-col gap-4 max-md:flex-none">
         <Outlet />
       </div>
     </div>
