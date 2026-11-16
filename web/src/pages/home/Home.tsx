@@ -99,19 +99,11 @@ export function Home() {
     <>
       <PageHeader title="Overview" meta={`${scope} · last ${label}`} />
       <PlacementPicker collapsible placement={placement} onChange={place} windowMs={windowMs} />
-      <div className="grid grid-cols-1 gap-x-8 gap-y-6 lg:grid-cols-2">
-        <div className="lg:col-span-2">
-          <StatusLine status={overall} checked={checked} missing={missing} notes={notes(sources)} updatedMs={updatedMs} windowLabel={label} now={now} />
-        </div>
-        <div className="lg:order-3">
-          <Attention items={items} status={overall} missing={missing} />
-        </div>
-        <div className="lg:order-4">
-          <Changes releases={releases.releases} pending={releases.pending} failed={Boolean(releases.failed)} windowMs={changesMs} now={now} />
-        </div>
-        <div className="lg:order-2 lg:col-span-2">
-          <Figures figures={figures} short={short} />
-        </div>
+      <StatusLine status={overall} checked={checked} missing={missing} notes={notes(sources)} updatedMs={updatedMs} windowLabel={label} now={now} />
+      <Figures figures={figures} short={short} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Attention items={items} status={overall} missing={missing} />
+        <Changes releases={releases.releases} pending={releases.pending} failed={Boolean(releases.failed)} windowMs={changesMs} now={now} />
       </div>
     </>
   )
