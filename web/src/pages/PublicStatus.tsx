@@ -26,7 +26,7 @@ function useNoIndex(hidden: boolean) {
 function Missing({ failed }: { failed: unknown }) {
   const gone = failed instanceof ApiError && failed.status === 404
   return (
-    <div className="flex min-h-screen items-center justify-center bg-sidebar px-6 text-center">
+    <div className="flex min-h-screen items-center justify-center bg-background px-6 text-center">
       <p className="m-0 text-control text-muted-foreground">{gone ? 'There is no status page at this address.' : 'The status page could not be loaded. Try again in a minute.'}</p>
     </div>
   )
@@ -42,7 +42,7 @@ export function PublicStatus() {
     if (status) document.title = `${status.page.name} status`
   }, [status])
   if (failed) return <Missing failed={failed} />
-  if (!status) return <div className="min-h-screen bg-sidebar" aria-busy />
+  if (!status) return <div className="min-h-screen bg-background" aria-busy />
   return (
     <>
       {notice && NOTICES[notice] ? <div role="status" className="bg-accent-subtle px-4 py-2.5 text-center text-control text-accent-text">{NOTICES[notice]}</div> : null}
@@ -57,14 +57,14 @@ export function PublicPostmortem() {
   const { status } = usePublicStatus(slug)
   useNoIndex(status?.page.hide_from_search ?? true)
   if (failed) return <Missing failed={failed} />
-  if (!postmortem) return <div className="min-h-screen bg-sidebar" aria-busy />
+  if (!postmortem) return <div className="min-h-screen bg-background" aria-busy />
   return (
-    <div className="min-h-screen bg-sidebar text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
       <main className="mx-auto flex max-w-[880px] flex-col gap-4 px-6 pb-16 pt-8">
         <a className="text-control" href={`/status/${slug}`}>Back to the status page</a>
-        <h1 className="text-[24px] font-bold">{postmortem.title}</h1>
+        <h1 className="text-[24px] font-semibold">{postmortem.title}</h1>
         <span className="text-caption text-muted-foreground">Published {new Date(postmortem.published_ms).toLocaleString('en-US')}</span>
-        <article className="rounded-lg border bg-card px-6 py-5"><Markdown source={postmortem.body} /></article>
+        <article className="rounded-md border bg-card px-6 py-5"><Markdown source={postmortem.body} /></article>
       </main>
     </div>
   )

@@ -5,8 +5,10 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
+import { Card } from '@/components/ui/card'
 import { Avatar, Table, Td, Th } from '@/components/ui/misc'
-import { EmptyState, PageHeader } from '@/components/ft/bits'
+import { Pager } from '@/components/ui/pager'
+import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { useMembers } from '@/data/members'
 import { nameOf, initialsOf } from '@/data/profile'
 import {
@@ -20,6 +22,7 @@ import {
   type IssueStatus,
 } from '@/data/issues'
 import { stamp } from '@/lib/format'
+import { pagesOf } from '@/lib/paging'
 import { cn } from '@/lib/utils'
 
 const TABS: [IssueStatus, string][] = [
@@ -47,6 +50,8 @@ export function Issues() {
   const [tab, setTab] = useState<IssueStatus>('unresolved')
   const [sort, setSort] = useState<'last' | 'events'>('last')
   const [sel, setSel] = useState<string[]>([])
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(25)
 
   const count = (status: IssueStatus) => issues.filter((one) => one.status === status).length
   const rows = useMemo(() => {
@@ -54,7 +59,9 @@ export function Issues() {
     return sort === 'events' ? [...kept].sort((a, b) => b.events - a.events) : kept
   }, [issues, tab, sort])
   const services = [...new Set(issues.map((one) => one.service))].sort()
-  const allSel = rows.length > 0 && rows.every((one) => sel.includes(one.fingerprint))
+  const current = Math.min(page, pagesOf(rows.length, size))
+  const shown = rows.slice((current - 1) * size, current * size)
+  const allSel = shown.length > 0 && shown.every((one) => sel.includes(one.fingerprint))
 
   const bulk = (said: { status?: IssueStatus; owner?: string | null }, told: string) => {
     const chosen = rows.filter((one) => sel.includes(one.fingerprint))
@@ -68,45 +75,48 @@ export function Issues() {
     <>
       <PageHeader
         title="Issues"
-        meta="Exceptions grouped by service, type and the shape of their message"
+        meta={
+          <span className="rounded-full bg-muted px-2 text-caption font-medium leading-5 text-muted-foreground">
+            {count('unresolved')} open
+          </span>
+        }
       />
-      <div role="tablist" aria-label="Issue status" className="flex gap-1 overflow-x-auto border-b">
-        {TABS.map(([value, label]) => (
-          <button
-            key={value}
-            role="tab"
-            type="button"
-            aria-selected={tab === value}
-            onClick={() => {
-              setTab(value)
-              setSel([])
-            }}
-            className={cn(
-              '-mb-px inline-flex h-9 cursor-pointer items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-2.5 text-[13.5px] font-semibold text-muted-foreground hover:text-foreground',
-              tab === value && 'border-primary text-foreground',
-            )}
-          >
-            {label}
-            <span className="rounded-sm bg-muted px-1 font-mono text-[11px] font-medium leading-4">
-              {count(value)}
-            </span>
-          </button>
-        ))}
-      </div>
       <div className="flex flex-wrap items-center gap-2" role="search">
-        <InputGroup className="w-[300px] max-w-full">
+        <InputGroup className="w-[320px] max-w-full max-md:w-full">
           <Search aria-hidden />
           <input
             aria-label="Search issues"
             placeholder="Search the type or the message"
             value={sift.q}
-            onChange={(event) => setSift((was) => ({ ...was, q: event.target.value }))}
+            onChange={(event) => {
+              setSift((was) => ({ ...was, q: event.target.value }))
+              setPage(1)
+            }}
           />
         </InputGroup>
         <NativeSelect
+          aria-label="Status"
+          value={tab}
+          onChange={(event) => {
+            setTab(event.target.value as IssueStatus)
+            setSel([])
+            setPage(1)
+          }}
+          className="w-[170px]"
+        >
+          {TABS.map(([value, label]) => (
+            <option key={value} value={value}>
+              Status: {label.toLowerCase()} ({count(value)})
+            </option>
+          ))}
+        </NativeSelect>
+        <NativeSelect
           aria-label="Service"
           value={sift.service}
-          onChange={(event) => setSift((was) => ({ ...was, service: event.target.value }))}
+          onChange={(event) => {
+            setSift((was) => ({ ...was, service: event.target.value }))
+            setPage(1)
+          }}
           className="w-[190px]"
         >
           <option value="">Service: any</option>
@@ -117,7 +127,10 @@ export function Issues() {
         <NativeSelect
           aria-label="Window"
           value={String(sift.rangeMs)}
-          onChange={(event) => setSift((was) => ({ ...was, rangeMs: Number(event.target.value) }))}
+          onChange={(event) => {
+            setSift((was) => ({ ...was, rangeMs: Number(event.target.value) }))
+            setPage(1)
+          }}
           className="w-[150px]"
         >
           {RANGES.map(([label, ms]) => (
@@ -126,11 +139,14 @@ export function Issues() {
             </option>
           ))}
         </NativeSelect>
-        <span className="flex-1" />
+        <span className="flex-1 max-md:hidden" />
         <NativeSelect
           aria-label="Sort"
           value={sort}
-          onChange={(event) => setSort(event.target.value as typeof sort)}
+          onChange={(event) => {
+            setSort(event.target.value as typeof sort)
+            setPage(1)
+          }}
           className="w-[170px]"
         >
           <option value="last">Sort: last seen</option>
@@ -139,7 +155,10 @@ export function Issues() {
         <NativeSelect
           aria-label="Rows"
           value={String(sift.limit)}
-          onChange={(event) => setSift((was) => ({ ...was, limit: Number(event.target.value) }))}
+          onChange={(event) => {
+            setSift((was) => ({ ...was, limit: Number(event.target.value) }))
+            setPage(1)
+          }}
           className="w-[110px]"
         >
           {COUNTS.map((many) => (
@@ -203,52 +222,69 @@ export function Issues() {
               : 'An exception recorded on a span shows up here within a minute of happening.'}
         </EmptyState>
       ) : (
-        <div className="-mx-4 overflow-x-auto border-t md:-mx-5">
-          <Table aria-label="Issues">
-            <thead>
-              <tr>
-                <Th className="w-[40px]">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all"
-                    checked={allSel}
-                    onChange={() => setSel(allSel ? [] : rows.map((one) => one.fingerprint))}
-                    className="size-4 accent-[var(--primary)]"
-                  />
-                </Th>
-                <Th>Issue</Th>
-                <Th numeric className="w-[90px]">
-                  Events
-                </Th>
-                <Th className="w-[170px]">Last seen</Th>
-                <Th className="w-[70px]">Owner</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((issue) => (
-                <Row
-                  key={issue.fingerprint}
-                  issue={issue}
-                  owner={owner(issue.owner)}
-                  chosen={sel.includes(issue.fingerprint)}
-                  onChoose={() =>
-                    setSel((held) =>
-                      held.includes(issue.fingerprint)
-                        ? held.filter((one) => one !== issue.fingerprint)
-                        : [...held, issue.fingerprint],
-                    )
-                  }
-                  onOpen={() => navigate(`/issues/${issue.fingerprint}`)}
-                />
-              ))}
-            </tbody>
-          </Table>
-          <p className="m-0 px-5 py-3 text-caption text-muted-foreground">
+        <>
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table aria-label="Issues" className="min-w-[760px]">
+                <thead>
+                  <tr>
+                    <Th className="w-[40px]">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all"
+                        checked={allSel}
+                        onChange={() => setSel(allSel ? [] : shown.map((one) => one.fingerprint))}
+                        className="size-4 accent-[var(--primary)]"
+                      />
+                    </Th>
+                    <Th>Issue</Th>
+                    <Th className="w-[180px]">Service</Th>
+                    <Th numeric className="w-[90px]">
+                      Events
+                    </Th>
+                    <Th className="w-[170px]">Last seen</Th>
+                    <Th className="w-[70px]">Owner</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((issue) => (
+                    <Row
+                      key={issue.fingerprint}
+                      issue={issue}
+                      owner={owner(issue.owner)}
+                      chosen={sel.includes(issue.fingerprint)}
+                      onChoose={() =>
+                        setSel((held) =>
+                          held.includes(issue.fingerprint)
+                            ? held.filter((one) => one !== issue.fingerprint)
+                            : [...held, issue.fingerprint],
+                        )
+                      }
+                      onOpen={() => navigate(`/issues/${issue.fingerprint}`)}
+                    />
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+            <Pager
+              total={rows.length}
+              page={current}
+              size={size}
+              onPage={setPage}
+              onSize={(many) => {
+                setSize(many)
+                setPage(1)
+              }}
+              noun="issues"
+              className="border-t"
+            />
+          </Card>
+          <p className="m-0 text-caption text-muted-foreground">
             An issue groups exceptions that share a service, a type and a message whose digits,
             identifiers and quoted values have been normalised away. A resolved issue seen again is
             marked Regressed.
           </p>
-        </div>
+        </>
       )}
     </>
   )
@@ -281,13 +317,13 @@ function Row({
           className="size-4 accent-[var(--primary)]"
         />
       </Td>
-      <Td className="whitespace-normal py-2">
+      <Td className="max-w-[420px] whitespace-normal py-2">
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="flex flex-wrap items-center gap-2">
             <Link
               to={`/issues/${issue.fingerprint}`}
               onClick={(event) => event.stopPropagation()}
-              className="font-mono font-semibold text-destructive-text"
+              className="font-semibold text-accent-text"
             >
               {issue.exception_type || 'Exception'}
             </Link>
@@ -301,11 +337,15 @@ function Row({
           <span className="flex flex-wrap gap-x-2 text-caption text-muted-foreground">
             <span className="font-mono">{shortPrint(issue.fingerprint)}</span>
             <span aria-hidden>·</span>
-            <span>{issue.service}</span>
-            <span aria-hidden>·</span>
             <span>first {stamp(issue.first_seen_at_ms)}</span>
           </span>
         </div>
+      </Td>
+      <Td>
+        <span className="inline-flex items-center gap-1.5">
+          <ServiceDot name={issue.service} />
+          {issue.service}
+        </span>
       </Td>
       <Td numeric>{issue.events.toLocaleString('en-US')}</Td>
       <Td className="font-mono text-control">{stamp(issue.last_seen_at_ms)}</Td>
