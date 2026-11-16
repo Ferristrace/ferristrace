@@ -2,10 +2,11 @@ import { Sparkles } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from '@/lib/router'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { Table, Td, Th } from '@/components/ui/misc'
+import { Pager } from '@/components/ui/pager'
 import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { StackedChart, stackColour, type Marker } from '@/components/ft/charts'
 import {
@@ -26,6 +27,7 @@ import {
 import { timeLabels } from '@/data/series'
 import { ApiError, because } from '@/auth/client'
 import { num, stamp } from '@/lib/format'
+import { pagesOf } from '@/lib/paging'
 import { useSettled } from '@/lib/settle'
 import { cn } from '@/lib/utils'
 
@@ -39,7 +41,84 @@ const FILTER_FIELDS: { name: keyof SpendFilters; placeholder: string }[] = [
   { name: 'prompt', placeholder: 'Prompt version' },
 ]
 
+const SHARE_ROWS = 8
+const DEFAULT_SIZE = 10
+
 const named = (key: string, groupBy: GroupBy) => (key === '' ? `(no ${groupBy})` : key)
+
+const percent = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : 0)
+
+type Slice = { key: string; label: string; value: number; colour: string }
+
+function slicesOf(groups: SpendGroup[], groupBy: GroupBy, read: (group: SpendGroup) => number): Slice[] {
+  const shown = groups.slice(0, LAYERS)
+  const rest = groups.slice(LAYERS)
+  const slices = shown.map((group, at) => ({ key: group.key, label: named(group.key, groupBy), value: read(group), colour: stackColour(at) }))
+  if (rest.length > 0) slices.push({ key: OTHER, label: OTHER, value: rest.reduce((sum, group) => sum + read(group), 0), colour: stackColour(LAYERS) })
+  return slices
+}
+
+function Donut({ slices, total, centre, caption }: { slices: Slice[]; total: number; centre: string; caption: string }) {
+  const radius = 40
+  const round = 2 * Math.PI * radius
+  const drawn = slices.reduce<{ slice: Slice; length: number; offset: number }[]>((all, slice) => {
+    const length = total > 0 ? (slice.value / total) * round : 0
+    const offset = all.length ? all[all.length - 1].offset + all[all.length - 1].length : 0
+    return [...all, { slice, length, offset }]
+  }, [])
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4 px-4 py-4">
+      <div className="relative size-[172px] shrink-0">
+        <svg viewBox="0 0 100 100" role="img" aria-label={`${caption}: ${slices.map((slice) => `${slice.label} ${percent(slice.value, total).toFixed(0)} percent`).join(', ')}`} className="size-full -rotate-90">
+          <circle cx="50" cy="50" r={radius} fill="none" stroke="var(--border)" strokeWidth="12" />
+          {drawn.map(({ slice, length, offset }) => length > 0 ? <circle key={slice.key} cx="50" cy="50" r={radius} fill="none" stroke={slice.colour} strokeWidth="12" strokeDasharray={`${length} ${round - length}`} strokeDashoffset={-offset} /> : null)}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-heading tabular">{centre}</span>
+          <span className="text-caption text-muted-foreground">{caption}</span>
+        </div>
+      </div>
+      <ul className="m-0 flex min-w-[200px] flex-1 list-none flex-col gap-2 p-0 text-control">
+        {slices.map((slice) => (
+          <li key={slice.key} className="flex items-center gap-2">
+            <span className="inline-block size-2 shrink-0 rounded-sm" style={{ background: slice.colour }} aria-hidden />
+            <span className="min-w-0 flex-1 truncate">{slice.label}</span>
+            <span className="font-mono tabular">{formatCost(slice.value)}</span>
+            <span className="w-10 text-right font-mono text-caption text-muted-foreground tabular">{percent(slice.value, total).toFixed(0)} %</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+type Bar = { key: string; label: string; value: number; text: string }
+
+function HBars({ rows, label }: { rows: Bar[]; label: string }) {
+  const top = Math.max(1e-9, ...rows.map((row) => row.value))
+  return (
+    <ul aria-label={label} className="m-0 flex list-none flex-col gap-3 px-4 py-4 text-control">
+      {rows.map((row, at) => (
+        <li key={row.key} className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)_auto] items-center gap-3 max-md:grid-cols-[minmax(0,1fr)_auto]">
+          <span className="truncate font-mono" title={row.label}>{row.label}</span>
+          <span className="block h-2 overflow-hidden rounded-full bg-muted max-md:order-last max-md:col-span-2" aria-hidden>
+            <span className="block h-full rounded-full" style={{ width: `${Math.max(1.5, (row.value / top) * 100)}%`, background: stackColour(at) }} />
+          </span>
+          <span className="font-mono tabular">{row.text}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function Panel({ title, kind, children, className }: { title: string; kind: string; children: React.ReactNode; className?: string }) {
+  return (
+    <Card className={cn('flex min-w-0 flex-col overflow-hidden', className)}>
+      <CardHeader><CardTitle>{title}</CardTitle><CardKind>{kind}</CardKind></CardHeader>
+      {children}
+    </Card>
+  )
+}
 
 function layersOf(groups: SpendGroup[]) {
   const shown = groups.slice(0, LAYERS)
@@ -63,9 +142,12 @@ function markersOf(spend: Spend): Marker[] {
 function Calls({ windowMs, groupBy, selected, filters }: { windowMs: number; groupBy: GroupBy; selected: string; filters: SpendFilters }) {
   const navigate = useNavigate()
   const { calls, pending, failed } = useGroupCalls(windowMs, groupBy, selected, filters)
+  const [size, setSize] = useState(DEFAULT_SIZE)
+  const [page, setPage] = useState(1)
+  const at = Math.min(page, pagesOf(calls.length, size))
   return (
     <Card className="overflow-hidden">
-      <CardHeader><CardTitle>Calls of {named(selected, groupBy)}</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Calls of {named(selected, groupBy)}</CardTitle><CardKind>Table</CardKind></CardHeader>
       {failed ? <p className="m-0 px-4 py-3 text-control text-muted-foreground">{because(failed, 'The calls could not be read.')}</p> : null}
       {!failed && !pending && calls.length === 0 ? <p className="m-0 px-4 py-3 text-control text-muted-foreground">No call in this window.</p> : null}
       {calls.length > 0 ? (
@@ -73,7 +155,7 @@ function Calls({ windowMs, groupBy, selected, filters }: { windowMs: number; gro
           <Table aria-label={`Calls of ${named(selected, groupBy)}`}>
             <thead><tr><Th className="w-[170px]">Time</Th><Th>Model</Th><Th>Feature</Th><Th numeric className="w-[90px]">Tokens in</Th><Th numeric className="w-[90px]">Tokens out</Th><Th numeric className="w-[90px]">Duration</Th><Th numeric className="w-[90px]">Cost</Th></tr></thead>
             <tbody>
-              {calls.map((call) => {
+              {calls.slice((at - 1) * size, at * size).map((call) => {
                 const to = `/traces/${call.traceId}`
                 return (
                   <tr key={`${call.traceId}-${call.spanId}`} onClick={() => navigate(to)} className="cursor-pointer hover:[&>td]:bg-row-hover">
@@ -91,6 +173,7 @@ function Calls({ windowMs, groupBy, selected, filters }: { windowMs: number; gro
           </Table>
         </div>
       ) : null}
+      {calls.length > 0 ? <Pager total={calls.length} page={at} size={size} onPage={setPage} onSize={(next) => { setSize(next); setPage(1) }} noun="calls" className="border-t" /> : null}
     </Card>
   )
 }
@@ -112,18 +195,26 @@ export function Ai() {
   const layers = layersOf(groups)
   const filtered = Object.values(filters).some((value) => value.trim() !== '')
   const toggle = (key: string) => setSelected(key === selected ? null : key)
+  const [size, setSize] = useState(DEFAULT_SIZE)
+  const [page, setPage] = useState(1)
+  const at = Math.min(page, pagesOf(groups.length, size))
+  const shares = useMemo(() => slicesOf(groups, groupBy, (group) => group.cost), [groups, groupBy])
+  const slowest = useMemo(() => [...groups].sort((a, b) => b.p95Ms - a.p95Ms).slice(0, SHARE_ROWS).map((group) => ({ key: group.key, label: named(group.key, groupBy), value: group.p95Ms, text: formatMs(group.p95Ms) })), [groups, groupBy])
+  const heaviest = useMemo(() => [...groups].sort((a, b) => b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens)).slice(0, SHARE_ROWS).map((group) => ({ key: group.key, label: named(group.key, groupBy), value: group.inputTokens + group.outputTokens, text: `${formatTokens(group.inputTokens)} in · ${formatTokens(group.outputTokens)} out` })), [groups, groupBy])
+  const windowLabel = SPEND_WINDOWS.find((w) => w.value === range)?.label ?? ''
+  const groupLabel = GROUP_BYS.find((g) => g.value === groupBy)?.label ?? groupBy
   return (
     <>
-      <PageHeader title="AI" meta="What LLM calls cost, from the GenAI spans your services send">
+      <PageHeader title="AI spend" meta={<CardKind>last {windowLabel}</CardKind>}>
         <Segmented label="Window" value={range} onChange={setRange} options={SPEND_WINDOWS.map((w) => ({ value: w.value, label: w.label }))} />
       </PageHeader>
       <div className="flex flex-wrap items-center gap-2" role="search">
         {FILTER_FIELDS.map((field) => (
-          <InputGroup key={field.name} className="w-[160px] max-w-full">
+          <InputGroup key={field.name} className="w-[160px] max-w-full max-md:w-[calc(50%-4px)]">
             <input aria-label={field.placeholder} placeholder={field.placeholder} value={typed[field.name]} onChange={(e) => setTyped({ ...typed, [field.name]: e.target.value })} />
           </InputGroup>
         ))}
-        <Segmented label="Group by" value={groupBy} onChange={(next) => { setGroupBy(next); setSelected(null) }} options={GROUP_BYS.map((g) => ({ value: g.value, label: g.label }))} />
+        <Segmented label="Group by" value={groupBy} onChange={(next) => { setGroupBy(next); setSelected(null); setPage(1) }} options={GROUP_BYS.map((g) => ({ value: g.value, label: g.label }))} />
       </div>
       {unconfigured ? (
         <EmptyState title="AI spend is not configured">This deployment has no span store, so there are no LLM calls to read. Configure one to see them here.</EmptyState>
@@ -141,7 +232,7 @@ export function Ai() {
         </EmptyState>
       ) : (
         <>
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <Kpi label="Total spend" value={formatCost(totals.cost)} sub="priced calls in the window" />
             <Kpi label="Calls" value={num(totals.calls)} />
             <Kpi label="Tokens" value={`${formatTokens(totals.input)} in`} sub={`${formatTokens(totals.output)} out`} />
@@ -153,45 +244,60 @@ export function Ai() {
               to={totals.unpriced > 0 ? LLM_PRICES_PATH : undefined}
             />
           </div>
-          {spend && layers.length > 0 ? (
-            <StackedChart
-              title={`Spend by ${groupBy}`}
-              layers={layers}
-              markers={markersOf(spend)}
-              times={spend.groups[0]?.points.map((point) => point[0])}
-              format={formatCost}
-              yLabels={(top) => [formatCost(top), formatCost(top / 2), '$0.00']}
-              xLabels={timeLabels(spend.fromMs, spend.toMs)}
-              aria={`Stacked cost per ${groupBy} over the window`}
-            />
-          ) : null}
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-caption text-muted-foreground">
-            {layers.map((layer, at) => <span key={layer.key} className="inline-flex items-center gap-1"><span className="inline-block size-2 rounded-sm" style={{ background: stackColour(at) }} />{named(layer.key, groupBy)}</span>)}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            {spend && layers.length > 0 ? (
+              <div className="flex min-w-0 flex-col gap-2">
+                <StackedChart
+                  title={`Spend by ${groupBy}`}
+                  layers={layers}
+                  markers={markersOf(spend)}
+                  times={spend.groups[0]?.points.map((point) => point[0])}
+                  format={formatCost}
+                  yLabels={(top) => [formatCost(top), formatCost(top / 2), '$0.00']}
+                  xLabels={timeLabels(spend.fromMs, spend.toMs)}
+                  aria={`Stacked cost per ${groupBy} over the window`}
+                />
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-caption text-muted-foreground">
+                  {layers.map((layer, index) => <span key={layer.key} className="inline-flex items-center gap-1"><span className="inline-block size-2 rounded-sm" style={{ background: stackColour(index) }} />{named(layer.key, groupBy)}</span>)}
+                </div>
+              </div>
+            ) : null}
+            <Panel title={`Share of spend by ${groupBy}`} kind="Donut">
+              <Donut slices={shares} total={totals.cost} centre={formatCost(totals.cost)} caption={`last ${windowLabel}`} />
+            </Panel>
           </div>
-          <div className="-mx-4 overflow-x-auto border-t md:-mx-5">
-            <Table aria-label="Spend by group">
-              <thead><tr><Th>{GROUP_BYS.find((g) => g.value === groupBy)?.label}</Th><Th numeric className="w-[100px]">Cost</Th><Th numeric className="w-[80px]">Calls</Th><Th numeric className="w-[90px]">Tokens in</Th><Th numeric className="w-[90px]">Tokens out</Th><Th numeric className="w-[80px]">p50</Th><Th numeric className="w-[80px]">p95</Th><Th numeric className="w-[80px]">Errors</Th></tr></thead>
-              <tbody>
-                {groups.map((g) => (
-                  <tr key={g.key} onClick={() => toggle(g.key)} className={cn('cursor-pointer hover:[&>td]:bg-row-hover', g.key === selected && '[&>td]:bg-accent-subtle')}>
-                    <Td>
-                      <button type="button" aria-pressed={g.key === selected} onClick={(e) => { e.stopPropagation(); toggle(g.key) }} className="cursor-pointer bg-transparent p-0 font-mono font-semibold text-foreground">{named(g.key, groupBy)}</button>
-                      {g.unpriced > 0 ? <Badge variant="warning" size="xs" className="ml-2">{num(g.unpriced)} unpriced</Badge> : null}
-                    </Td>
-                    <Td numeric>{formatCost(g.cost)}</Td>
-                    <Td numeric>{num(g.calls)}</Td>
-                    <Td numeric>{formatTokens(g.inputTokens)}</Td>
-                    <Td numeric>{formatTokens(g.outputTokens)}</Td>
-                    <Td numeric>{formatMs(g.p50Ms)}</Td>
-                    <Td numeric>{formatMs(g.p95Ms)}</Td>
-                    <Td numeric className={cn(g.errors > 0 && 'font-semibold text-destructive-text')}>{num(g.errors)}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Panel title={`p95 latency by ${groupBy}`} kind="Bar"><HBars rows={slowest} label={`p95 latency per ${groupBy}`} /></Panel>
+            <Panel title={`Tokens by ${groupBy}`} kind="Bar"><HBars rows={heaviest} label={`Tokens per ${groupBy}`} /></Panel>
           </div>
+          <Card className="overflow-hidden">
+            <CardHeader><CardTitle>Breakdown by {groupLabel.toLowerCase()}</CardTitle><CardKind>Table</CardKind></CardHeader>
+            <div className="overflow-x-auto">
+              <Table aria-label="Spend by group">
+                <thead><tr><Th>{groupLabel}</Th><Th numeric className="w-[100px]">Cost</Th><Th numeric className="w-[80px]">Calls</Th><Th numeric className="w-[90px]">Tokens in</Th><Th numeric className="w-[90px]">Tokens out</Th><Th numeric className="w-[80px]">p50</Th><Th numeric className="w-[80px]">p95</Th><Th numeric className="w-[80px]">Errors</Th></tr></thead>
+                <tbody>
+                  {groups.slice((at - 1) * size, at * size).map((g) => (
+                    <tr key={g.key} onClick={() => toggle(g.key)} className={cn('cursor-pointer hover:[&>td]:bg-row-hover', g.key === selected && '[&>td]:bg-accent-subtle')}>
+                      <Td>
+                        <button type="button" aria-pressed={g.key === selected} onClick={(e) => { e.stopPropagation(); toggle(g.key) }} className="cursor-pointer bg-transparent p-0 font-mono font-semibold text-foreground">{named(g.key, groupBy)}</button>
+                        {g.unpriced > 0 ? <Badge variant="warning" size="xs" className="ml-2">{num(g.unpriced)} unpriced</Badge> : null}
+                      </Td>
+                      <Td numeric>{formatCost(g.cost)}</Td>
+                      <Td numeric>{num(g.calls)}</Td>
+                      <Td numeric>{formatTokens(g.inputTokens)}</Td>
+                      <Td numeric>{formatTokens(g.outputTokens)}</Td>
+                      <Td numeric>{formatMs(g.p50Ms)}</Td>
+                      <Td numeric>{formatMs(g.p95Ms)}</Td>
+                      <Td numeric className={cn(g.errors > 0 && 'font-semibold text-destructive-text')}>{num(g.errors)}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+            <Pager total={groups.length} page={at} size={size} onPage={setPage} onSize={(next) => { setSize(next); setPage(1) }} noun="rows" />
+          </Card>
           {selected === '' ? <p className="m-0 text-control text-muted-foreground">Calls without a {groupBy} cannot be listed on their own; filter on another field.</p> : null}
-          {selected ? <Calls windowMs={windowMs} groupBy={groupBy} selected={selected} filters={filters} /> : null}
+          {selected ? <Calls key={selected} windowMs={windowMs} groupBy={groupBy} selected={selected} filters={filters} /> : null}
         </>
       )}
     </>
