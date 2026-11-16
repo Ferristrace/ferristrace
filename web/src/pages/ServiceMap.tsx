@@ -1,6 +1,7 @@
 import { useId, useMemo, useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import { Link } from '@/lib/router'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup } from '@/components/ui/input'
 import { Table, Td, Th, Tr } from '@/components/ui/misc'
 import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
@@ -12,6 +13,7 @@ import { PlacementPicker } from '@/components/ft/Placement'
 import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { cn } from '@/lib/utils'
+import { Note, PagedFooter, Pill, Pills, SkeletonRows, Toolbar, usePaged } from './backend/kit'
 
 const SIZE = 560
 const CENTER = SIZE / 2
@@ -56,13 +58,15 @@ export function ServiceMap() {
   }, [edges])
   const maxCalls = Math.max(1, ...callsOf.values())
   const rows = useMemo(() => [...edges].sort((a, b) => b.calls - a.calls), [edges])
+  const paged = usePaged(rows, '', 10)
+  const pressured = edges.filter((edge) => (edge.err ?? 0) >= ERROR_THRESHOLD).length
 
   return (
     <>
-      <PageHeader title="Service map" meta={<>Built from each span whose parent lives in another service · last {label}</>} />
-      <div className="flex flex-wrap items-center gap-2" role="search">
-        <InputGroup className="w-[220px] max-w-full"><input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} /></InputGroup>
-      </div>
+      <PageHeader title="Service map" meta={<Pills><Pill>{names.length} {names.length === 1 ? 'service' : 'services'}</Pill><Pill>{edges.length} call {edges.length === 1 ? 'path' : 'paths'}</Pill>{pressured > 0 ? <Pill tone="err">{pressured} above {ERROR_THRESHOLD} % errors</Pill> : null}<Pill>last {label}</Pill></Pills>} />
+      <Toolbar role="search">
+        <InputGroup className="w-[220px] max-w-full max-md:w-full"><input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} /></InputGroup>
+      </Toolbar>
       <PlacementPicker collapsible placement={placement} onChange={place} windowMs={windowMs} />
       {failed ? <EmptyState title="The dependency map could not be read">{because(failed, 'The span store did not answer')}</EmptyState> : null}
       {!failed && !pending && edges.length === 0 ? (
@@ -70,9 +74,12 @@ export function ServiceMap() {
           An edge appears once a server or consumer span's parent was recorded under a different service.name.
         </EmptyState>
       ) : null}
+      {!failed && pending && edges.length === 0 ? <Card className="overflow-hidden"><SkeletonRows label="Reading the dependency map" /></Card> : null}
       {edges.length > 0 ? (
-        <div className="flex flex-col gap-4 lg:flex-row">
-          <figure className="m-0 flex min-w-0 flex-1 flex-col gap-2 rounded-lg border bg-card p-3">
+        <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_440px]">
+          <Card className="overflow-hidden">
+            <CardHeader><CardTitle>Call graph</CardTitle><CardKind>Graph</CardKind></CardHeader>
+          <figure className="m-0 flex min-w-0 flex-1 flex-col gap-2 p-3">
             <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width="100%" height={SIZE} role="img" aria-label={`Service dependency map, ${edges.length} call paths, last ${label}`} className="block overflow-visible">
               <defs>
                 <marker id={`${markerId}-arrow`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -120,11 +127,14 @@ export function ServiceMap() {
               })}
             </svg>
           </figure>
-          <div className="min-w-0 overflow-x-auto rounded-lg border lg:w-[420px]">
+          </Card>
+          <Card className="min-w-0 overflow-hidden">
+            <CardHeader><CardTitle>Dependencies</CardTitle><CardKind>Table</CardKind><span className="text-caption text-muted-foreground">{rows.length} call {rows.length === 1 ? 'path' : 'paths'}</span></CardHeader>
+            <div className="overflow-x-auto">
             <Table aria-label="Dependencies">
               <thead><tr><Th>Caller</Th><Th>Callee</Th><Th numeric className="w-[90px]">Calls</Th><Th numeric className="w-[100px]">Error rate</Th></tr></thead>
               <tbody>
-                {rows.map((edge) => {
+                {paged.shown.map((edge) => {
                   const bad = (edge.err ?? 0) >= ERROR_THRESHOLD
                   return (
                     <Tr key={`${edge.caller}->${edge.callee}`}>
@@ -139,7 +149,10 @@ export function ServiceMap() {
                 })}
               </tbody>
             </Table>
-          </div>
+            </div>
+            <PagedFooter paged={paged} noun="call paths" />
+            <Note>Built from each span whose parent lives in another service. Highlighted from {ERROR_THRESHOLD} % errors, the status page threshold.</Note>
+          </Card>
         </div>
       ) : null}
     </>

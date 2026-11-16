@@ -2,12 +2,11 @@ import { Boxes, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { InputGroup } from '@/components/ui/input'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
+import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Segmented } from '@/components/ui/segmented'
 import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
-import { EmptyState, Kpi, PageHeader, barBg } from '@/components/ft/bits'
+import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { MetricChart } from '@/components/ft/MetricChart'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
 import { usePlacement } from '@/data/placement'
@@ -16,6 +15,7 @@ import { useSearchParam } from '@/lib/router'
 import { useWindow } from '@/lib/window'
 import { because } from '@/auth/client'
 import { cn } from '@/lib/utils'
+import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
 
 const HOT_CPU = 75
 const FULL_DISK = 85
@@ -94,6 +94,7 @@ export function SystemPage() {
   )
   const placing = placedCount(placement)
   const sifting = placing > 0 || q.trim() !== ''
+  const paged = usePaged(rows, `${sort}|${q}`)
   const cpus = hosts.map((host) => host.cpu)
   const disks = hosts.map((host) => host.disk)
   const hottest = peak(cpus)
@@ -105,14 +106,10 @@ export function SystemPage() {
     <>
       <PageHeader
         title="System metrics"
-        meta={
-          <>
-            Hosts and containers, from <span className="font-mono">system.*</span> metrics · last {label}
-          </>
-        }
+        meta={<Pills><Pill>Hosts and containers</Pill><Pill>from <span className="font-mono">system.*</span> metrics</Pill><Pill>last {label}</Pill></Pills>}
       />
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-3">
+      <div className={KPI_GRID}>
         <Kpi
           label="Hosts"
           value={hosts.length === 0 ? '—' : String(hosts.length)}
@@ -134,30 +131,38 @@ export function SystemPage() {
       </div>
 
       {busy.length > 0 ? (
-        <Card className="p-3">
-          <MetricChart
-            series={busy}
-            exemplars={[]}
-            unit="%"
-            threshold={HOT_CPU}
-            aria={`Line chart of the busy share of cpu per host over the last ${label}`}
-          />
-        </Card>
+        <MetricChart
+          series={busy}
+          exemplars={[]}
+          unit="%"
+          threshold={HOT_CPU}
+          aria={`Line chart of the busy share of cpu per host over the last ${label}`}
+        />
       ) : null}
 
       <Card className="overflow-hidden">
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
-          <h2 className="text-[15px] font-bold">Hosts</h2>
+        <CardHeader>
+          <CardTitle>Hosts</CardTitle>
+          <CardKind>Table</CardKind>
           <span className="text-caption text-muted-foreground">
             {rows.length} host{rows.length === 1 ? '' : 's'}
           </span>
-          <span className="flex-1" />
-          <Segmented
-            label="Sort by"
-            value={sort}
-            onChange={(next) => show({ s: next === 'cpu' ? undefined : next })}
-            options={SORTS.map((one) => ({ value: one.value, label: one.label }))}
-          />
+        </CardHeader>
+        <PanelToolbar>
+          <InputGroup className={SEARCH}>
+            <Search aria-hidden />
+            <input
+              aria-label="Filter hosts"
+              placeholder="Filter hosts"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            <Kbd>/</Kbd>
+          </InputGroup>
+          <NativeSelect aria-label="Sort by" value={sort} onChange={(e) => show({ s: e.target.value === 'cpu' ? undefined : e.target.value })} className="w-auto max-md:flex-1">
+            {SORTS.map((one) => <option key={one.value} value={one.value}>Sort: {one.label}</option>)}
+          </NativeSelect>
+          <span className="flex-1 max-md:hidden" />
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" aria-label="Kubernetes placement">
@@ -174,66 +179,54 @@ export function SystemPage() {
               <PlacementPicker placement={placement} onChange={place} windowMs={windowMs} />
             </PopoverContent>
           </Popover>
-          <InputGroup className="w-[240px] max-w-full">
-            <Search aria-hidden />
-            <input
-              aria-label="Filter hosts"
-              placeholder="Filter hosts"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <Kbd>/</Kbd>
-          </InputGroup>
-        </div>
+        </PanelToolbar>
 
         {failed ? (
-          <div className="p-6">
-            <EmptyState title="The host metrics could not be read">
+          <PanelEmpty title="The host metrics could not be read">
               {because(failed, 'The metric store did not answer')}
-            </EmptyState>
-          </div>
+          </PanelEmpty>
         ) : null}
+
+        {!failed && pending && hosts.length === 0 ? <SkeletonRows label="Reading the host metrics" /> : null}
 
         {!failed && !pending && hosts.length === 0 ? (
-          <div className="p-6">
-            <EmptyState
-              title={
-                sifting ? 'No hosts match' : instrumented ? `No host reported in the last ${label}` : 'No system metrics yet'
-              }
-              code={sifting || instrumented ? undefined : 'receivers:\n  hostmetrics:\n    scrapers: [cpu, memory, filesystem, load]'}
-              actions={
-                sifting ? (
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setQ('')
-                      place({ cluster: '', namespace: '', workload: '', pod: '', node: '' })
-                    }}
-                  >
-                    Reset filters
-                  </Button>
-                ) : null
-              }
-            >
-              {sifting ? (
-                'Try a wider window or no placement.'
-              ) : instrumented ? (
-                <>
-                  A <span className="font-mono">system.*</span> metric arrived but none carried{' '}
-                  <span className="font-mono">{HOST_KEY}</span>, so no host can be named. Set it as a resource attribute
-                  on the collector.
-                </>
-              ) : (
-                <>
-                  Add the <span className="font-mono">hostmetrics</span> receiver to your OpenTelemetry Collector and
-                  point its exporter at FerrisTrace.
-                </>
-              )}
-            </EmptyState>
-          </div>
+          <PanelEmpty
+            title={
+              sifting ? 'No hosts match' : instrumented ? `No host reported in the last ${label}` : 'No system metrics yet'
+            }
+            code={sifting || instrumented ? undefined : 'receivers:\n  hostmetrics:\n    scrapers: [cpu, memory, filesystem, load]'}
+            actions={
+              sifting ? (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setQ('')
+                    place({ cluster: '', namespace: '', workload: '', pod: '', node: '' })
+                  }}
+                >
+                  Reset filters
+                </Button>
+              ) : null
+            }
+          >
+            {sifting ? (
+              'Try a wider window or no placement.'
+            ) : instrumented ? (
+              <>
+                A <span className="font-mono">system.*</span> metric arrived but none carried{' '}
+                <span className="font-mono">{HOST_KEY}</span>, so no host can be named. Set it as a resource attribute
+                on the collector.
+              </>
+            ) : (
+              <>
+                Add the <span className="font-mono">hostmetrics</span> receiver to your OpenTelemetry Collector and
+                point its exporter at FerrisTrace.
+              </>
+            )}
+          </PanelEmpty>
         ) : null}
 
-        {hosts.length > 0 ? (
+        {rows.length > 0 ? (
           <div className="overflow-x-auto">
             <Table aria-label="Hosts">
               <thead>
@@ -246,7 +239,7 @@ export function SystemPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((host) => (
+                {paged.shown.map((host) => (
                   <Tr key={host.name}>
                     <Td>
                       <span className="font-mono font-semibold">{host.name}</span>
@@ -268,7 +261,15 @@ export function SystemPage() {
           </div>
         ) : null}
 
-        <p className="m-0 px-4 py-2.5 text-caption text-muted-foreground">
+        {rows.length === 0 && hosts.length > 0 ? (
+          <PanelEmpty title="No host matches" actions={<Button size="sm" onClick={() => setQ('')}>Clear the filter</Button>}>
+            Nothing matches the text typed in the filter.
+          </PanelEmpty>
+        ) : null}
+
+        <PagedFooter paged={paged} noun="hosts" />
+
+        <Note>
           A host is a value of <span className="font-mono">{HOST_KEY}</span>. CPU is{' '}
           <span className="font-mono">1 − avg(system.cpu.utilization)</span> over the{' '}
           <span className="font-mono">idle</span> state, averaged across cores, so it is the busy share of one core on
@@ -276,7 +277,7 @@ export function SystemPage() {
           <span className="font-mono">system.memory.utilization</span>, and disk the fullest mounted filesystem. A
           column reads <span className="font-mono">not reported</span> when the scraper for it is off. Amber from{' '}
           {HOT_CPU} % CPU and {FULL_DISK} % disk.
-        </p>
+        </Note>
       </Card>
     </>
   )
