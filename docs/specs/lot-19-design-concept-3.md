@@ -116,3 +116,35 @@ Workstreams (one PR each, stacked shallow)
 Verify (exit)
   cd web && pnpm typecheck && pnpm build && pnpm test; each page looked at
   in light and dark at 1440 and 390 against its board.
+
+19f: finish (board items the API already serves)
+  The page PRs of 19d left out every board item they did not have data
+  for. Many of them have data: the endpoint exists, only the page did
+  not use it. 19f adds those, and nothing that needs a new endpoint.
+  Shared: `SortTh` (components/ui/misc.tsx) and `sorted`/`toggled`
+  (lib/sorting.ts) give every in-memory table sortable headers.
+
+  F1  Shared frames: Histogram, TablePanel, SeriesPanel, MetricChart,
+      DailyBars, ChartFrame, PiePanel, Filters, QueryBar use the panel
+      frame (rounded-md, 40 px head, kind chip). The traces "Spans over
+      time" panel gets a value axis, time ticks and an Ok/Error legend.
+  F2  Services: sortable headers on the services list (kept in step with
+      the sort select); service detail tabs Overview, Traces, Logs,
+      Dependencies on a `tab` search param (the URL without it shows
+      Overview as today); service map: clicking a node opens a side panel
+      with the service figures, callers and callees, and Open service;
+      release detail: error rate and p95 of the service around the
+      release when the series can be asked for that window.
+  F3  Alerts, incidents, issues: sortable headers; the Notifies column of
+      the alert list from the rule channels; the services row of an
+      incident.
+  F4  Infrastructure, settings, dashboards: Kubernetes tabs Nodes,
+      Workloads, Pods on the cluster view; Members Email column; Teams
+      On call now column from the schedules; sortable headers on the
+      settings and dashboards tables.
+  F5  Phone: every list with filters puts them behind a Filters button
+      at <= 760 px, like Traces and Logs.
+
+  Acceptance
+    @spec-l19-10 every in-memory table sorts by its headers, aria-sort set
+    @spec-l19-11 F1 to F5 on the pages listed, URLs unchanged
