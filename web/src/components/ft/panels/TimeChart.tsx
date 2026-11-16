@@ -197,7 +197,7 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
     <Filled className={cn('gap-2', legend === 'right' && 'md:flex-row')}>
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[44px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] gap-x-1.5 gap-y-1">
         <div className="flex flex-col justify-between text-right font-mono text-[10px] leading-3 text-faint-foreground" aria-hidden>
-          {tick.map((value, index) => <span key={index}>{axisValue(value)}</span>)}
+          {tick.map((value, index) => <span key={index}>{axisValue(value, options.unit)}</span>)}
         </div>
         <div
           ref={plot}

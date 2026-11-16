@@ -62,7 +62,7 @@ function PanelCardView({ panel, range, sent, source, markers, onZoom }: {
 
   return (
     <section aria-label={panel.title || 'Untitled panel'} aria-busy={fetching || undefined} tabIndex={SCROLLS.has(panel.kind) ? 0 : undefined} data-panel={panel.kind} className="flex h-full min-h-0 min-w-0 flex-col rounded-lg border bg-card text-card-foreground focus-visible:outline-2 focus-visible:outline-ring">
-      <header className="flex items-center gap-1.5 border-b border-border-subtle px-3 py-2">
+      <header className="flex min-h-10 items-center gap-1.5 border-b border-border-subtle px-3 py-1">
         <h2 className="m-0 min-w-0 flex-1 truncate text-sub">{panel.title || 'Untitled panel'}</h2>
         {fetching && result ? <Loader2 className="size-3.5 animate-spin text-faint-foreground" aria-label="Refreshing" /> : null}
         {panel.description ? (

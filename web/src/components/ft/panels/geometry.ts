@@ -281,8 +281,49 @@ export function selectRange(a: number, b: number, frame: Frame): { fromNs: numbe
   return { fromNs: Math.round(frame.t0 + lo * span), toNs: Math.round(frame.t0 + hi * span) }
 }
 
+const TIME_UNITS: Record<string, number> = { ns: 1, us: 1e3, µs: 1e3, ms: 1e6, s: 1e9 }
+const BYTE_UNITS = ['bytes', 'by', 'b']
+
+export const isScaledUnit = (unit?: string | null): boolean => {
+  const key = (unit ?? '').trim().toLowerCase()
+  return key in TIME_UNITS || BYTE_UNITS.includes(key)
+}
+
+const significant = (value: number): string => {
+  const abs = Math.abs(value)
+  const digits = abs >= 100 ? 0 : abs >= 10 ? 1 : 2
+  return Number(value.toFixed(digits)).toLocaleString('en-US', { maximumFractionDigits: digits })
+}
+
+function scaled(value: number, unit: string): string | null {
+  const key = unit.trim().toLowerCase()
+  if (key in TIME_UNITS) {
+    const ns = value * TIME_UNITS[key]
+    const abs = Math.abs(ns)
+    if (abs < 1e3) return `${significant(ns)} ns`
+    if (abs < 1e6) return `${significant(ns / 1e3)} µs`
+    if (abs < 1e9) return `${significant(ns / 1e6)} ms`
+    if (abs < 60e9) return `${significant(ns / 1e9)} s`
+    if (abs < 3600e9) return `${significant(ns / 60e9)} min`
+    return `${significant(ns / 3600e9)} h`
+  }
+  if (BYTE_UNITS.includes(key)) {
+    const names = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']
+    let at = 0
+    let size = value
+    while (Math.abs(size) >= 1024 && at < names.length - 1) {
+      size /= 1024
+      at += 1
+    }
+    return `${significant(size)} ${names[at]}`
+  }
+  return null
+}
+
 export function formatValue(value: number, unit?: string | null, decimals?: number | null): string {
   if (!Number.isFinite(value)) return '—'
+  const human = unit ? scaled(value, unit) : null
+  if (human !== null) return human
   const abs = Math.abs(value)
   const options: Intl.NumberFormatOptions =
     decimals === null || decimals === undefined
@@ -293,8 +334,11 @@ export function formatValue(value: number, unit?: string | null, decimals?: numb
   return unit === '%' ? `${text}%` : `${text} ${unit}`
 }
 
-export const axisValue = (value: number): string =>
-  Math.abs(value) >= 10_000 ? value.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 }) : value.toLocaleString('en-US', { maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2 })
+export const axisValue = (value: number, unit?: string | null): string => {
+  const human = unit ? scaled(value, unit) : null
+  if (human !== null) return human
+  return Math.abs(value) >= 10_000 ? value.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 }) : value.toLocaleString('en-US', { maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2 })
+}
 
 const pad = (n: number) => String(n).padStart(2, '0')
 

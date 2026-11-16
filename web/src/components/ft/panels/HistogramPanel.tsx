@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Filled, PanelEmpty } from './Empty'
-import { axisValue, formatValue, histogramBars, maxOf, minOf, type TooltipRow } from './geometry'
+import { axisValue, formatValue, isScaledUnit, histogramBars, maxOf, minOf, type TooltipRow } from './geometry'
 import { isEmpty } from './result'
 import { SeriesTooltip, useHoverPin } from './Tooltip'
 import type { Of, PanelProps } from './types'
@@ -45,9 +45,9 @@ export function HistogramPanel({ panel, result }: PanelProps<Of<'buckets'>>) {
         </div>
         <span />
         <div className="flex justify-between font-mono text-[10px] text-faint-foreground" aria-hidden>
-          <span>{axisValue(lo)}</span>
-          <span>{options.unit ?? ''}</span>
-          <span>{axisValue(hi)}</span>
+          <span>{axisValue(lo, options.unit)}</span>
+          <span>{isScaledUnit(options.unit) ? '' : (options.unit ?? '')}</span>
+          <span>{axisValue(hi, options.unit)}</span>
         </div>
       </div>
     </Filled>
