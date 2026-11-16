@@ -209,7 +209,7 @@ describe('ranges and formatting', () => {
   })
 
   it('formats values with a unit and decimals', () => {
-    assert.equal(g.formatValue(1234.567, 'ms'), '1,235 ms')
+    assert.equal(g.formatValue(1234.567, 'ms'), '1.23 s')
     assert.equal(g.formatValue(12.3456, '%', 1), '12.3%')
     assert.equal(g.formatValue(0.123456, ''), '0.1235')
     assert.equal(g.formatValue(3, null, 2), '3.00')
@@ -330,5 +330,33 @@ describe('large inputs and review fixes', () => {
     assert.equal(r.droppedQueries([rows, rows, series]), 2)
     assert.equal(r.droppedQueries([series, rows]), 1)
     assert.equal(r.droppedQueries([]), 0)
+  })
+})
+
+describe('unit formatting', () => {
+  it('writes durations in the unit that reads best', () => {
+    assert.equal(g.formatValue(250_014_939, 'ns'), '250 ms')
+    assert.equal(g.formatValue(850, 'ns'), '850 ns')
+    assert.equal(g.formatValue(1_500_000_000, 'ns'), '1.5 s')
+    assert.equal(g.formatValue(90_000_000_000, 'ns'), '1.5 min')
+    assert.equal(g.formatValue(12, 'ms'), '12 ms')
+  })
+
+  it('writes sizes in binary units', () => {
+    assert.equal(g.formatValue(683 * 1024 * 1024, 'bytes'), '683 MiB')
+    assert.equal(g.formatValue(512, 'bytes'), '512 B')
+  })
+
+  it('leaves other units to the number format', () => {
+    assert.equal(g.formatValue(1234.5, 'EUR'), '1,235 EUR')
+    assert.equal(g.formatValue(12.5, '%'), '12.5%')
+    assert.equal(g.formatValue(Number.NaN, 'ns'), '—')
+  })
+
+  it('shortens axis labels with the unit', () => {
+    assert.equal(g.axisValue(332_500_000, 'ns'), '333 ms')
+    assert.equal(g.axisValue(20_000), '20K')
+    assert.equal(g.isScaledUnit('ns'), true)
+    assert.equal(g.isScaledUnit('EUR'), false)
   })
 })

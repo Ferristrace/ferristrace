@@ -47,9 +47,9 @@ export function HeatmapPanel({ panel, result }: PanelProps<Of<'heat'>>) {
     <Filled className="gap-1">
       <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[44px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] gap-x-1.5 gap-y-1">
         <div className="flex flex-col justify-between text-right font-mono text-[10px] leading-3 text-faint-foreground" aria-hidden>
-          <span>{axisValue(hi)}</span>
-          <span>{axisValue((hi + lo) / 2)}</span>
-          <span>{axisValue(lo)}</span>
+          <span>{axisValue(hi, options.unit)}</span>
+          <span>{axisValue((hi + lo) / 2, options.unit)}</span>
+          <span>{axisValue(lo, options.unit)}</span>
         </div>
         <div role="group" tabIndex={0} aria-label={`Heatmap of ${panel.title || 'a panel'}, ${columns} columns by ${bands} bands, peak ${peak}. Arrow keys move between cells.`} className="relative min-h-[96px] border-b border-l focus-visible:outline-2 focus-visible:outline-ring" onPointerMove={move} onPointerLeave={leave} onKeyDown={onKeyDown} onBlur={(event) => { if (event.target === event.currentTarget) leave() }}>
           <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" aria-hidden className="absolute inset-0 block size-full">
