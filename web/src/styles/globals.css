@@ -1,73 +1,75 @@
 @import "tailwindcss";
-@import "@fontsource-variable/source-sans-3";
+@import "@fontsource-variable/inter";
 @import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root, .light {
-  --radius: 6px;
-  --background:#ffffff; --bg-sidebar:#fafafa; --card:#ffffff; --popover:#ffffff; --muted:#f4f4f5; --row-hover:#f6f6f7;
-  --foreground:#09090b; --muted-foreground:#52525b; --faint-foreground:#71717a;
+  --radius:3px;
+  --background:#f4f5f7; --bg-sidebar:#f4f5f7; --card:#ffffff; --popover:#ffffff; --muted:#eceef2; --row-hover:#f0f1f4;
+  --foreground:#1a1c21; --muted-foreground:#4d525d; --faint-foreground:#636875;
   --card-foreground:var(--foreground); --popover-foreground:var(--foreground);
   --secondary:var(--muted); --secondary-foreground:var(--foreground);
   --accent:var(--muted); --accent-foreground:var(--foreground);
-  --border:#e4e4e7; --border-subtle:#efeff1; --input:#d4d4d8;
-  --primary:#4f46e5; --primary-hover:#4338ca; --primary-foreground:#ffffff;
+  --border:#e2e4ea; --border-subtle:#eceef2; --input:#cdd1da;
+  --primary:#3556d4; --primary-hover:#2b47b8; --primary-foreground:#ffffff;
   /* The fill a data mark wears. Its own token rather than --primary, because a chart must not
      repaint when somebody picks a different accent in Preferences, and because the accent step
      that suits a button sits outside the lightness band a mark needs on a dark surface. Both
      values are steps of the one hue, checked against --card in their own mode. */
-  --series:#4f46e5;
-  --accent-subtle:#eef2ff; --accent-text:#4338ca; --ring:#4f46e5;
-  --destructive:#dc2626; --destructive-hover:#b91c1c; --destructive-foreground:#ffffff;
-  --destructive-text:#b91c1c; --destructive-subtle:#fef2f2; --destructive-border:#fecaca;
-  --warning-text:#92400e; --warning-subtle:#fffbeb; --warning-border:#fcd34d;
-  --success-text:#15803d; --success-subtle:#f0fdf4; --success-border:#bbf7d0;
+  --series:#3556d4;
+  --accent-subtle:#e9eefc; --accent-text:#2f4fd0; --ring:#3556d4;
+  --destructive:#c0233f; --destructive-hover:#a51d36; --destructive-foreground:#ffffff;
+  --destructive-text:#c0233f; --destructive-subtle:#fcecef; --destructive-border:#efb7c2;
+  --warning-text:#8a5a00; --warning-subtle:#fff6e0; --warning-border:#ecc977;
+  --success-text:#0d7a6a; --success-subtle:#e6f6f3; --success-border:#a9ddd4;
   --sev-trace-fg:#52525b; --sev-trace-bg:#f4f4f5; --sev-trace-bd:#d4d4d8;
   --sev-debug-fg:#0e7490; --sev-debug-bg:#ecfeff; --sev-debug-bd:#a5f3fc;
   --sev-info-fg:#1d4ed8;  --sev-info-bg:#eff6ff;  --sev-info-bd:#bfdbfe;
   --sev-warn-fg:#92400e;  --sev-warn-bg:#fffbeb;  --sev-warn-bd:#fcd34d;
   --sev-error-fg:#b91c1c; --sev-error-bg:#fef2f2; --sev-error-bd:#fecaca;
   --sev-fatal-fg:#ffffff; --sev-fatal-bg:#9f1239; --sev-fatal-bd:#9f1239;
-  --svc-1:#3d6fe0; --svc-2:#c8651a; --svc-3:#16927a; --svc-4:#b8458f;
+  --svc-1:#3556d4; --svc-2:#b36a0b; --svc-3:#0d8a78; --svc-4:#c23a85;
   --svc-5:#7c5ce6; --svc-6:#9a7a12; --svc-7:#5f7f2c; --svc-8:#6b7689;
-  --status-ok:#16a34a; --status-deg:#d97706; --status-out:#dc2626; --status-none:#e4e4e7;
-  --chart-line:#4f46e5; --chart-grid:#ececef; --chart-fill:rgba(79,70,229,.08);
-  --chart-axis:var(--muted-foreground); --chart-p50:var(--chart-line); --chart-p95:var(--svc-3); --chart-p99:var(--svc-2);
+  --status-ok:#0d8a78; --status-deg:#b36a0b; --status-out:#c0233f; --status-none:#e2e4ea;
+  --chart-line:#3556d4; --chart-grid:#eceef2; --chart-fill:rgba(53,86,212,.08);
+  --chart-axis:#3b3f48; --chart-p50:var(--chart-line); --chart-p95:var(--svc-3); --chart-p99:var(--svc-2);
   --elevation-sm:0 1px 2px rgba(9,9,11,.06);
   --elevation-md:0 4px 12px -2px rgba(9,9,11,.10),0 2px 4px -2px rgba(9,9,11,.06);
   --elevation-lg:0 16px 40px -8px rgba(9,9,11,.20),0 4px 8px -4px rgba(9,9,11,.08);
   --overlay:rgba(9,9,11,.45);
+  --panel-head:#f0f1f4; --line-strong:#cdd1da;
   color-scheme: light;
   color: var(--foreground);
 }
 
 .dark {
-  --background:#0c0c0e; --bg-sidebar:#09090b; --card:#111114; --popover:#151518; --muted:#1c1c20; --row-hover:#141417;
-  --foreground:#fafafa; --muted-foreground:#a1a1aa; --faint-foreground:#8b8b94;
-  --border:#26262b; --border-subtle:#1b1b1f; --input:#3a3a41;
-  --primary:#8b93ff; --primary-hover:#a5abff; --primary-foreground:#0a0a23;
-  --series:#7d85f8;
-  --accent-subtle:#1b1c36; --accent-text:#a5b4fc; --ring:#8b93ff;
-  --destructive:#dc2626; --destructive-hover:#ef4444; --destructive-foreground:#ffffff;
-  --destructive-text:#fca5a5; --destructive-subtle:#2a1215; --destructive-border:#5c1d22;
-  --warning-text:#fcd34d; --warning-subtle:#271d07; --warning-border:#6b4a0f;
-  --success-text:#86efac; --success-subtle:#0f2417; --success-border:#1f4d2e;
+  --background:#0b0c0e; --bg-sidebar:#0b0c0e; --card:#121317; --popover:#1b1d24; --muted:#1a1c22; --row-hover:#16181d;
+  --foreground:#e6e7ea; --muted-foreground:#a6a9b1; --faint-foreground:#848893;
+  --border:#1f2128; --border-subtle:#191b20; --input:#2b2e38;
+  --primary:#4e74f8; --primary-hover:#6687fa; --primary-foreground:#ffffff;
+  --series:#7aa2ff;
+  --accent-subtle:#18203d; --accent-text:#6f8cff; --ring:#6f8cff;
+  --destructive:#e5485f; --destructive-hover:#ff6b81; --destructive-foreground:#ffffff;
+  --destructive-text:#ff6b81; --destructive-subtle:#2a1519; --destructive-border:#6b2a35;
+  --warning-text:#ffcd56; --warning-subtle:#262010; --warning-border:#6b5620;
+  --success-text:#27c9b0; --success-subtle:#0f2723; --success-border:#1d5a50;
   --sev-trace-fg:#a1a1aa; --sev-trace-bg:#1f1f23; --sev-trace-bd:#3a3a41;
   --sev-debug-fg:#67e8f9; --sev-debug-bg:#0b2429; --sev-debug-bd:#155e6b;
   --sev-info-fg:#93c5fd;  --sev-info-bg:#0f1d33;  --sev-info-bd:#1e3a8a;
   --sev-warn-fg:#fcd34d;  --sev-warn-bg:#271d07;  --sev-warn-bd:#6b4a0f;
   --sev-error-fg:#fca5a5; --sev-error-bg:#2a1215; --sev-error-bd:#7f1d1d;
   --sev-fatal-fg:#fff1f2; --sev-fatal-bg:#be123c; --sev-fatal-bd:#be123c;
-  --svc-1:#5b8cf5; --svc-2:#e8893c; --svc-3:#2fb394; --svc-4:#d468ac;
+  --svc-1:#7aa2ff; --svc-2:#f5a742; --svc-3:#27c9b0; --svc-4:#f06ea9;
   --svc-5:#9a80f2; --svc-6:#c9a43a; --svc-7:#86a84a; --svc-8:#8e98aa;
-  --status-ok:#22c55e; --status-deg:#f59e0b; --status-out:#ef4444; --status-none:#26262b;
-  --chart-line:#8b93ff; --chart-grid:#222227; --chart-fill:rgba(139,147,255,.10);
-  --chart-axis:var(--muted-foreground); --chart-p50:var(--chart-line); --chart-p95:var(--svc-3); --chart-p99:var(--svc-2);
+  --status-ok:#27c9b0; --status-deg:#f5a742; --status-out:#ff6b81; --status-none:#2b2e38;
+  --chart-line:#7aa2ff; --chart-grid:#1c1e25; --chart-fill:rgba(122,162,255,.10);
+  --chart-axis:#c3c6cd; --chart-p50:var(--chart-line); --chart-p95:var(--svc-3); --chart-p99:var(--svc-2);
   --elevation-sm:0 1px 2px rgba(0,0,0,.4);
   --elevation-md:0 4px 12px -2px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.04);
   --elevation-lg:0 16px 40px -8px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.05);
   --overlay:rgba(0,0,0,.6);
+  --panel-head:#16181d; --line-strong:#2b2e38;
   color-scheme: dark;
 }
 
@@ -82,15 +84,15 @@
 .dark .accent-slate,  .dark.accent-slate  { --primary:#cbd5e1; --primary-hover:#e2e8f0; --primary-foreground:#0f172a; --ring:#cbd5e1; --accent-text:#cbd5e1; --accent-subtle:#1e2532; }
 
 @theme inline {
-  --font-sans: "Source Sans 3 Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px; --radius-xl: 12px;
+  --radius-sm: 3px; --radius-md: 3px; --radius-lg: 6px; --radius-xl: 8px;
 
-  --text-title: 20px;   --text-title--line-height: 28px;   --text-title--font-weight: 700;
-  --text-heading: 16px; --text-heading--line-height: 24px; --text-heading--font-weight: 700;
-  --text-sub: 14px;     --text-sub--line-height: 20px;     --text-sub--font-weight: 700;
-  --text-body: 14px;    --text-body--line-height: 20px;
+  --text-title: 18px;   --text-title--line-height: 24px;   --text-title--font-weight: 600;
+  --text-heading: 15px; --text-heading--line-height: 22px; --text-heading--font-weight: 600;
+  --text-sub: 13px;     --text-sub--line-height: 20px;     --text-sub--font-weight: 600;
+  --text-body: 13px;    --text-body--line-height: 20px;
   --text-control: 13px; --text-control--line-height: 18px;
   --text-caption: 12px; --text-caption--line-height: 16px;
   --text-micro: 11px;   --text-micro--line-height: 16px;
@@ -144,6 +146,7 @@
   --color-status-out: var(--status-out); --color-status-none: var(--status-none);
   --color-chart-line: var(--chart-line); --color-chart-grid: var(--chart-grid); --color-chart-fill: var(--chart-fill); --color-chart-axis: var(--chart-axis);
   --color-overlay: var(--overlay);
+  --color-panel-head: var(--panel-head); --color-line-strong: var(--line-strong);
 
   --shadow-sm: var(--elevation-sm);
   --shadow-md: var(--elevation-md);
@@ -158,10 +161,10 @@
   html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   html, body { overflow-x: clip; }
   @media (pointer: coarse) { input, select, textarea { font-size: 16px; } }
-  body { -webkit-tap-highlight-color: transparent; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 20px; }
-  h1 { font-size: 20px; line-height: 28px; font-weight: 700; letter-spacing: -0.005em; }
-  h2 { font-size: 16px; line-height: 24px; font-weight: 700; }
-  h3 { font-size: 14px; line-height: 20px; font-weight: 700; }
+  body { -webkit-tap-highlight-color: transparent; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 13px; line-height: 20px; font-feature-settings: 'cv11', 'ss01'; }
+  h1 { font-size: 18px; line-height: 24px; font-weight: 600; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; line-height: 22px; font-weight: 600; }
+  h3 { font-size: 13px; line-height: 20px; font-weight: 600; }
   a { color: var(--accent-text); }
   code, kbd, samp, pre { font-family: var(--font-mono); }
   :focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
