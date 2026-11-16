@@ -7,7 +7,8 @@ import { Kbd } from '@/components/ui/misc'
 import { OrganisationSwitcher } from './OrganisationSwitcher'
 import { PagesButton } from './Pages'
 import { useProjects } from '@/data/projects'
-import { Link } from '@/lib/router'
+import { Link, useLocation } from '@/lib/router'
+import { currentTab, sectionOf } from './nav'
 import { useScope } from '@/lib/scope'
 import { WINDOWS, useWindow } from '@/lib/window'
 import { cn } from '@/lib/utils'
@@ -60,10 +61,12 @@ export function Topbar({ onPalette, mock, timed }: { onPalette: () => void; mock
   const projects = useProjects()
   const { project, chooseProject } = useScope()
   const named = projects.find((p) => p.id === project)?.name ?? 'All projects'
+  const { pathname } = useLocation()
+  const section = sectionOf(pathname)
+  const here = pathname.startsWith('/settings') ? 'Settings' : pathname === '/notifications' ? 'Notifications' : section ? (currentTab(section.tabs, pathname)?.label ?? section.label) : null
   return (
-    <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-1.5 border-b bg-background/95 pl-[max(16px,env(safe-area-inset-left))] pr-[max(12px,env(safe-area-inset-right))] backdrop-blur md:gap-2 md:px-4">
+    <header className="sticky top-0 z-20 flex h-[51px] shrink-0 items-center gap-1.5 border-b bg-background/95 pl-[max(16px,env(safe-area-inset-left))] pr-[max(12px,env(safe-area-inset-right))] backdrop-blur md:gap-2 md:px-4">
       <Link to="/" className="text-foreground md:hidden" aria-label="FerrisTrace home"><Logo className="size-7" /></Link>
-      <span className="hidden text-caption text-muted-foreground sm:inline">Organisation</span>
       <OrganisationSwitcher />
       <span className="hidden text-faint-foreground sm:inline" aria-hidden>/</span>
       <Popover>
@@ -78,12 +81,13 @@ export function Topbar({ onPalette, mock, timed }: { onPalette: () => void; mock
           ))}
         </PopoverContent>
       </Popover>
+      {here ? <><span className="hidden text-faint-foreground sm:inline" aria-hidden>/</span><span aria-current="page" className="hidden truncate px-1 text-control font-semibold sm:inline">{here}</span></> : null}
       {mock ? <MockData className="max-sm:hidden" /> : null}
       <span className="flex-1" />
       <Button variant="ghost" size="icon-sm" aria-label="Search" onClick={onPalette} className="size-9 lg:hidden"><Search /></Button>
       <PagesButton />
-      <button type="button" onClick={onPalette} aria-label="Search" className="hidden h-8 w-[260px] cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-2.5 text-control text-faint-foreground shadow-sm hover:bg-muted lg:flex">
-        <Search className="size-3.5" aria-hidden /><span className="flex-1 text-left">Search or paste an id</span><Kbd>/</Kbd><Kbd>⌘</Kbd><Kbd>K</Kbd>
+      <button type="button" onClick={onPalette} aria-label="Search" className="hidden h-[34px] w-[300px] cursor-pointer items-center gap-2 rounded-md border border-line-strong bg-card px-2.5 text-control text-faint-foreground hover:bg-muted lg:flex">
+        <Search className="size-3.5" aria-hidden /><span className="flex-1 text-left">Search services, traces, logs</span><Kbd>⌘K</Kbd>
       </button>
       {timed ? <WindowPicker /> : null}
       <RefreshButton />

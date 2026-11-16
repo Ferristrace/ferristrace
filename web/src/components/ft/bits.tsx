@@ -1,3 +1,4 @@
+import { SectionTabs } from '@/components/layout/SectionTabs'
 import { CircleCheck, CircleMinus, CircleX, TriangleAlert, Wrench } from 'lucide-react'
 import { Link } from '@/lib/router'
 import { svcIndex, type Sev } from '@/lib/otel'
@@ -74,13 +75,16 @@ export function Kpi({ label, value, sub, tone, to }: { label: string; value: str
   return to ? <Link to={to} className={cn(cls, 'text-inherit no-underline hover:bg-row-hover')}>{body}</Link> : <div className={cls}>{body}</div>
 }
 
-export function PageHeader({ title, meta, children }: { title: React.ReactNode; meta?: React.ReactNode; children?: React.ReactNode }) {
+export function PageHeader({ title, meta, children, tabs = true }: { title: React.ReactNode; meta?: React.ReactNode; children?: React.ReactNode; tabs?: boolean }) {
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <h1 className="text-title">{title}</h1>
-      {meta ? <span className="text-control text-muted-foreground">{meta}</span> : null}
-      <span className="flex-1" />
-      {children}
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="text-title">{title}</h1>
+        {meta ? <span className="text-control text-muted-foreground">{meta}</span> : null}
+        <span className="flex-1" />
+        {children}
+      </div>
+      {tabs ? <SectionTabs /> : null}
     </div>
   )
 }
