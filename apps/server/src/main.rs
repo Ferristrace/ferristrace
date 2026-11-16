@@ -19,8 +19,8 @@ use ferristrace_api::{
 };
 use ferristrace_application::{Adapters, Ferristrace, Ingestion};
 use ferristrace_clickhouse::{
-    ClickhouseIssues, ClickhouseLogReader, ClickhouseMetricReader, ClickhouseReader,
-    SpanStoreSettings, open_span_store,
+    ClickhouseIssues, ClickhouseLogReader, ClickhouseMetricReader, ClickhousePanelReader,
+    ClickhouseReader, SpanStoreSettings, open_span_store,
 };
 use ferristrace_domain::telemetry::{Allowance, StaticQuota};
 use ferristrace_domain::{
@@ -98,7 +98,9 @@ async fn main() -> anyhow::Result<()> {
         grouping,
         logs,
         metrics,
+        panels,
     } = spans_of(&config).await?;
+    let panels = panels.map(Arc::new);
     let held = Held {
         explore: reader.is_some(),
         issues: grouping.is_some(),
@@ -126,7 +128,7 @@ async fn main() -> anyhow::Result<()> {
         }
         None => None,
     };
-    let identity = control_routes(&config, state.as_ref(), held);
+    let identity = control_routes(&config, state.as_ref(), held, panels.as_ref());
     let (stop, stopped) = watch::channel(false);
     let mut watching = watch_alerts(state.as_ref(), held.explore, &stopped);
     watching.extend(watch_pages(state.as_ref(), &stopped));
@@ -338,6 +340,7 @@ struct Opened {
     grouping: Option<ClickhouseIssues>,
     logs: Option<ClickhouseLogReader>,
     metrics: Option<ClickhouseMetricReader>,
+    panels: Option<ClickhousePanelReader>,
 }
 
 async fn spans_of(config: &Config) -> anyhow::Result<Opened> {
@@ -353,6 +356,7 @@ async fn spans_of(config: &Config) -> anyhow::Result<Opened> {
             grouping: None,
             logs: None,
             metrics: None,
+            panels: None,
         });
     };
     let settings = SpanStoreSettings::from(spans);
@@ -375,6 +379,7 @@ async fn spans_of(config: &Config) -> anyhow::Result<Opened> {
         grouping: Some(store.issues),
         logs: Some(store.log_reader),
         metrics: Some(store.metric_reader),
+        panels: Some(store.panel_reader),
     })
 }
 

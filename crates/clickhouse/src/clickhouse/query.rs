@@ -45,7 +45,7 @@ pub(crate) enum Table {
 }
 
 impl Table {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Spans => "spans",
             Self::Logs => "logs",
@@ -53,7 +53,7 @@ impl Table {
         }
     }
 
-    fn time(self) -> &'static str {
+    pub(crate) fn time(self) -> &'static str {
         match self {
             Self::Spans => "start_time",
             Self::Logs | Self::Metrics => "time",
@@ -97,6 +97,65 @@ impl Compiled {
             compiled.expression = compiled.expr(expr);
         }
         compiled
+    }
+
+    pub(crate) fn on(table: Table) -> Self {
+        Self {
+            table,
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn scoped_in(
+        &mut self,
+        tenant: TenantId,
+        project: ProjectId,
+        name: Option<&str>,
+        window: Window,
+        filter: Option<&Expr>,
+    ) -> String {
+        let time = self.table.time();
+        self.params.push(Param::Id(tenant.as_uuid()));
+        self.params.push(Param::Id(project.as_uuid()));
+        let mut sql = String::from("tenant_id = ? AND project_id = ?");
+        if let Some(name) = name {
+            self.params.push(Param::Text(name.to_owned()));
+            sql.push_str(" AND name = ?");
+        }
+        self.params
+            .push(Param::Whole(nanos(window.from_unix_nanos())));
+        self.params
+            .push(Param::Whole(nanos(window.to_unix_nanos())));
+        sql.push_str(" AND ");
+        sql.push_str(time);
+        sql.push_str(" >= fromUnixTimestamp64Nano(?) AND ");
+        sql.push_str(time);
+        sql.push_str(" < fromUnixTimestamp64Nano(?)");
+        if let Some(expr) = filter {
+            let held = self.expr(expr);
+            sql.push_str(" AND (");
+            sql.push_str(&held);
+            sql.push(')');
+        }
+        sql
+    }
+
+    pub(crate) fn text_field(&mut self, field: &Field) -> String {
+        let column = Column::of(field, self.table);
+        self.text_of(&column)
+    }
+
+    pub(crate) fn number_field(&mut self, field: &Field) -> String {
+        let column = Column::of(field, self.table);
+        self.number_of(&column)
+    }
+
+    pub(crate) fn push(&mut self, param: Param) {
+        self.params.push(param);
+    }
+
+    pub(crate) fn into_params(self) -> Vec<Param> {
+        self.params
     }
 
     pub(crate) fn expression(&self) -> &str {

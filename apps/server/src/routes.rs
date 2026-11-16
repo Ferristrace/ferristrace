@@ -1,12 +1,16 @@
+use std::sync::Arc;
+
 use axum::Router;
 use ferristrace_api::{
     AppState, SignInMethods, agent_router, alert_router, audit_router, catalogue_router,
-    cluster_router, dashboard_router, explore_router, export_router, inbox_router, incident_router,
-    infra_router, issue_router, key_router, llm_router, log_router, mark_routes, mcp_router,
-    me_router, methods_router, metric_router, oncall_router, org_router, postmortem_router,
-    release_router, roster_router, site_router, status_router, team_router, usage_router,
-    view_router, workspace_router,
+    cluster_router, dashboard_query_router, dashboard_router, explore_router, export_router,
+    inbox_router, incident_router, infra_router, issue_router, key_router, llm_router, log_router,
+    mark_routes, mcp_router, me_router, methods_router, metric_router, oncall_router, org_router,
+    postmortem_router, release_router, roster_router, site_router, status_router, team_router,
+    usage_router, view_router, workspace_router,
 };
+
+use ferristrace_clickhouse::ClickhousePanelReader;
 
 use crate::adapters::Production;
 use crate::config::Config;
@@ -19,7 +23,12 @@ pub(crate) struct Held {
     pub(crate) issues: bool,
 }
 
-pub(crate) fn control_routes(config: &Config, state: Option<&State>, held: Held) -> Router {
+pub(crate) fn control_routes(
+    config: &Config,
+    state: Option<&State>,
+    held: Held,
+    panels: Option<&Arc<ClickhousePanelReader>>,
+) -> Router {
     mark_routes(
         identity_routes(config, state)
             .merge(explore_routes(state, held.explore))
@@ -38,6 +47,7 @@ pub(crate) fn control_routes(config: &Config, state: Option<&State>, held: Held)
             .merge(team_routes(state))
             .merge(view_routes(state))
             .merge(dashboard_routes(state))
+            .merge(dashboard_query_routes(state, panels))
             .merge(usage_routes(state))
             .merge(agent_routes(state))
             .merge(mcp_routes(state))
@@ -154,6 +164,16 @@ fn dashboard_routes(state: Option<&State>) -> Router {
     state.map_or_else(Router::new, |state| dashboard_router(state.clone()))
 }
 
+fn dashboard_query_routes(
+    state: Option<&State>,
+    panels: Option<&Arc<ClickhousePanelReader>>,
+) -> Router {
+    let (Some(state), Some(panels)) = (state, panels) else {
+        return Router::new();
+    };
+    dashboard_query_router(state.clone(), Arc::clone(panels))
+}
+
 fn team_routes(state: Option<&State>) -> Router {
     state.map_or_else(Router::new, |state| team_router(state.clone()))
 }
@@ -198,6 +218,7 @@ mod tests {
                 explore: false,
                 issues: false,
             },
+            None,
         )
         .oneshot(request)
         .await
