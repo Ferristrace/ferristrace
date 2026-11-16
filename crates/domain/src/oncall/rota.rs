@@ -1,10 +1,10 @@
 use super::entities::{
-    OnCallNow, OnCallSchedule, OnCallStatus, Override, Rostered, Schedule, ScheduleDraft,
-    SchedulePatch,
+    OnCallNow, OnCallSchedule, OnCallStatus, Override, Rostered, RosteredStint, Schedule,
+    ScheduleDraft, SchedulePatch,
 };
 use super::errors::{BadSchedule, OncallError};
 use super::ports::Schedules;
-use super::rotation::{on_call, shift};
+use super::rotation::{on_call, shift, stints};
 use super::value_objects::{OverrideId, ScheduleId};
 use crate::access::{ApiKeys, Reader, Readers};
 use crate::audit::{Action, Actor, AuditEntry, AuditTrail, Detail, Target, TargetKind};
@@ -16,6 +16,7 @@ use crate::secret::SessionToken;
 use crate::telemetry::TenantId;
 
 const MILLIS_PER_SECOND: u64 = 1_000;
+pub const MAX_STINT_SPAN_MS: u64 = 62 * 86_400 * MILLIS_PER_SECOND;
 
 #[derive(Debug)]
 pub struct Rota<S, G, K, Q, M, Sc, A> {
@@ -95,6 +96,30 @@ where
             person: Some(known(&roster, held.account)),
             until_ms: held.until_ms,
         })
+    }
+
+    pub async fn stints(
+        &self,
+        who: &Reader,
+        org: TenantId,
+        id: ScheduleId,
+        from_ms: u64,
+        to_ms: u64,
+    ) -> Result<Vec<RosteredStint>, OncallError> {
+        self.readers.grant(who, org).await?;
+        let schedule = self.held(org, id).await?;
+        let overrides = self.schedules.overrides(org, id).await?;
+        let roster = self.roster.of(org).await?;
+        let to_ms = to_ms.min(from_ms.saturating_add(MAX_STINT_SPAN_MS));
+        Ok(stints(&schedule, &overrides, from_ms, to_ms)
+            .into_iter()
+            .map(|stint| RosteredStint {
+                person: known(&roster, stint.account),
+                from_ms: stint.from_ms,
+                to_ms: stint.to_ms,
+                cover: stint.cover,
+            })
+            .collect())
     }
 
     pub async fn duties(

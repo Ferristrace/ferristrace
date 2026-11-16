@@ -90,6 +90,22 @@ pub struct Shift {
     pub until_ms: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stint {
+    pub account: AccountId,
+    pub from_ms: u64,
+    pub to_ms: u64,
+    pub cover: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RosteredStint {
+    pub person: Person,
+    pub from_ms: u64,
+    pub to_ms: u64,
+    pub cover: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rostered {
     pub schedule: Schedule,

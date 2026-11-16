@@ -6,6 +6,7 @@ import { reauthenticate } from '@/auth/oidc'
 import { AppShell } from '@/components/layout/AppShell'
 import { Ai } from '@/pages/Ai'
 import { Alerts } from '@/pages/Alerts'
+import { OnCallPage } from '@/pages/oncall/OnCallPage'
 import { Cost } from '@/pages/Cost'
 import { DashboardPage } from '@/pages/dashboards/Dashboard'
 import { Dashboards } from '@/pages/dashboards/Dashboards'
@@ -170,6 +171,7 @@ const routeTree = rootRoute.addChildren([
     inShell('/ai', Ai, real),
     inShell('/cost', Cost, real),
     inShell('/alerts', Alerts, real),
+    inShell('/oncall', OnCallPage, real),
     inShell('/incidents', Incidents, real),
     inShell('/incidents/insights', IncidentInsights, real),
     inShell('/incidents/$id', IncidentDetail, real),

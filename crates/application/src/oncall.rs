@@ -3,7 +3,8 @@ use core::future::Future;
 use ferristrace_domain::{
     AccountId, Clock, OnCallNow, OnCallSchedule, OnCallStatus, OncallError, Override, OverrideId,
     Page, PageDesk, PageId, PageScope, PageView, Paged, Pager, Paging, Reader, Readers, Rostered,
-    Rota, ScheduleDraft, ScheduleId, SchedulePatch, SessionToken, TeamId, TenantId, Whoami,
+    RosteredStint, Rota, ScheduleDraft, ScheduleId, SchedulePatch, SessionToken, TeamId, TenantId,
+    Whoami,
 };
 
 use crate::registry::OncallRepos;
@@ -64,6 +65,26 @@ where
             audit,
         )
         .now(who, org, id, self.clock.now())
+        .await
+    }
+
+    #[transactional(sessions, memberships, api_keys, teams, roster, schedules, audit, unavailable = OncallError::StoreUnreachable)]
+    pub async fn on_call_stints(
+        &self,
+        who: &Reader,
+        org: TenantId,
+        id: ScheduleId,
+        from_ms: u64,
+        to_ms: u64,
+    ) -> Result<Vec<RosteredStint>, OncallError> {
+        Rota::new(
+            Readers::new(Whoami::new(sessions, memberships), api_keys),
+            teams,
+            roster,
+            schedules,
+            audit,
+        )
+        .stints(who, org, id, from_ms, to_ms)
         .await
     }
 

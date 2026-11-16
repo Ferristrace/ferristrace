@@ -9,8 +9,8 @@ use ferristrace_application::registry::OncallRepos;
 use ferristrace_domain::{
     AccountId, AckRefused, BadSchedule, Day, Handoff, OnCallNow, OnCallSchedule, OnCallStatus,
     OncallError, Override, OverrideId, Page, PageId, PageScope, PageSource, PageView, Person,
-    Rostered, Rotation, RotationLength, ScheduleDraft, ScheduleId, ScheduleName, SchedulePatch,
-    TeamId, TenantId, TimeOfDay, Timezone, Weekday,
+    Rostered, RosteredStint, Rotation, RotationLength, ScheduleDraft, ScheduleId, ScheduleName,
+    SchedulePatch, TeamId, TenantId, TimeOfDay, Timezone, Weekday,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -33,6 +33,7 @@ where
             get(one::<S>).patch(update::<S>).delete(remove::<S>),
         )
         .route("/api/orgs/{org}/schedules/{id}/now", get(now::<S>))
+        .route("/api/orgs/{org}/schedules/{id}/shifts", get(shifts::<S>))
         .route(
             "/api/orgs/{org}/schedules/{id}/overrides",
             post(add_override::<S>),
@@ -368,6 +369,36 @@ pub enum Whose {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Between {
+    from_ms: u64,
+    to_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StintBody {
+    account: PersonBody,
+    from_ms: u64,
+    to_ms: u64,
+    cover: bool,
+}
+
+impl From<&RosteredStint> for StintBody {
+    fn from(stint: &RosteredStint) -> Self {
+        Self {
+            account: PersonBody::from(&stint.person),
+            from_ms: stint.from_ms,
+            to_ms: stint.to_ms,
+            cover: stint.cover,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct StintsBody {
+    shifts: Vec<StintBody>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Whether {
     #[serde(default)]
     email: Option<String>,
@@ -480,6 +511,31 @@ where
         .on_call_now(&who, TenantId::new(org), ScheduleId::new(id))
         .await?;
     Ok(Json(NowBody::from(&now)))
+}
+
+async fn shifts<S: Stack>(
+    State(state): State<AppState<S>>,
+    Path((org, id)): Path<(Uuid, Uuid)>,
+    Query(asked): Query<Between>,
+    headers: HeaderMap,
+) -> Result<Json<StintsBody>, OncallRefused>
+where
+    S::Repos: OncallRepos,
+{
+    let who = reading(&state, &headers).await?;
+    let found = state
+        .app
+        .on_call_stints(
+            &who,
+            TenantId::new(org),
+            ScheduleId::new(id),
+            asked.from_ms,
+            asked.to_ms,
+        )
+        .await?;
+    Ok(Json(StintsBody {
+        shifts: found.iter().map(StintBody::from).collect(),
+    }))
 }
 
 async fn whether<S: Stack>(
