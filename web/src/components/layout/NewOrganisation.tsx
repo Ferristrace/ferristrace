@@ -15,7 +15,7 @@ export function NewOrganisationForm({ onCancel, onCreated }: { onCancel?: () => 
     if (ready && !create.isPending) create.mutate(name, { onSuccess: () => onCreated?.() })
   }
   return (
-    <form className="flex flex-col gap-3" onSubmit={submit}>
+    <form className="flex flex-col gap-4" onSubmit={submit}>
       <Field label="Organisation name" htmlFor="no-name" hint="You become its owner. It starts with one project, default.">
         <Input id="no-name" value={name} autoFocus aria-invalid={problem ? true : undefined} onChange={(e) => setName(e.target.value)} />
       </Field>
@@ -23,7 +23,7 @@ export function NewOrganisationForm({ onCancel, onCreated }: { onCancel?: () => 
       {create.isError ? <span role="alert" className="text-caption text-destructive-text">{because(create.error, 'The organisation was not created.')}</span> : null}
       <DialogFooter>
         {onCancel ? <Button type="button" onClick={onCancel}>Cancel</Button> : null}
-        <Button type="submit" variant="primary" loading={create.isPending} disabled={!ready}>Create</Button>
+        <Button type="submit" variant="primary" className={onCancel ? undefined : 'w-full'} loading={create.isPending} disabled={!ready}>Create</Button>
       </DialogFooter>
     </form>
   )

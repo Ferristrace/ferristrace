@@ -7,7 +7,7 @@ import { AuthFrame } from './frame'
 export function SignInStalled() {
   return (
     <AuthFrame title="Sign-in did not finish" intro="FerrisKey sent you back without a session twice in a row, so FerrisTrace stopped redirecting.">
-      <Button type="button" className="h-10" onClick={() => void signIn(here())}>
+      <Button type="button" variant="primary" className="h-10 w-full" onClick={() => void signIn(here())}>
         Try again
       </Button>
     </AuthFrame>
@@ -27,7 +27,7 @@ export function SignInUnavailable() {
 export function SignedOut() {
   return (
     <AuthFrame title="You are signed out" intro="Your FerrisKey session has ended on this browser.">
-      <Button type="button" className="h-10" onClick={() => void signIn('/')}>
+      <Button type="button" variant="primary" className="h-10 w-full" onClick={() => void signIn('/')}>
         Sign in again
       </Button>
     </AuthFrame>

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input, NativeSelect } from '@/components/ui/input'
+import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
 import { Alert, Avatar, Table, Td, Th, Tr } from '@/components/ui/misc'
 import { because } from '@/auth/client'
@@ -16,6 +17,7 @@ import { useAccount, useOrganisations } from '@/auth/session'
 import { mayChange, mayHandOut, theLastOwner, useGrantRole, useInvite, useMembers, useRemoveMember, type Member, type Welcomed } from '@/data/members'
 import { initialsOf, nameOf } from '@/data/profile'
 import { stamp } from '@/lib/format'
+import { pagesOf } from '@/lib/paging'
 import { H, saved } from './parts'
 
 export function Members() {
@@ -28,9 +30,18 @@ export function Members() {
   const navigate = useNavigate()
   const [invite, setInvite] = useState(false)
   const [leaving, setLeaving] = useState(false)
+  const [query, setQuery] = useState('')
+  const [roleFilter, setRoleFilter] = useState('')
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(10)
   const mine = active?.role
   const roll = members ?? []
   const administered = roll.filter((m) => m.role !== 'member').length
+  const needle = query.trim().toLowerCase()
+  const matching = roll.filter((m) => (roleFilter === '' || m.role === roleFilter) && (needle === '' || `${nameOf(m)} ${m.email}`.toLowerCase().includes(needle)))
+  const current = Math.min(page, pagesOf(matching.length, size))
+  const visible = matching.slice((current - 1) * size, current * size)
+  const roles = [...new Set(roll.map((m) => m.role))]
 
   const change = (member: Member, role: Role) =>
     grant.mutate({ account: member.account, role }, { onSuccess: saved, onError: (error) => toast.error(because(error, 'The role was not changed')) })
@@ -54,10 +65,17 @@ export function Members() {
       <H title="Members" sub={members ? `${roll.length} ${roll.length === 1 ? 'member' : 'members'} · ${administered} can administer it` : 'Who belongs to the organisation.'}>
         {mine === 'owner' || mine === 'admin' ? <Button variant="primary" onClick={() => setInvite(true)}><Plus />Invite member</Button> : null}
       </H>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input aria-label="Search members" placeholder="Search by name or email" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1) }} className="w-[320px] max-md:w-full" />
+        <NativeSelect aria-label="Filter by role" value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1) }} className="w-[160px] max-md:flex-1">
+          <option value="">All roles</option>
+          {roles.map((role) => <option key={role} value={role}>{role}</option>)}
+        </NativeSelect>
+      </div>
       <Card className="overflow-x-auto">
         <Table aria-label="Members">
           <thead><tr><Th>Member</Th><Th className="w-[160px]">Role</Th><Th className="w-[190px]">Joined</Th><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
-          <tbody>{roll.map((m) => {
+          <tbody>{visible.map((m) => {
             const you = m.account === me?.account
             const last = theLastOwner(roll, m)
             const editable = mayChange(mine, m.role) && !last
@@ -77,8 +95,9 @@ export function Members() {
             )
           })}</tbody>
         </Table>
-        {roll.length === 0 ? <p className="m-0 px-4 py-3 text-control text-muted-foreground">{members ? 'Nobody belongs to this organisation.' : nothing}</p> : null}
+        {roll.length === 0 ? <p className="m-0 px-4 py-3 text-control text-muted-foreground">{members ? 'Nobody belongs to this organisation.' : nothing}</p> : matching.length === 0 ? <p className="m-0 px-4 py-3 text-control text-muted-foreground">Nobody matches this search.</p> : null}
       </Card>
+      {matching.length > 10 ? <Pager total={matching.length} page={current} size={size} onPage={setPage} onSize={(n) => { setSize(n); setPage(1) }} noun="members" /> : null}
       <p className="m-0 text-caption text-muted-foreground">Only an owner hands out the owner role or changes somebody who holds it, and an organisation keeps at least one owner — so the last one stays until it has handed the role on.</p>
       <InviteMember open={invite} onOpenChange={setInvite} mine={mine} />
       <Dialog open={leaving} onOpenChange={setLeaving}>
