@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { cn } from '@/lib/utils'
 import type { TooltipRow } from './geometry'
+import { SafeLink } from './SafeLink'
+
+export type ReleaseRow = { label: string; when: string; to: string }
 
 const SHOWN_ROWS = 12
+const RELEASES_SHOWN = 5
 
 const TYPED = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'])
 
@@ -38,13 +42,14 @@ export function useHoverPin<T>(resetKey?: unknown) {
   return { hover, setHover, leave, pinned, unpin, shown: pinned ?? hover }
 }
 
-export function SeriesTooltip({ header, rows, format, pinned, drillable, onOpen, style, className }: {
+export function SeriesTooltip({ header, rows, format, pinned, drillable, onOpen, releases = [], style, className }: {
   header: string
   rows: TooltipRow[]
   format: (row: TooltipRow) => string
   pinned: boolean
   drillable: boolean
   onOpen?: (row: TooltipRow) => void
+  releases?: ReleaseRow[]
   style?: CSSProperties
   className?: string
 }) {
@@ -75,6 +80,27 @@ export function SeriesTooltip({ header, rows, format, pinned, drillable, onOpen,
         )
       })}
       {hidden > 0 ? <span className="px-1 text-faint-foreground">and {hidden} more</span> : null}
+      {releases.length > 0 ? (
+        <span className="mt-0.5 flex flex-col gap-0.5 border-t border-dashed pt-1">
+          <span className="font-mono text-muted-foreground">{releases.length === 1 ? 'Release' : `${releases.length} releases nearby`}</span>
+          {releases.slice(0, RELEASES_SHOWN).map((release, index) => {
+            const body = (
+              <>
+                <span aria-hidden className="font-mono text-[9px]">▲</span>
+                <span className="truncate font-mono">{release.label}</span>
+                <span className="ml-auto pl-2 font-mono text-faint-foreground">{release.when}</span>
+              </>
+            )
+            const cls = 'flex items-center gap-1.5 rounded-sm px-1 py-px'
+            return pinned ? (
+              <SafeLink key={`${index}-${release.label}`} to={release.to} className={cn(cls, 'text-popover-foreground no-underline hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring')}>{body}</SafeLink>
+            ) : (
+              <span key={`${index}-${release.label}`} className={cls}>{body}</span>
+            )
+          })}
+          {releases.length > RELEASES_SHOWN ? <span className="px-1 text-faint-foreground">and {releases.length - RELEASES_SHOWN} more</span> : null}
+        </span>
+      ) : null}
       <span className="mt-0.5 border-t border-dashed pt-1 text-faint-foreground">
         {drillable ? 'Click to drilldown · ' : ''}
         {pinned ? 'Pinned, press P to unpin' : 'Press P to pin'}
