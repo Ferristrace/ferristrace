@@ -360,10 +360,33 @@ describe('new panels', () => {
   })
 
   it('options offered per kind', () => {
-    assert.deepEqual(kinds.optionSupport('text'), { unit: false, decimals: false, legend: false, stacked: false, content: true })
+    assert.deepEqual(kinds.optionSupport('text'), { unit: false, decimals: false, legend: false, stacked: false, content: true, centre: false })
     assert.equal(kinds.optionSupport('area').stacked, true)
     assert.equal(kinds.optionSupport('time_series').stacked, false)
     assert.equal(kinds.optionSupport('number').legend, false)
     assert.equal(kinds.optionSupport('pie').legend, true)
+  })
+})
+
+describe('the centre label of a pie', () => {
+  const pie = (content?: string): Panel => ({ ...kinds.newPanel('pie', 'p'), options: content === undefined ? {} : { content } })
+
+  it('is a pie option and no other kind keeps it', () => {
+    assert.equal(kinds.optionSupport('pie').centre, true)
+    assert.equal(kinds.optionSupport('bar').centre, false)
+    assert.deepEqual(kinds.pruneOptions('pie', { content: 'memory' }), { content: 'memory' })
+    assert.deepEqual(kinds.pruneOptions('bar', { content: 'memory' }), {})
+  })
+
+  it('does not become the markdown of a text panel, nor the other way round', () => {
+    assert.equal(kinds.changeKind(pie('memory'), 'text').options.content?.startsWith('## Notes'), true)
+    const text = kinds.changeKind(pie('memory'), 'text')
+    assert.equal(kinds.changeKind(text, 'pie').options.content, undefined)
+  })
+
+  it('is at most forty characters, counted as characters', () => {
+    assert.deepEqual(kinds.panelIssues(pie('x'.repeat(40))), [])
+    assert.equal(kinds.panelIssues(pie('x'.repeat(41))).some((issue) => issue.includes('centre label')), true)
+    assert.deepEqual(kinds.panelIssues(pie('é'.repeat(40))), [])
   })
 })

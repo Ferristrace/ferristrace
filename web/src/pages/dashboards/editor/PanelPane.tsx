@@ -32,7 +32,7 @@ export function PanelPane({ initial, fresh, range, sent, source, onApply, onCanc
   const preview = useMemo<PanelDoc>(() => ({ ...work, queries: previewIssues.length > 0 ? [] : settledQueries }), [work, settledQueries, previewIssues])
   const set = (change: Partial<PanelDoc>) => setWork((was) => ({ ...was, ...change }))
   const setOptions = (change: Partial<PanelDoc['options']>) => setWork((was) => ({ ...was, options: { ...was.options, ...change } }))
-  const noOptions = !support.unit && !support.legend && !support.stacked && !support.content
+  const noOptions = !support.unit && !support.legend && !support.stacked && !support.content && !support.centre
   const contentBytes = new TextEncoder().encode(work.options.content ?? '').length
 
   const switchKind = (kind: PanelKind) => {
@@ -125,6 +125,11 @@ export function PanelPane({ initial, fresh, range, sent, source, onApply, onCanc
         ) : null}
         {support.stacked ? <Switch label="Stack the series" checked={work.options.stacked === true} onCheckedChange={(stacked) => setOptions({ stacked })} /> : null}
         {!support.stacked && support.legend ? <p className="m-0 text-caption text-muted-foreground">Stacking is for Area and Bar charts.</p> : null}
+        {support.centre ? (
+          <Field label="Centre label" htmlFor="panel-centre" hint={`Written under the total in the middle of the chart, such as memory. Blank shows the total alone. ${points(work.options.content ?? '')} of ${LIMITS.centre} characters.`}>
+            <Input id="panel-centre" value={work.options.content ?? ''} onChange={(event) => setOptions({ content: event.target.value })} />
+          </Field>
+        ) : null}
         {support.content ? (
           <Field label="Content" htmlFor="panel-content" hint={`Markdown. The preview above updates as you type. ${contentBytes} of ${LIMITS.content} bytes.`}>
             <Textarea id="panel-content" rows={10} value={work.options.content ?? ''} onChange={(event) => setOptions({ content: event.target.value })} className="font-mono text-[12.5px]" />

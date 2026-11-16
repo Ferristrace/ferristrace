@@ -14,6 +14,7 @@ export const LIMITS = {
   unit: 32,
   decimals: 10,
   content: 20_000,
+  centre: 40,
   name: 120,
   tags: 10,
   tag: 32,
@@ -131,9 +132,10 @@ export const OPTION_KINDS = {
   legend: ['time_series', 'area', 'bar', 'pie', 'scatter'],
   stacked: ['area', 'bar'],
   content: ['text'],
+  centre: ['pie'],
 } as const satisfies Record<string, readonly PanelKind[]>
 
-export type OptionSupport = { unit: boolean; decimals: boolean; legend: boolean; stacked: boolean; content: boolean }
+export type OptionSupport = { unit: boolean; decimals: boolean; legend: boolean; stacked: boolean; content: boolean; centre: boolean }
 
 export const optionSupport = (kind: PanelKind): OptionSupport => ({
   unit: (OPTION_KINDS.unit as readonly PanelKind[]).includes(kind),
@@ -141,6 +143,7 @@ export const optionSupport = (kind: PanelKind): OptionSupport => ({
   legend: (OPTION_KINDS.legend as readonly PanelKind[]).includes(kind),
   stacked: (OPTION_KINDS.stacked as readonly PanelKind[]).includes(kind),
   content: (OPTION_KINDS.content as readonly PanelKind[]).includes(kind),
+  centre: (OPTION_KINDS.centre as readonly PanelKind[]).includes(kind),
 })
 
 const isEvent = (aggregation: Aggregation): aggregation is Extract<Aggregation, { function: EventFunction }> => 'function' in aggregation
@@ -286,7 +289,8 @@ export function panelIssues(panel: PanelDoc): string[] {
   const { unit, decimals, content } = panel.options
   if (unit && points(unit) > LIMITS.unit) issues.push(`A unit is at most ${LIMITS.unit} characters.`)
   if (decimals !== null && decimals !== undefined && (!Number.isInteger(decimals) || decimals < 0 || decimals > LIMITS.decimals)) issues.push(`Decimals are 0 to ${LIMITS.decimals}.`)
-  if (content && new TextEncoder().encode(content).length > LIMITS.content) issues.push(`A text panel holds at most ${LIMITS.content} bytes.`)
+  if (panel.kind === 'text' && content && new TextEncoder().encode(content).length > LIMITS.content) issues.push(`A text panel holds at most ${LIMITS.content} bytes.`)
+  if (panel.kind === 'pie' && content && points(content) > LIMITS.centre) issues.push(`A centre label is at most ${LIMITS.centre} characters.`)
   return issues
 }
 
@@ -310,12 +314,13 @@ export function pruneOptions(kind: PanelKind, options: PanelDoc['options']): Pan
   if (support.decimals && options.decimals !== undefined) out.decimals = options.decimals
   if (support.legend && options.legend !== undefined) out.legend = options.legend
   if (support.stacked && options.stacked !== undefined) out.stacked = options.stacked
-  if (support.content && options.content !== undefined) out.content = options.content
+  if ((support.content || support.centre) && options.content !== undefined) out.content = options.content
   return out
 }
 
 export function changeKind(panel: PanelDoc, kind: PanelKind): PanelDoc {
-  const options = pruneOptions(kind, panel.options)
+  const carried = (panel.kind === 'pie') !== (kind === 'pie') ? { ...panel.options, content: undefined } : panel.options
+  const options = pruneOptions(kind, carried)
   if (!runsQueries(kind)) return { ...panel, kind, queries: [], options: { ...options, content: options.content ?? TEXT_STARTER } }
   const queries = panel.queries.length > 0 ? panel.queries.map((query) => adaptQuery(kind, query)) : [defaultQuery(kind)]
   return { ...panel, kind, queries, options }
