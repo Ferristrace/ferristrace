@@ -1,5 +1,4 @@
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
-import { cn } from '@/lib/utils'
 import type { Marker } from './charts'
 import { clamp01, clampInto, fractionOf, headerOf, nearestPoint, placeTooltip, stepIndex, timeAtIndex, timeText, zoomRange } from './chartMath'
 import { MarkerLayer } from './MarkerLayer'
@@ -15,22 +14,35 @@ export type Dot = { frac: number; colour: string }
 
 const sameSpot = (a: Spot | null, b: Spot): Spot => (a && a.at === b.at && a.by === b.by ? a : b)
 
-const GUTTERS = {
-  narrow: { grid: 'grid-cols-[40px_minmax(0,1fr)]', axis: 'pl-[46px]' },
-  wide: { grid: 'grid-cols-[48px_minmax(0,1fr)]', axis: 'pl-[54px]' },
+const GLYPH = 6.7
+const GAP = 6
+
+export const gutterOf = (labels: string[]): number => Math.ceil(Math.max(0, ...labels.map((label) => label.length)) * GLYPH) + 4
+
+export function YAxis({ labels, height }: { labels: string[]; height?: number }) {
+  const last = Math.max(1, labels.length - 1)
+  return (
+    <div className="relative whitespace-nowrap font-mono text-micro tabular-nums text-chart-axis" style={height === undefined ? undefined : { height }} aria-hidden>
+      {labels.map((label, index) => <span key={index} className="absolute right-0 -translate-y-1/2" style={{ top: `${(index / last) * 100}%` }}>{label}</span>)}
+    </div>
+  )
 }
 
-export function ChartFrame({ title, legend, headline, count, times, xLabels, markers, aria, height, gutter, yLabels, drawn, rows, dots, format, onZoom }: {
+export type FrameStatus = { kind: 'loading' | 'empty' | 'error'; text: string }
+
+export function ChartFrame({ title, legend, headline, windowLabel, live, status, count, times, xLabels, markers, aria, height, yLabels, drawn, rows, dots, format, onZoom }: {
   title: string
   legend?: string
-  headline: (at: number | null) => string
+  headline?: (at: number | null) => string
+  windowLabel?: string
+  live?: (at: number | null) => ReactNode
+  status?: FrameStatus
   count: number
   times?: number[]
   xLabels: string[]
   markers: Marker[]
   aria: string
   height: number
-  gutter: keyof typeof GUTTERS
   yLabels: string[]
   drawn: ReactNode
   rows: (at: number) => TooltipRow[]
@@ -129,19 +141,23 @@ export function ChartFrame({ title, legend, headline, count, times, xLabels, mar
     setHover((current) => sameSpot(current, { at: next, by: 'key' }))
   }
 
+  const gutter = gutterOf(yLabels)
+
   const spoken = shown?.by === 'key' && at !== null ? `${header ? `${header}: ` : ''}${tipRows.map((row) => `${row.key} ${row.value === null ? 'no data' : format(row)}`).join(', ')}` : ''
 
   return (
     <figure className="m-0 flex min-w-0 flex-col gap-2 rounded-lg border bg-card px-3 pb-2 pt-3">
-      <figcaption className="flex flex-wrap items-baseline gap-2">
-        <span className="flex-1 text-control font-semibold">{title}</span>
-        {legend ? <span className="text-caption text-muted-foreground">{legend}</span> : null}
-        <span className="font-mono text-control font-semibold tabular-nums">{headline(at)}</span>
-      </figcaption>
-      <div className={cn('grid gap-1.5', GUTTERS[gutter].grid)}>
-        <div className="flex flex-col justify-between text-right font-mono text-[10px] leading-3 text-faint-foreground" style={{ height }} aria-hidden>
-          {yLabels.map((label, index) => <span key={index}>{label}</span>)}
+      <figcaption className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <span className="min-w-0 flex-1 text-control font-semibold">{title}</span>
+          {headline ? <span className="whitespace-nowrap font-mono text-heading font-semibold tabular-nums">{headline(at)}</span> : null}
+          {windowLabel ? <span className="whitespace-nowrap font-mono text-micro tabular-nums text-muted-foreground">{header ?? windowLabel}</span> : null}
         </div>
+        {legend ? <span className="text-caption text-muted-foreground">{legend}</span> : null}
+        {live ? live(at) : null}
+      </figcaption>
+      <div className="grid gap-x-1.5 pt-2" style={{ gridTemplateColumns: `${gutter}px minmax(0,1fr)` }}>
+        <YAxis labels={yLabels} height={height} />
         <div
           ref={plot}
           tabIndex={0}
@@ -158,6 +174,9 @@ export function ChartFrame({ title, legend, headline, count, times, xLabels, mar
           onBlur={(event) => { if (event.target === event.currentTarget) leave() }}
         >
           {drawn}
+          {status ? (
+            <div role={status.kind === 'error' ? 'alert' : 'status'} data-state={status.kind} className="pointer-events-none absolute inset-0 grid place-items-center px-3 text-center text-caption text-muted-foreground">{status.text}</div>
+          ) : null}
           {layer}
           {guide !== null ? <span aria-hidden className="pointer-events-none absolute inset-y-0 border-l border-dashed border-muted-foreground" style={{ left: `${guide}%` }} /> : null}
           {at !== null && dots
@@ -173,7 +192,7 @@ export function ChartFrame({ title, legend, headline, count, times, xLabels, mar
           {hover === null && pinned === null ? null : <span className="sr-only" aria-live="polite">{spoken}</span>}
         </div>
       </div>
-      <div className={cn('flex justify-between font-mono text-[10px] text-faint-foreground', GUTTERS[gutter].axis)}>{xLabels.map((label, index) => <span key={`${index}-${label}`}>{label}</span>)}</div>
+      <div className="flex justify-between whitespace-nowrap font-mono text-micro tabular-nums text-chart-axis" style={{ paddingLeft: gutter + GAP }}>{xLabels.map((label, index) => <span key={`${index}-${label}`}>{label}</span>)}</div>
     </figure>
   )
 }

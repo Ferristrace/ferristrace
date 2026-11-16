@@ -35,7 +35,7 @@ Decisions
       no fill (stacked areas keep their 0.35 fill with a 1 px line).
   D4  Grid: horizontal lines only, three or four, `--chart-grid`. Vertical
       guide only at the hovered point and for release markers.
-  D5  Percentiles: p50 1 px at 60 % opacity, p95 1.75 px, p99 1 px dashed
+  D5  Percentiles: p50 1 px at 70 % opacity, p95 1.75 px, p99 1 px dashed
       `4 3`, all from the series palette in that order. They need the data
       (below).
   D6  Legend: an inline row of swatch and name in 12 px, no border and no

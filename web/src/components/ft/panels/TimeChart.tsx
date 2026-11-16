@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import type { SeriesData } from '@/data/dashboards'
 import { cn } from '@/lib/utils'
+import { gutterOf, YAxis } from '../ChartFrame'
 import { Filled, PanelEmpty } from './Empty'
 import {
-  alignSeries, axisTime, axisValue, clockOf, colourOf, formatValue, frameOf, nearestIndex, segmentsOf, selectRange, stackLayers, stepOf, tooltipRows, valueAtFraction, xFraction, yFraction,
+  alignSeries, axisLabels, axisTime, clockOf, colourOf, formatValue, frameOf, nearestIndex, segmentsOf, selectRange, stackLayers, stepOf, tooltipRows, valueAtFraction, xFraction, yFraction,
   type TooltipRow,
 } from './geometry'
 import { Legend } from './Legend'
@@ -39,6 +40,7 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
   const step = useMemo(() => stepOf(table.times), [table])
   const visible = useMemo(() => names.map((_, index) => index).filter((index) => !hidden[index]), [names, hidden])
   const { hover, setHover, leave, pinned, unpin, shown } = useHoverPin<Spot>(result)
+  const gradient = `fill-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   const plot = useRef<HTMLDivElement>(null)
   const down = useRef<{ x: number; from: number; moved: boolean } | null>(null)
   const [band, setBand] = useState<{ a: number; b: number } | null>(null)
@@ -53,6 +55,14 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
     const py = (value: number) => yFraction(value, frame)
     return (
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none" aria-hidden className="absolute inset-0 block size-full overflow-visible">
+        {visible.length === 1 && !stacked && mode !== 'bar' ? (
+          <defs>
+            <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor={colourOf(visible[0])} stopOpacity="0.18" />
+              <stop offset="1" stopColor={colourOf(visible[0])} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        ) : null}
         <line x1="0" y1="0.5" x2={WIDTH} y2="0.5" stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
         <line x1="0" y1={HEIGHT / 2} x2={WIDTH} y2={HEIGHT / 2} stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
         <line x1="0" y1={HEIGHT - 0.5} x2={WIDTH} y2={HEIGHT - 0.5} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
@@ -81,16 +91,16 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
         {mode !== 'bar' && !stacked
           ? visible.map((index) => segmentsOf(series[index].points, px, py).map((part, run) => (
               <g key={`${index}-${run}`}>
-                {mode === 'area' && part.length > 1 ? <polygon points={points([[part[0][0], y0], ...part, [part[part.length - 1][0], y0]])} fill={colourOf(index)} fillOpacity="0.14" /> : null}
+                {(mode === 'area' || visible.length === 1) && part.length > 1 ? <polygon points={points([[part[0][0], y0], ...part, [part[part.length - 1][0], y0]])} fill={visible.length === 1 ? `url(#${gradient})` : colourOf(index)} fillOpacity={visible.length === 1 ? undefined : '0.14'} /> : null}
                 {part.length > 1
-                  ? <polyline points={points(part)} fill="none" stroke={colourOf(index)} strokeWidth={1.75} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                  ? <polyline points={points(part)} fill="none" stroke={colourOf(index)} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                   : <circle cx={part[0][0] * WIDTH} cy={part[0][1] * HEIGHT} r="2" fill={colourOf(index)} />}
               </g>
             )))
           : null}
       </svg>
     )
-  }, [mode, visible, table, layers, stacked, series, frame, slot])
+  }, [mode, visible, table, layers, stacked, series, frame, slot, gradient])
 
   const at = shown && shown.at >= 0 && shown.at < table.times.length ? shown.at : null
   const when = at === null ? null : table.times[at]
@@ -189,16 +199,16 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
   const guide = when === null ? null : x(when) * 100
   const flip = guide !== null && guide > 50
   const tick = [frame.hi, (frame.hi + frame.lo) / 2, frame.lo]
+  const tickText = axisLabels(tick, options.unit)
+  const gutter = gutterOf(tickText)
   const aria = `${mode === 'bar' ? 'Bar' : mode === 'area' ? 'Area' : 'Line'} chart of ${panel.title || 'a panel'}, ${names.length} series: ${names.slice(0, 6).join('; ')}`
   const legend = options.legend ?? 'bottom'
   const emphasis = nearest && at !== null ? nearest.at : null
 
   return (
     <Filled className={cn('gap-2', legend === 'right' && 'md:flex-row')}>
-      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-[44px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto] gap-x-1.5 gap-y-1">
-        <div className="flex flex-col justify-between text-right font-mono text-[10px] leading-3 text-faint-foreground" aria-hidden>
-          {tick.map((value, index) => <span key={index}>{axisValue(value, options.unit)}</span>)}
-        </div>
+      <div className="grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-x-1.5 gap-y-1" style={{ gridTemplateColumns: `${gutter}px minmax(0,1fr)` }}>
+        <YAxis labels={tickText} />
         <div
           ref={plot}
           tabIndex={0}
@@ -259,7 +269,7 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
           {hover === null && pinned === null ? null : <span className="sr-only" aria-live="polite">{when === null ? '' : `${clockOf(when)}: ${rows.slice(0, 3).map((row) => `${row.key} ${row.value === null ? 'no data' : formatValue(row.value, options.unit, options.decimals)}`).join(', ')}`}</span>}
         </div>
         <span />
-        <div className="flex justify-between font-mono text-[10px] text-faint-foreground" aria-hidden>
+        <div className="flex justify-between whitespace-nowrap font-mono text-micro tabular-nums text-chart-axis" aria-hidden>
           <span>{axisTime(frame.t0, span)}</span>
           <span>{axisTime((frame.t0 + frame.t1) / 2, span)}</span>
           <span>{axisTime(frame.t1, span)}</span>

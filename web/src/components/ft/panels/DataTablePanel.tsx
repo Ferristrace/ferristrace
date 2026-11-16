@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { Table, Td, Th, Tr } from '@/components/ui/misc'
 import { cn } from '@/lib/utils'
 import { Filled, PanelEmpty } from './Empty'
-import { formatValue, isNumericColumn, sortRows } from './geometry'
+import { durationColumns, durationText, formatValue, isNumericColumn, sortRows } from './geometry'
 import { isEmpty } from './result'
 import type { Of, PanelProps } from './types'
 
@@ -12,6 +12,7 @@ type Sort = { column: number; direction: 'asc' | 'desc' } | null
 export function DataTablePanel({ panel, result }: PanelProps<Of<'rows'>>) {
   const [sort, setSort] = useState<Sort>(null)
   const numeric = useMemo(() => result.columns.map((_, index) => isNumericColumn(result.rows, index)), [result])
+  const durations = useMemo(() => durationColumns(panel.queries[0], result.columns), [panel.queries, result.columns])
   const rows = useMemo(() => (sort ? sortRows(result.rows, sort.column, sort.direction) : result.rows), [result, sort])
   if (isEmpty(result)) return <PanelEmpty />
   const toggle = (column: number) =>
@@ -46,7 +47,7 @@ export function DataTablePanel({ panel, result }: PanelProps<Of<'rows'>>) {
                   const cell = row[index] ?? null
                   return (
                     <Td key={`${index}-${column}`} numeric={numeric[index]} className={cn('px-2', !numeric[index] && 'max-w-[320px] truncate')}>
-                      {cell === null ? <span className="text-faint-foreground">none</span> : typeof cell === 'number' ? formatValue(cell, '', panel.options.decimals) : String(cell)}
+                      {cell === null ? <span className="text-faint-foreground">none</span> : typeof cell === 'number' ? (durations[index] ? durationText(cell) : formatValue(cell, '', panel.options.decimals)) : String(cell)}
                     </Td>
                   )
                 })}

@@ -10,7 +10,9 @@ export type Service = {
   requests: number
   errors: number
   perSecond: number
+  p50Us: number
   p95Us: number
+  p99Us: number
   rps: string
   err: number | null
   p50: string
@@ -35,9 +37,9 @@ export type Operation = {
 
 export type Edge = { caller: string; callee: string; calls: number; errors: number; err: number | null }
 
-export type Point = { atMs: number; requests: number; errors: number; p95Ms: number | null }
+export type Point = { atMs: number; requests: number; errors: number; p95Ms: number | null; p50Ms: number | null; p99Ms: number | null }
 
-export type Stepped = { stepMs: number; requests: number; errors: number; p95Ms: number | null; points: Point[] }
+export type Stepped = { stepMs: number; requests: number; errors: number; p95Ms: number | null; p50Ms: number | null; p99Ms: number | null; spread: boolean; points: Point[] }
 
 type Serving = {
   name: string
@@ -69,12 +71,16 @@ type Operated = {
   last_seen_ns: number
 }
 
-type Steps = {
+type Moment = [number, number, number, number | null] | [number, number, number, number | null, number | null, number | null]
+
+export type Steps = {
   step_ns: number
   requests: number
   errors: number
   p95_ns: number | null
-  points: [number, number, number, number | null][]
+  p50_ns?: number | null
+  p99_ns?: number | null
+  points: Moment[]
 }
 
 export const WINDOW_MS = 60 * 60 * 1000
@@ -97,7 +103,9 @@ export const serving = (service: Serving): Service => ({
   requests: service.requests,
   errors: service.errors,
   perSecond: service.per_second,
+  p50Us: service.p50_us,
   p95Us: service.p95_us,
+  p99Us: service.p99_us,
   rps: perSecond(service.per_second),
   err: service.requests === 0 ? null : service.error_rate * 100,
   p50: dur(service.p50_us / 1000),
@@ -131,16 +139,23 @@ const operated = (operation: Operated, windowMs: number): Operation => {
   }
 }
 
-const stepped = (steps: Steps): Stepped => ({
+const nanos = (value: number | null | undefined): number | null => (typeof value === 'number' ? value / NS_PER_MS : null)
+
+export const stepped = (steps: Steps): Stepped => ({
   stepMs: steps.step_ns / NS_PER_MS,
   requests: steps.requests,
   errors: steps.errors,
-  p95Ms: steps.p95_ns === null ? null : steps.p95_ns / NS_PER_MS,
-  points: steps.points.map(([at, requests, errors, p95]) => ({
-    atMs: Math.floor(at / NS_PER_MS),
-    requests,
-    errors,
-    p95Ms: p95 === null ? null : p95 / NS_PER_MS,
+  p95Ms: nanos(steps.p95_ns),
+  p50Ms: nanos(steps.p50_ns),
+  p99Ms: nanos(steps.p99_ns),
+  spread: steps.p50_ns !== undefined || steps.points.some((point) => point.length >= 6),
+  points: steps.points.map((point) => ({
+    atMs: Math.floor(point[0] / NS_PER_MS),
+    requests: point[1],
+    errors: point[2],
+    p95Ms: nanos(point[3]),
+    p50Ms: nanos(point[4]),
+    p99Ms: nanos(point[5]),
   })),
 })
 
@@ -254,7 +269,9 @@ export function charted(series: Stepped | null) {
   const seconds = Math.max(1, (series?.stepMs ?? 1000) / 1000)
   return {
     perSecond: points.map((point) => point.requests / seconds),
-    errorRate: points.map((point) => (point.requests ? (point.errors / point.requests) * 100 : 0)),
-    p95: points.map((point) => point.p95Ms ?? 0),
+    errorRate: points.map((point) => (point.requests ? (point.errors / point.requests) * 100 : null)),
+    p50: points.map((point) => point.p50Ms),
+    p95: points.map((point) => point.p95Ms),
+    p99: points.map((point) => point.p99Ms),
   }
 }

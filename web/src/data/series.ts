@@ -35,8 +35,8 @@ export function timeLabels(fromMs: number, toMs: number, count = 5): string[] {
   })
 }
 
-export function ceiling(values: number[]): number {
-  const top = Math.max(0, ...values)
+export function ceiling(values: (number | null)[]): number {
+  const top = Math.max(0, ...values.filter((value): value is number => value !== null))
   if (top <= 0) return 1
   const magnitude = 10 ** Math.floor(Math.log10(top))
   const steps = [1, 2, 2.5, 5, 10]
