@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { because } from '@/auth/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input, NativeSelect } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
@@ -220,7 +221,7 @@ export function RuleEditor({ rule, open, onClose }: { rule: Rule | null; open: b
             {channels && channels.length > 0 ? (
               <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                 {channels.map((one) => (
-                  <label key={one.id} className="flex items-center gap-1.5 text-control">
+                  <label key={one.id} className="flex items-center gap-1.5 rounded-md border bg-card px-2 py-1 text-control">
                     <input type="checkbox" className="size-4 accent-[var(--primary)]" checked={form.channels.includes(one.id)} onChange={() => set({ channels: toggle(form.channels, one.id) })} />
                     <span>{one.name}</span><Badge variant="outline">{one.kind}</Badge>
                   </label>
@@ -246,37 +247,42 @@ export function RuleEditor({ rule, open, onClose }: { rule: Rule | null; open: b
             <span className="text-caption text-muted-foreground">Pinged when the rule starts firing, in every Slack and Discord channel it uses (each keeps the ids of its own service), on top of the pings set on the channel itself. Never @everyone.</span>
           </fieldset>
 
-          <div className="flex flex-col gap-2 rounded-lg border p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-control font-semibold">Preview</span>
+          <Card>
+            <CardHeader className="flex-wrap">
+              <CardTitle>Preview</CardTitle>
+              <CardKind>Time series</CardKind>
               {result ? (result.would_fire ? <Badge variant="destructive"><TriangleAlert />Would fire</Badge> : <Badge variant="success"><CircleCheck />Would not fire</Badge>) : null}
               <Button type="button" size="sm" className="ml-auto" onClick={runPreview} disabled={preview.isPending}>{preview.isPending ? 'Evaluating' : 'Preview'}</Button>
+            </CardHeader>
+            <div className="flex flex-col gap-2 p-3">
+              {result ? (
+                result.points.some((point) => point[1] !== null)
+                  ? <MetricChart series={[{ labels: {}, points: result.points }]} exemplars={[]} unit={unit} aria="Preview of the rule over its last window" threshold={result.threshold} />
+                  : <span className="text-control text-muted-foreground">No data in the last window.</span>
+              ) : <span className="text-caption text-muted-foreground">Evaluates this definition over its last window without saving it. The dashed line is the threshold.{unit ? ` Values in ${unit}.` : ''}</span>}
             </div>
-            {result ? (
-              result.points.some((point) => point[1] !== null)
-                ? <MetricChart series={[{ labels: {}, points: result.points }]} exemplars={[]} unit={unit} aria="Preview of the rule over its last window" threshold={result.threshold} />
-                : <span className="text-control text-muted-foreground">No data in the last window.</span>
-            ) : <span className="text-caption text-muted-foreground">Evaluates this definition over its last window without saving it. The dashed line is the threshold.{unit ? ` Values in ${unit}.` : ''}</span>}
-          </div>
+          </Card>
 
           {rule ? (
-            <div className="flex flex-col gap-2 rounded-lg border p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-control font-semibold">Test notification</span>
+            <Card>
+              <CardHeader className="flex-wrap">
+                <CardTitle>Test notification</CardTitle>
                 <Button type="button" size="sm" className="ml-auto" disabled={test.isPending} onClick={() => test.mutate(rule.id, { onError: (error) => toast.error(because(error, 'The test was not sent')) })}><Send />Send test notification</Button>
+              </CardHeader>
+              <div className="flex flex-col gap-2 p-3">
+                {test.data ? (
+                  test.data.deliveries.length === 0
+                    ? <span className="text-control text-muted-foreground">The saved rule has no channel.</span>
+                    : <ul className="m-0 flex list-none flex-col gap-1 p-0">{test.data.deliveries.map((one) => (
+                      <li key={one.channel} className="flex flex-wrap items-center gap-2 text-control">
+                        <Badge variant={one.status === 'sent' ? 'success' : 'destructive'}>{one.status}</Badge>
+                        <span className="font-semibold">{channelName(one.channel)}</span>
+                        {one.error ? <span className="text-destructive-text">{one.error}</span> : null}
+                      </li>
+                    ))}</ul>
+                ) : <span className="text-caption text-muted-foreground">Sends to the channels of the saved rule, not to unsaved changes.</span>}
               </div>
-              {test.data ? (
-                test.data.deliveries.length === 0
-                  ? <span className="text-control text-muted-foreground">The saved rule has no channel.</span>
-                  : <ul className="m-0 flex list-none flex-col gap-1 p-0">{test.data.deliveries.map((one) => (
-                    <li key={one.channel} className="flex flex-wrap items-center gap-2 text-control">
-                      <Badge variant={one.status === 'sent' ? 'success' : 'destructive'}>{one.status}</Badge>
-                      <span className="font-semibold">{channelName(one.channel)}</span>
-                      {one.error ? <span className="text-destructive-text">{one.error}</span> : null}
-                    </li>
-                  ))}</ul>
-              ) : <span className="text-caption text-muted-foreground">Sends to the channels of the saved rule, not to unsaved changes.</span>}
-            </div>
+            </Card>
           ) : null}
 
           {'problem' in built && form.name ? <Alert variant="warning" icon={<TriangleAlert />}>{built.problem}</Alert> : null}

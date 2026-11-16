@@ -35,7 +35,7 @@ export function AttachToIncident({ attachment }: { attachment: AttachmentDraft |
           <ul role="menu" aria-label="Open incidents" className="m-0 flex list-none flex-col gap-0.5 p-0">
             {incidents.map((one) => (
               <li key={one.id} role="none">
-                <button type="button" role="menuitem" disabled={attach.isPending} onClick={() => pick(one.id, one.title)} className="flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-sm border-0 bg-transparent px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-60">
+                <button type="button" role="menuitem" disabled={attach.isPending} onClick={() => pick(one.id, one.title)} className="flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md border-0 bg-transparent px-2 py-1.5 text-left hover:bg-row-hover focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-60">
                   <span className="text-control font-semibold">{one.title}</span>
                   <span className="text-caption text-muted-foreground">{one.severity.toUpperCase()} · {one.status}</span>
                 </button>

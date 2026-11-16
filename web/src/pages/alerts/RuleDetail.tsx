@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { because } from '@/auth/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Table, Td, Th, Tr } from '@/components/ui/misc'
@@ -126,7 +127,7 @@ export function RuleDetail({ rule, project, mayChange, onEdit, onClose }: { rule
                 })}><Siren />Declare incident from this alert</Button>
               </div>
             ) : null}
-            <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-control">
+            <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 rounded-md border bg-card px-3 py-2.5 text-control">
               <dt className="text-muted-foreground">Scope</dt><dd className="m-0 font-mono">{scopeOf(rule.signal)}</dd>
               <dt className="text-muted-foreground">Project</dt><dd className="m-0">{project}</dd>
               <dt className="text-muted-foreground">Value</dt><dd className="m-0 font-mono">{withUnit(state.value, unit)}</dd>
@@ -136,30 +137,34 @@ export function RuleDetail({ rule, project, mayChange, onEdit, onClose }: { rule
               <dt className="text-muted-foreground">Notifies</dt><dd className="m-0">{named.length ? named.join(', ') : 'nobody'}</dd>
             </dl>
             {state.series.length > 1 ? (
-              <Table aria-label="State per series">
-                <thead><tr><Th>Series</Th><Th className="w-[110px]">State</Th><Th numeric className="w-[140px]">Value</Th></tr></thead>
-                <tbody>{state.series.map((one) => (
-                  <Tr key={labelOf(one.labels)}><Td className="font-mono">{labelOf(one.labels)}</Td><Td><StateBadge status={one.status} /></Td><Td numeric>{withUnit(one.value, unit)}</Td></Tr>
-                ))}</tbody>
-              </Table>
+              <Card className="overflow-x-auto">
+                <Table aria-label="State per series">
+                  <thead><tr><Th>Series</Th><Th className="w-[110px]">State</Th><Th numeric className="w-[140px]">Value</Th></tr></thead>
+                  <tbody>{state.series.map((one) => (
+                    <Tr key={labelOf(one.labels)}><Td className="font-mono">{labelOf(one.labels)}</Td><Td><StateBadge status={one.status} /></Td><Td numeric>{withUnit(one.value, unit)}</Td></Tr>
+                  ))}</tbody>
+                </Table>
+              </Card>
             ) : null}
-            <h3 className="text-control font-semibold">History, last 30 days</h3>
-            {history.events ? (
-              history.events.length === 0 ? <span className="text-control text-muted-foreground">No state change in the last 30 days.</span> : (
-                <div className="max-h-[260px] overflow-y-auto">
-                  <Table aria-label="Rule history">
-                    <thead><tr><Th className="w-[170px]">When</Th><Th>Change</Th><Th numeric className="w-[110px]">Value</Th></tr></thead>
-                    <tbody>{history.events.slice(0, SHOWN).map((one) => (
-                      <Tr key={`${one.at_ms}-${labelOf(one.labels)}-${one.to}`}>
-                        <Td className="font-mono">{stamp(one.at_ms)}</Td>
-                        <Td><span className="flex flex-wrap items-center gap-1.5">{word(one.from)} <span aria-hidden>→</span> <StateBadge status={one.to} />{Object.keys(one.labels).length ? <span className="font-mono text-caption text-muted-foreground">{labelOf(one.labels)}</span> : null}{one.context ? <span className="basis-full"><AlertContext context={one.context} /></span> : null}</span></Td>
-                        <Td numeric>{withUnit(one.value, unit)}</Td>
-                      </Tr>
-                    ))}</tbody>
-                  </Table>
-                </div>
-              )
-            ) : <span className="text-control text-muted-foreground">{history.failed ? because(history.failed, 'The history could not be read.') : 'Reading the history…'}</span>}
+            <Card>
+              <CardHeader><CardTitle>History, last 30 days</CardTitle><CardKind>Table</CardKind></CardHeader>
+              {history.events ? (
+                history.events.length === 0 ? <p className="m-0 px-3.5 py-3 text-control text-muted-foreground">No state change in the last 30 days.</p> : (
+                  <div className="max-h-[260px] overflow-auto">
+                    <Table aria-label="Rule history">
+                      <thead><tr><Th className="w-[170px]">When</Th><Th>Change</Th><Th numeric className="w-[110px]">Value</Th></tr></thead>
+                      <tbody>{history.events.slice(0, SHOWN).map((one) => (
+                        <Tr key={`${one.at_ms}-${labelOf(one.labels)}-${one.to}`}>
+                          <Td className="font-mono">{stamp(one.at_ms)}</Td>
+                          <Td><span className="flex flex-wrap items-center gap-1.5">{word(one.from)} <span aria-hidden>→</span> <StateBadge status={one.to} />{Object.keys(one.labels).length ? <span className="font-mono text-caption text-muted-foreground">{labelOf(one.labels)}</span> : null}{one.context ? <span className="basis-full"><AlertContext context={one.context} /></span> : null}</span></Td>
+                          <Td numeric>{withUnit(one.value, unit)}</Td>
+                        </Tr>
+                      ))}</tbody>
+                    </Table>
+                  </div>
+                )
+              ) : <p className="m-0 px-3.5 py-3 text-control text-muted-foreground">{history.failed ? because(history.failed, 'The history could not be read.') : 'Reading the history…'}</p>}
+            </Card>
             {mayChange ? (
               <DialogFooter>
                 <Button className="text-destructive-text" onClick={() => setConfirming(true)}><Trash2 />Delete</Button>
