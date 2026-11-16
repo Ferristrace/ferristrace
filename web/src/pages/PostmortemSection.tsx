@@ -5,7 +5,7 @@ import { because } from '@/auth/client'
 import { useOrganisations } from '@/auth/session'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { personOf, type Dossier } from '@/data/incidents'
@@ -27,23 +27,24 @@ export function PostmortemSection({ incident }: { incident: Dossier }) {
     })
 
   return (
-    <section id="postmortem" aria-label="Postmortem" className="flex flex-col gap-3">
-      <h2 className="text-control font-semibold">Postmortem</h2>
+    <section id="postmortem" aria-label="Postmortem" className="mx-auto flex w-full max-w-[760px] flex-col gap-3">
       {pending ? (
-        <Card className="px-4 py-3 text-control text-muted-foreground">Reading the postmortem…</Card>
+        <Card><CardHeader><CardTitle>Postmortem</CardTitle></CardHeader><p className="m-0 px-4 py-3 text-control text-muted-foreground">Reading the postmortem…</p></Card>
       ) : failed ? (
-        <Card className="px-4 py-3 text-control text-muted-foreground">{because(failed, 'The postmortem could not be read.')}</Card>
+        <Card><CardHeader><CardTitle>Postmortem</CardTitle></CardHeader><p className="m-0 px-4 py-3 text-control text-muted-foreground">{because(failed, 'The postmortem could not be read.')}</p></Card>
       ) : postmortem ? (
         <Written key={`${postmortem.id}-${postmortem.updated_ms}`} postmortem={postmortem} />
       ) : (
-        <Card className="flex flex-wrap items-center gap-3 px-4 py-3">
-          <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <span className="flex-1 text-control text-muted-foreground">
-            {resolved
-              ? 'This incident is resolved. Start a postmortem from its timeline, alerts, paging and attachments.'
-              : 'The incident is still open. A draft written now will say so, and can be written again until someone edits it.'}
-          </span>
-          <Button variant="primary" size="sm" disabled={draft.isPending} onClick={write}>Write postmortem</Button>
+        <Card>
+          <CardHeader><CardTitle className="flex-1">Postmortem</CardTitle><Button variant="primary" size="sm" disabled={draft.isPending} onClick={write}>Write postmortem</Button></CardHeader>
+          <div className="flex items-center gap-3 px-4 py-3">
+            <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="flex-1 text-control text-muted-foreground">
+              {resolved
+                ? 'This incident is resolved. Start a postmortem from its timeline, alerts, paging and attachments.'
+                : 'The incident is still open. A draft written now will say so, and can be written again until someone edits it.'}
+            </span>
+          </div>
         </Card>
       )}
     </section>
@@ -80,12 +81,10 @@ function Written({ postmortem }: { postmortem: Postmortem }) {
   }
 
   return (
-    <Card className="flex flex-col gap-3 p-4">
-      <div className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
+    <Card>
+      <CardHeader className="flex-wrap">
+        <CardTitle>Postmortem</CardTitle>
         <Badge variant={published ? 'success' : 'neutral'}>{postmortem.status}</Badge>
-        <span>Written by <span className="text-foreground">{personOf(postmortem.author)}</span></span>
-        <span>Updated <span className="font-mono text-foreground">{stamp(postmortem.updated_ms)}</span></span>
-        {postmortem.published_ms !== null ? <span>Published <span className="font-mono text-foreground">{stamp(postmortem.published_ms)}</span></span> : null}
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {!published ? <Segmented<'write' | 'preview'> label="Postmortem view" size="sm" value={view} onChange={setView} options={[{ value: 'write', label: 'Write' }, { value: 'preview', label: 'Preview' }]} /> : null}
           {!published && (mayPublish || !postmortem.edited) ? <Button size="sm" disabled={draft.isPending} onClick={regenerate}>Regenerate</Button> : null}
@@ -95,17 +94,24 @@ function Written({ postmortem }: { postmortem: Postmortem }) {
               : <Button size="sm" variant="primary" disabled={publish.isPending || changed} onClick={() => move(true)}>Publish</Button>
           ) : null}
         </span>
+      </CardHeader>
+      <div className="flex flex-col gap-3 p-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted-foreground">
+          <span>Written by <span className="text-foreground">{personOf(postmortem.author)}</span></span>
+          <span>Updated <span className="font-mono text-foreground">{stamp(postmortem.updated_ms)}</span></span>
+          {postmortem.published_ms !== null ? <span>Published <span className="font-mono text-foreground">{stamp(postmortem.published_ms)}</span></span> : null}
+        </div>
+        {published ? (
+          <Markdown source={postmortem.body} />
+        ) : view === 'preview' ? (
+          <Markdown source={body} />
+        ) : (
+          <>
+            <Textarea aria-label="Postmortem" value={body} onChange={(e) => setBody(e.target.value)} rows={24} className="font-mono" />
+            <Button size="sm" variant="primary" className="self-end" disabled={edit.isPending || !changed || !body.trim()} onClick={save}><Save />Save</Button>
+          </>
+        )}
       </div>
-      {published ? (
-        <Markdown source={postmortem.body} />
-      ) : view === 'preview' ? (
-        <Markdown source={body} />
-      ) : (
-        <>
-          <Textarea aria-label="Postmortem" value={body} onChange={(e) => setBody(e.target.value)} rows={24} className="font-mono" />
-          <Button size="sm" variant="primary" className="self-end" disabled={edit.isPending || !changed || !body.trim()} onClick={save}><Save />Save</Button>
-        </>
-      )}
     </Card>
   )
 }

@@ -1,4 +1,4 @@
-import { Plus, Siren, TriangleAlert } from 'lucide-react'
+import { Plus, Search, Siren, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { because } from '@/auth/client'
@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
-import { Field, Input, NativeSelect } from '@/components/ui/input'
+import { Field, Input, InputGroup, NativeSelect } from '@/components/ui/input'
 import { Alert, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
 import { Switch } from '@/components/ui/switch'
 import { EmptyState, PageHeader } from '@/components/ft/bits'
@@ -21,6 +22,7 @@ import { useSchedules } from '@/data/oncall'
 import { usePostmortemStates, type PostmortemStatus } from '@/data/postmortems'
 import { useProjects } from '@/data/projects'
 import { stamp } from '@/lib/format'
+import { pagesOf } from '@/lib/paging'
 import { Link, useNavigate } from '@/lib/router'
 import { cn } from '@/lib/utils'
 
@@ -34,25 +36,35 @@ export function Incidents() {
   const [severity, setSeverity] = useState<IncidentSeverity | ''>('')
   const [statuses, setStatuses] = useState<IncidentStatus[]>([])
   const [declaring, setDeclaring] = useState(false)
+  const [query, setQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(10)
   const { incidents, failed, nothing } = useIncidents(scope)
   const projects = useProjects()
   const postmortems = usePostmortemStates()
   const mayDeclare = Boolean(active)
   const projectName = (id: string | null) => (id === null ? 'All projects' : projects.find((one) => one.id === id)?.name ?? id)
-  const shown = (incidents ?? []).filter((one) => (severity === '' || one.severity === severity) && (statuses.length === 0 || statuses.includes(one.status)))
-  const toggle = (status: IncidentStatus) => setStatuses((held) => (held.includes(status) ? held.filter((one) => one !== status) : [...held, status]))
+  const needle = query.trim().toLowerCase()
+  const shown = (incidents ?? []).filter((one) => (severity === '' || one.severity === severity) && (statuses.length === 0 || statuses.includes(one.status)) && (needle === '' || one.title.toLowerCase().includes(needle)))
+  const current = Math.min(page, pagesOf(shown.length, size))
+  const visible = shown.slice((current - 1) * size, current * size)
+  const openCount = (incidents ?? []).filter((one) => one.status !== 'resolved').length
+  const toggle = (status: IncidentStatus) => { setStatuses((held) => (held.includes(status) ? held.filter((one) => one !== status) : [...held, status])); setPage(1) }
   const chips = scope === 'resolved' ? [] : STATUSES.filter((one) => scope === 'all' || one !== 'resolved')
 
   return (
     <>
-      <PageHeader title="Incidents" meta={incidents ? `${incidents.length} ${scope === 'all' ? '' : `${scope} `}incident${incidents.length === 1 ? '' : 's'}` : 'Disruptions, from the first page to resolution'}>
-        <Segmented<IncidentScope> label="Incidents shown" value={scope} onChange={(value) => { setScope(value); setStatuses([]) }} options={[{ value: 'open', label: 'Open' }, { value: 'resolved', label: 'Resolved' }, { value: 'all', label: 'All' }]} />
-        <NativeSelect aria-label="Filter by severity" value={severity} onChange={(e) => setSeverity(e.target.value as IncidentSeverity | '')} className="w-[140px]">
+      <PageHeader title="Incidents" meta={incidents ? <>{openCount > 0 ? <Badge variant="destructive" className="mr-2">{openCount} open</Badge> : null}{incidents.length} {scope === 'all' ? '' : `${scope} `}incident{incidents.length === 1 ? '' : 's'}</> : 'Disruptions, from the first page to resolution'}>
+        {mayDeclare ? <Button variant="primary" size="sm" onClick={() => setDeclaring(true)}><Plus />Declare incident</Button> : null}
+      </PageHeader>
+      <div className="flex flex-wrap items-center gap-2" role="search">
+        <InputGroup className="w-[320px] max-w-full"><Search aria-hidden /><input aria-label="Search incidents" placeholder="Search incidents" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1) }} /></InputGroup>
+        <Segmented<IncidentScope> label="Incidents shown" value={scope} onChange={(value) => { setScope(value); setStatuses([]); setPage(1) }} options={[{ value: 'open', label: 'Open' }, { value: 'resolved', label: 'Resolved' }, { value: 'all', label: 'All' }]} />
+        <NativeSelect aria-label="Filter by severity" value={severity} onChange={(e) => { setSeverity(e.target.value as IncidentSeverity | ''); setPage(1) }} className="w-[150px]">
           <option value="">Severity: any</option>
           {SEVERITIES.map((one) => <option key={one} value={one}>{one.toUpperCase()}</option>)}
         </NativeSelect>
-        {mayDeclare ? <Button variant="primary" size="sm" onClick={() => setDeclaring(true)}><Plus />Declare incident</Button> : null}
-      </PageHeader>
+      </div>
       {chips.length ? (
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by status">
           {chips.map((one) => (
@@ -77,9 +89,10 @@ export function Incidents() {
             <thead><tr><Th>Incident</Th><Th className="w-[80px]">Severity</Th><Th className="w-[130px]">Status</Th><Th className="w-[180px]">Owner</Th><Th className="w-[140px]">Project</Th><Th className="w-[170px]">Opened</Th></tr></thead>
             <tbody>
               {shown.length === 0 ? <Tr><Td colSpan={6} className="text-muted-foreground">No incident matches these filters.</Td></Tr> : null}
-              {shown.map((incident) => <IncidentRow key={incident.id} incident={incident} project={projectName(incident.project)} postmortem={postmortems.get(incident.id)} />)}
+              {visible.map((incident) => <IncidentRow key={incident.id} incident={incident} project={projectName(incident.project)} postmortem={postmortems.get(incident.id)} />)}
             </tbody>
           </Table>
+          <Pager total={shown.length} page={current} size={size} onPage={setPage} onSize={(next) => { setSize(next); setPage(1) }} noun="incidents" className="border-t" />
         </Card>
       )}
 
@@ -93,7 +106,7 @@ function IncidentRow({ incident, project, postmortem }: { incident: Incident; pr
     <Tr>
       <Td className="whitespace-normal py-2">
         <div className="flex flex-col gap-0.5">
-          <Link to={`/incidents/${incident.id}`} className="w-fit text-control font-semibold text-foreground hover:underline">{incident.title}</Link>
+          <Link to={`/incidents/${incident.id}`} className="w-fit text-control font-semibold text-accent-text hover:underline">{incident.title}</Link>
           <span className="text-caption text-muted-foreground">
             {incident.alert ? <>From the alert <span className="font-semibold">{incident.alert.name}</span></> : 'Declared by hand'}
             {incident.public ? ' · public' : ''}

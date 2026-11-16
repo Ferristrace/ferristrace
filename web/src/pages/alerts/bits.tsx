@@ -8,7 +8,7 @@ const VARIANT: Record<AlertStatus, 'destructive' | 'warning' | 'neutral' | 'succ
   ok: 'success',
 }
 
-export const StateBadge = ({ status }: { status: AlertStatus }) => <Badge variant={VARIANT[status]}>{status.replace('_', ' ')}</Badge>
+export const StateBadge = ({ status }: { status: AlertStatus }) => <Badge variant={VARIANT[status]} mono className="capitalize">{status.replace('_', ' ')}</Badge>
 
 
 export function AlertContext({ context }: { context: Context }) {

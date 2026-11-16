@@ -1,6 +1,7 @@
 import { Gauge, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Alert, Table, Td, Th, Tr } from '@/components/ui/misc'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
@@ -45,7 +46,7 @@ export function IncidentInsights() {
 
   return (
     <>
-      <PageHeader title="Incident insights" meta="From the incident timelines, no extra tracking">
+      <PageHeader title="Incident insights" meta={<Badge variant="neutral" className="rounded-full">last {days} days</Badge>}>
         <Segmented<string> label="Window" value={String(days)} onChange={(value) => setDays(Number(value) as (typeof DAYS)[number])} options={DAYS.map((one) => ({ value: String(one), label: `${one} days` }))} />
       </PageHeader>
 
@@ -59,7 +60,7 @@ export function IncidentInsights() {
         <EmptyState icon={<Gauge />} title="No incident in this window">Incidents opened in the last {days} days are counted here, with how long they took to be acknowledged and resolved.</EmptyState>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Kpi label="Incidents" value={String(insights.overall.incidents)} sub={`${insights.overall.open} still open`} tone={insights.overall.open > 0 ? 'warn' : undefined} />
             <Kpi label="Time to acknowledge" value={span(insights.overall.acknowledge.median_ms)} sub={`median of ${insights.overall.acknowledge.samples} · first status change, owner or acknowledged page`} />
             <Kpi label="Time to resolve" value={span(insights.overall.resolve.median_ms)} sub={`median of ${insights.overall.resolve.samples} resolved`} />
@@ -67,28 +68,32 @@ export function IncidentInsights() {
           </div>
 
           <Card>
-            <CardHeader><CardTitle className="flex-1">Incidents per day</CardTitle><span className="text-caption text-muted-foreground">opened, UTC</span></CardHeader>
+            <CardHeader><CardTitle>Incidents per day</CardTitle><CardKind>Bar</CardKind><span className="ml-auto text-caption text-muted-foreground">opened, UTC</span></CardHeader>
             <div className="flex h-24 items-end gap-0.5 px-4 pb-3 pt-2" role="img" aria-label="Incidents opened per day">
               {insights.per_day.map((day) => (
-                <div key={day.day_ms} title={`${new Date(day.day_ms).toISOString().slice(0, 10)}: ${day.incidents}`} className="flex-1 rounded-sm bg-chart-line" style={{ height: `${Math.max(day.incidents === 0 ? 2 : 8, (day.incidents / peak) * 100)}%`, opacity: day.incidents === 0 ? 0.25 : 1 }} />
+                <div key={day.day_ms} title={`${new Date(day.day_ms).toISOString().slice(0, 10)}: ${day.incidents}`} className="flex-1 rounded-t-[4px] bg-chart-line" style={{ height: `${Math.max(day.incidents === 0 ? 2 : 8, (day.incidents / peak) * 100)}%`, opacity: day.incidents === 0 ? 0.25 : 1 }} />
               ))}
             </div>
           </Card>
 
-          <Card className="overflow-x-auto">
-            <CardHeader><CardTitle>By severity</CardTitle></CardHeader>
-            <Table aria-label="Incidents by severity">
-              <Header />
-              <tbody>{insights.by_severity.map((group) => <Row key={group.severity} label={<SeverityPill severity={group.severity} />} group={group} />)}</tbody>
-            </Table>
+          <Card>
+            <CardHeader><CardTitle>By severity</CardTitle><CardKind>Table</CardKind></CardHeader>
+            <div className="overflow-x-auto">
+              <Table aria-label="Incidents by severity">
+                <Header />
+                <tbody>{insights.by_severity.map((group) => <Row key={group.severity} label={<SeverityPill severity={group.severity} />} group={group} />)}</tbody>
+              </Table>
+            </div>
           </Card>
 
-          <Card className="overflow-x-auto">
-            <CardHeader><CardTitle className="flex-1">By service</CardTitle><span className="text-caption text-muted-foreground">the services of the alert that opened the incident</span></CardHeader>
-            <Table aria-label="Incidents by service">
-              <Header />
-              <tbody>{insights.by_service.map((group) => <Row key={group.service ?? 'none'} label={group.service ?? <span className="font-normal text-muted-foreground">Declared by hand</span>} group={group} />)}</tbody>
-            </Table>
+          <Card>
+            <CardHeader><CardTitle>By service</CardTitle><CardKind>Table</CardKind><span className="ml-auto text-caption text-muted-foreground">the services of the alert that opened the incident</span></CardHeader>
+            <div className="overflow-x-auto">
+              <Table aria-label="Incidents by service">
+                <Header />
+                <tbody>{insights.by_service.map((group) => <Row key={group.service ?? 'none'} label={group.service ?? <span className="font-normal text-muted-foreground">Declared by hand</span>} group={group} />)}</tbody>
+              </Table>
+            </div>
           </Card>
         </>
       )}

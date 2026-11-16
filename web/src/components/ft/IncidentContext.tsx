@@ -6,12 +6,12 @@ import { useIncidentContext } from '@/data/incidents'
 import { releasePath } from '@/data/releases'
 import { dur, stamp } from '@/lib/format'
 
-const ROW = 'flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-control text-foreground no-underline hover:bg-muted'
+const ROW = 'flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-control text-foreground no-underline hover:bg-row-hover'
 
 function Group({ title, left, children }: { title: string; left: number; children: ReactNode }) {
   return (
     <div>
-      <div className="px-4 pb-1 pt-3 text-caption font-semibold uppercase text-muted-foreground">{title}</div>
+      <div className="px-4 pb-1 pt-3 text-micro font-semibold uppercase tracking-[.04em] text-faint-foreground">{title}</div>
       {children}
       {left > 0 ? <div className="px-4 py-1.5 text-caption text-muted-foreground">and {left} more</div> : null}
     </div>
@@ -26,8 +26,8 @@ export function IncidentContext({ id }: { id: string }) {
   return (
     <Card className="overflow-hidden">
       <CardHeader>
-        <CardTitle className="flex-1">Context</CardTitle>
-        <span className="text-caption text-muted-foreground">{context.services.join(', ')} · since {stamp(context.from_ms)}</span>
+        <CardTitle>Context</CardTitle>
+        <span className="ml-auto truncate text-caption text-muted-foreground">{context.services.join(', ')} · since {stamp(context.from_ms)}</span>
       </CardHeader>
       {deploys.length > 0 ? (
         <Group title="Deployed" left={left.deploys}>
