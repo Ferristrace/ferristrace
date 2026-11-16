@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
+import { isSafeHref } from '@/lib/safeLink'
 import { cn } from '@/lib/utils'
-
-const SAFE_LINK = /^(?:https?:\/\/|mailto:|\/(?!\/))/i
 
 const INLINE = /(`[^`]+`)|(\*\*(?:\\.|[^*\\])+\*\*)|(\[((?:\\.|[^\]\\])*)\]\(([^)\s]*)\))|(_(?:\\.|[^_\\])+_)/g
 
@@ -36,7 +35,7 @@ function inline(text: string, base: string): ReactNode[] {
     } else if (found[3] !== undefined) {
       const target = found[5] ?? ''
       const label = inline(found[4] ?? '', key)
-      out.push(SAFE_LINK.test(target)
+      out.push(isSafeHref(target)
         ? <a key={key} href={target} rel="noreferrer noopener" className="text-accent-text underline">{label}</a>
         : <span key={key}>{label}</span>)
     } else if (found[6]) {
@@ -58,7 +57,7 @@ const startsBlock = (line: string, next: string | undefined) =>
 
 const HEADING_CLASS = ['text-title', 'text-[17px] font-bold', 'text-[15px] font-bold', 'text-control font-bold', 'text-control font-semibold', 'text-control font-semibold']
 
-export function Markdown({ source, className }: { source: string; className?: string }) {
+export function Markdown({ source, className, minLevel = 1 }: { source: string; className?: string; minLevel?: number }) {
   const lines = source.replace(/\r\n?/g, '\n').split('\n')
   const blocks: ReactNode[] = []
   let at = 0
@@ -76,7 +75,7 @@ export function Markdown({ source, className }: { source: string; className?: st
       blocks.push(<pre key={key} className="overflow-x-auto rounded-md border bg-muted p-3 font-mono text-caption"><code>{body.join('\n')}</code></pre>)
     } else if (HEADING.test(line)) {
       const found = HEADING.exec(line)
-      const level = found?.[1]?.length ?? 1
+      const level = Math.min(6, Math.max(minLevel, found?.[1]?.length ?? 1))
       const Tag = `h${level}` as 'h1'
       blocks.push(<Tag key={key} className={cn('mt-2', HEADING_CLASS[level - 1])}>{inline(found?.[2] ?? '', key)}</Tag>)
       at += 1
