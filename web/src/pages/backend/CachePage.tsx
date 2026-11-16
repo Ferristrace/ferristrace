@@ -2,6 +2,7 @@ import { Boxes, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { useSearchParam } from '@/lib/router'
+import { sorted } from '@/lib/sorting'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
@@ -12,45 +13,35 @@ import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
 import { usePlacement } from '@/data/placement'
-import { GROUPINGS, groupingNoun, groupingOf, useCacheOperations, useCacheSeries, type Operation } from '@/data/caches'
+import { GROUPINGS, groupingNoun, groupingOf, useCacheOperations, useCacheSeries } from '@/data/caches'
 import { useZoom } from '@/lib/bounds'
 import { useWindow } from '@/lib/window'
 import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
+import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, SortHead, usePaged } from './kit'
+import { CACHE_KEYS, cacheFirst, cacheValue } from './sortKeys'
+import { useUrlSort } from './useUrlSort'
 
 const COLD = 80
 
 const SORTS = [
   { value: 'rate', label: 'Hit rate' },
   { value: 'calls', label: 'Calls' },
+  { value: 'hits', label: 'Hits' },
   { value: 'misses', label: 'Misses' },
   { value: 'name', label: 'Name' },
+  { value: 'store', label: 'Store' },
 ] as const
 
-type Sort = (typeof SORTS)[number]['value']
-
-const sortOf = (value: unknown): Sort => SORTS.find((one) => one.value === value)?.value ?? 'rate'
-
 const percent = (rate: number | null) => (rate === null ? '—' : `${rate.toFixed(1)} %`)
-
-function sorted(operations: Operation[], by: Sort): Operation[] {
-  const order: Record<Sort, (a: Operation, b: Operation) => number> = {
-    rate: (a, b) => (a.hitRate ?? 101) - (b.hitRate ?? 101),
-    calls: (a, b) => b.perSecond - a.perSecond,
-    misses: (a, b) => b.misses - a.misses,
-    name: (a, b) => a.group.localeCompare(b.group),
-  }
-  return [...operations].sort(order[by])
-}
 
 export function CachePage() {
   const goTo = useRouterNavigate()
   const { ms: windowMs, label } = useWindow()
   const group = groupingOf(useSearchParam('g'))
-  const sort = sortOf(useSearchParam('s'))
+  const { sorting, pick, sortBy, dirOf } = useUrlSort(CACHE_KEYS, 'rate', cacheFirst)
   const environment = useSearchParam('env') ?? ''
   const [typedEnv, setTypedEnv] = useState(environment)
   const settledEnv = useSettled(typedEnv)
@@ -81,9 +72,10 @@ export function CachePage() {
     () =>
       sorted(
         operations.filter((row) => `${row.group} ${row.store}`.toLowerCase().includes(q.trim().toLowerCase())),
-        sort,
+        sorting,
+        cacheValue,
       ),
-    [operations, sort, q],
+    [operations, sorting, q],
   )
   const bars = useMemo<Bar[]>(
     () => (series?.points ?? []).map((point) => ({ at: point.atMs, count: point.calls, errors: point.misses })),
@@ -96,7 +88,7 @@ export function CachePage() {
   const span = zoom ? `${Math.max(1, Math.round(seconds))} s` : label
   const placing = placedCount(placement)
   const sifting = placing > 0 || settledEnv.trim() !== '' || q.trim() !== ''
-  const paged = usePaged(rows, `${group}|${sort}|${q}|${settledEnv}`)
+  const paged = usePaged(rows, `${group}|${sorting.key}|${sorting.dir}|${q}|${settledEnv}`)
 
   return (
     <>
@@ -153,7 +145,7 @@ export function CachePage() {
           <InputGroup className="w-[220px] max-w-full max-md:w-full">
             <input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} />
           </InputGroup>
-          <NativeSelect aria-label="Sort by" value={sort} onChange={(e) => show({ s: e.target.value === 'rate' ? undefined : e.target.value })} className="w-auto max-md:flex-1">
+          <NativeSelect aria-label="Sort by" value={sorting.key} onChange={(e) => pick(e.target.value as typeof sorting.key)} className="w-auto max-md:flex-1">
             {SORTS.map((one) => <option key={one.value} value={one.value}>Sort: {one.label}</option>)}
           </NativeSelect>
           <span className="flex-1 max-md:hidden" />
@@ -199,12 +191,12 @@ export function CachePage() {
             <Table aria-label={`Cache ${noun}s`}>
               <thead>
                 <tr>
-                  <Th>{noun === 'store' ? 'Store' : noun === 'key pattern' ? 'Key pattern' : 'Operation'}</Th>
-                  {group === 'store' ? null : <Th className="w-[130px]">Store</Th>}
-                  <Th numeric className="w-[100px]">Calls</Th>
-                  <Th numeric className="w-[90px]">Hits</Th>
-                  <Th numeric className="w-[90px]">Misses</Th>
-                  <Th className="w-[160px]">Hit rate</Th>
+                  <SortHead label={noun === 'store' ? 'Store' : noun === 'key pattern' ? 'Key pattern' : 'Operation'} dir={dirOf(group === 'store' ? 'store' : 'name')} onSort={() => sortBy(group === 'store' ? 'store' : 'name')} />
+                  {group === 'store' ? null : <SortHead label="Store" dir={dirOf('store')} onSort={() => sortBy('store')} className="w-[130px]" />}
+                  <SortHead label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[100px]" />
+                  <SortHead label="Hits" numeric dir={dirOf('hits')} onSort={() => sortBy('hits')} className="w-[90px]" />
+                  <SortHead label="Misses" numeric dir={dirOf('misses')} onSort={() => sortBy('misses')} className="w-[90px]" />
+                  <SortHead label="Hit rate" dir={dirOf('rate')} onSort={() => sortBy('rate')} className="w-[160px]" />
                   <Th numeric className="w-[80px]">p50</Th>
                   <Th numeric className="w-[80px]">p95</Th>
                 </tr>

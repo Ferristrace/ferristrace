@@ -1,4 +1,5 @@
 import { ScrollText, TriangleAlert, Waypoints } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link, useParams, useSearchParam } from '@/lib/router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,8 +19,12 @@ import { PlacementPicker } from '@/components/ft/Placement'
 import { RunsOn } from '@/components/ft/RunsOn'
 import { because } from '@/auth/client'
 import { num } from '@/lib/format'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
-import { PagedFooter, usePaged } from './backend/kit'
+import { PagedFooter, SortHead, usePaged } from './backend/kit'
+import { operationValue, textFirst, type OperationKey } from './backend/sortKeys'
+import { ServiceDependencies, ServiceLogs, ServicePanel, ServiceTabStrip, ServiceTraces } from './services/ServiceTabs'
+import { tabOf } from './services/serviceView'
 
 const axis = (hi: number, unit: string, blank = false): [string, string, string] => {
   if (blank) return ['', '', '']
@@ -37,6 +42,7 @@ export function ServiceDetail() {
   const { ms: windowMs, label } = useWindow()
   const { name = '' } = useParams()
   const environment = useSearchParam('env') ?? ''
+  const tab = tabOf(useSearchParam('tab'))
   const { placement, place } = usePlacement()
   const { services, pending } = useServiceTable(environment, windowMs, placement)
   const { operations, failed: opsFailed } = useOperations(name, environment, windowMs, placement)
@@ -67,7 +73,11 @@ export function ServiceDetail() {
   const kept = { ...(environment ? { env: environment } : {}), ...where }
   const upstream = edges.filter((edge) => edge.callee === name).sort((a, b) => b.calls - a.calls)
   const downstream = edges.filter((edge) => edge.caller === name).sort((a, b) => b.calls - a.calls)
-  const paged = usePaged(operations, name, 10)
+  const [sorting, setSorting] = useState<Sorting<OperationKey> | null>(null)
+  const ordered = useMemo(() => sorted(operations, sorting, operationValue), [operations, sorting])
+  const paged = usePaged(ordered, `${name}|${sorting?.key}|${sorting?.dir}`, 10)
+  const dirOf = (key: OperationKey) => (sorting?.key === key ? sorting.dir : null)
+  const sortBy = (key: OperationKey) => setSorting(toggled(sorting, key, textFirst(key)))
   return (
     <>
       <nav aria-label="Breadcrumb" className="text-control"><Link to="/services" search={kept}>Services</Link><span className="text-faint-foreground"> / </span><span className="font-mono">{name}</span></nav>
@@ -85,7 +95,12 @@ export function ServiceDetail() {
         {environment ? <span>Environment <span className="font-mono text-foreground">{environment}</span></span> : null}
         {s ? <span>Last span <span className="font-mono text-foreground">{s.seen}</span></span> : null}
       </div>
+      <ServiceTabStrip tab={tab} service={name} />
       <PlacementPicker collapsible placement={placement} onChange={place} windowMs={windowMs} />
+      {tab === 'traces' ? <ServicePanel id="traces"><ServiceTraces name={name} windowMs={windowMs} label={label} placement={placement} where={where} /></ServicePanel> : null}
+      {tab === 'logs' ? <ServicePanel id="logs"><ServiceLogs name={name} windowMs={windowMs} label={label} placement={placement} where={where} /></ServicePanel> : null}
+      {tab === 'dependencies' ? <ServicePanel id="dependencies"><ServiceDependencies name={name} label={label} edges={edges} pending={depsPending} failed={depsFailed} kept={kept} where={where} /></ServicePanel> : null}
+      {tab === 'overview' ? <ServicePanel id="overview">
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(320px,100%),1fr))] gap-3">
         <LineChart title="Requests" legend={s ? `${num(s.requests)} requests` : 'server and consumer spans'} values={lines.perSecond} overall={s?.perSecond ?? null} windowLabel={windowLabel} status={status} hi={rateHi} yLabels={axis(rateHi, '/s', status !== undefined)} xLabels={labels} aria={`Requests per second of ${name} over the last ${label}`} markers={markers} times={times} format={perSecond} />
         <LineChart title="Error rate" legend={s ? `${num(s.errors)} of ${num(s.requests)} requests · dashed: ${ERROR_THRESHOLD} % status page threshold` : `dashed: ${ERROR_THRESHOLD} % status page threshold`} values={lines.errorRate} overall={s?.err ?? null} windowLabel={windowLabel} status={status} markers={markers} threshold={ERROR_THRESHOLD} hi={errHi} yLabels={axis(errHi, '%', status !== undefined)} xLabels={labels} aria={`Error rate of ${name} over the last ${label}`} times={times} format={errorFormat} />
@@ -97,7 +112,7 @@ export function ServiceDetail() {
         {!opsFailed && operations.length === 0 ? <p className="m-0 px-3.5 py-3 text-control text-muted-foreground">No operation served in the last {label}.</p> : null}
         <div className={cn('overflow-x-auto', operations.length === 0 && 'hidden')}>
           <Table aria-label="Operations">
-            <thead><tr><Th>Span name</Th><Th numeric className="w-[90px]">Requests</Th><Th numeric className="w-[90px]">Error rate</Th><Th numeric className="w-[80px]">p50</Th><Th numeric className="w-[80px]">p95</Th><Th numeric className="w-[80px]">p99</Th><Th className="w-[110px]">Last seen</Th></tr></thead>
+            <thead><tr><SortHead label="Span name" dir={dirOf('name')} onSort={() => sortBy('name')} /><SortHead label="Requests" numeric dir={dirOf('rps')} onSort={() => sortBy('rps')} className="w-[90px]" /><SortHead label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[90px]" /><Th numeric className="w-[80px]">p50</Th><Th numeric className="w-[80px]">p95</Th><Th numeric className="w-[80px]">p99</Th><Th className="w-[110px]">Last seen</Th></tr></thead>
             <tbody>
               {paged.shown.map((o) => (
                 <Tr key={o.name}>
@@ -141,7 +156,8 @@ export function ServiceDetail() {
         ))}
       </Card>
       <RunsOn service={name} />
-      {!pending && !s ? <EmptyState title="Nothing measured yet">This service served no span in the last {label}{environment ? ` in ${environment}` : ''}.</EmptyState> : null}
+      </ServicePanel> : null}
+      {tab === 'overview' && !pending && !s ? <EmptyState title="Nothing measured yet">This service served no span in the last {label}{environment ? ` in ${environment}` : ''}.</EmptyState> : null}
     </>
   )
 }
