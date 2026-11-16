@@ -1,4 +1,4 @@
-import { Link } from '@/lib/router'
+import { MarkerLayer } from './MarkerLayer'
 import { TIME_LABELS } from '@/data/series'
 
 export type Marker = { at: number; label: string; to?: string }
@@ -31,15 +31,7 @@ export function LineChart({ title, legend, values, second, threshold, lo = 0, hi
           {second ? <polyline points={pts(second, lo, hi, height)} fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" /> : null}
           <polyline points={p} fill="none" stroke="var(--chart-line)" strokeWidth="1.75" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         </svg>
-        {markers.map((m, index) => {
-          const left = `${(m.at / Math.max(1, values.length - 1)) * 100}%`
-          const tag = <span className="absolute left-1 whitespace-nowrap rounded-sm border bg-background px-1 font-mono text-[10px] leading-4 text-foreground shadow-sm" style={{ top: `${(index % 3) * 16}px` }}>▲ {m.label}</span>
-          return (
-            <span key={`${m.label}-${m.at}`} className="absolute inset-y-0 border-l border-dashed border-foreground/60" style={{ left }}>
-              {m.to ? <Link to={m.to} aria-label={`Release ${m.label}`} className="no-underline">{tag}</Link> : tag}
-            </span>
-          )
-        })}
+        <MarkerLayer pins={markers.map((m) => ({ frac: m.at / Math.max(1, values.length - 1), label: m.label, to: m.to }))} />
         </div>
       </div>
       <div className="flex justify-between pl-[46px] font-mono text-[10px] text-faint-foreground">{xLabels.map((t, at) => <span key={`${at}-${t}`}>{t}</span>)}</div>
@@ -97,11 +89,7 @@ export function StackedChart({ title, legend, layers, yLabels, aria, height = 16
             <line x1="0" y1={height - 0.5} x2="600" y2={height - 0.5} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
             {bands.map((band) => <polygon key={band.key} points={band.points} fill={band.colour} fillOpacity="0.55" stroke={band.colour} strokeWidth="1" vectorEffect="non-scaling-stroke"><title>{band.key || '(none)'}</title></polygon>)}
           </svg>
-          {markers.map((m, index) => (
-            <span key={`${m.label}-${m.at}`} className="absolute inset-y-0 border-l border-dashed border-foreground/60" style={{ left: `${(m.at / Math.max(1, count - 1)) * 100}%` }}>
-              <span className="absolute left-1 whitespace-nowrap rounded-sm border bg-background px-1 font-mono text-[10px] leading-4 text-foreground shadow-sm" style={{ top: `${(index % 3) * 16}px` }}>▲ {m.label}</span>
-            </span>
-          ))}
+          <MarkerLayer pins={markers.map((m) => ({ frac: m.at / Math.max(1, count - 1), label: m.label, to: m.to }))} />
         </div>
       </div>
       <div className="flex justify-between pl-[54px] font-mono text-[10px] text-faint-foreground">{xLabels.map((t, at) => <span key={`${at}-${t}`}>{t}</span>)}</div>
