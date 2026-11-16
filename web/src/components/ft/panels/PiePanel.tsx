@@ -59,7 +59,12 @@ export function PiePanel({ panel, result, drill }: PanelProps<Of<'rows'>>) {
               className={cn('outline-none focus-visible:stroke-foreground', drill && !item.other && 'cursor-pointer')}
               onPointerEnter={(event) => { setHover(at); place(event) }}
               onPointerMove={place}
-              onFocus={(event) => { setHover(at); settle(event.currentTarget) }}
+              onPointerLeave={leave}
+              onFocus={(event) => {
+                if (!event.currentTarget.matches(':focus-visible')) return
+                setHover(at)
+                settle(event.currentTarget)
+              }}
               onBlur={leave}
               onClick={() => open(at)}
               onKeyDown={(event) => {
