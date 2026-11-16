@@ -1,18 +1,21 @@
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { Boxes, Container, Cloud, CircleAlert, Server } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Link, useSearchParam } from '@/lib/router'
 import { Card, CardKind } from '@/components/ui/card'
 import { NativeSelect } from '@/components/ui/input'
 import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { Seen } from '@/pages/Infra'
 import { bytes, collectorConfig, KIND_LABEL, RECEIVER, useCluster, useInfrastructure, type ClusterPod, type InfraResource, type ResourceKind } from '@/data/infra'
 import { ApiError, because } from '@/auth/client'
-import { pagesOf } from '@/lib/paging'
+import { sorted } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
+import { FiltersBar } from './FiltersBar'
+import { usePaged } from './usePaged'
+import { useSortState } from './useSortState'
 
 const HERE = '/infra'
 const KINDS: ResourceKind[] = ['cluster', 'host', 'container']
@@ -122,29 +125,25 @@ function Section({ id, title, icon, count, children }: { id: string; title: stri
   )
 }
 
-function usePaged<T>(items: T[]) {
-  const [page, setPage] = useState(1)
-  const [size, setSize] = useState(25)
-  const at = Math.min(page, pagesOf(items.length, size))
-  const visible = useMemo(() => items.slice((at - 1) * size, at * size), [items, at, size])
-  return { visible, at, size, setPage, setSize: (next: number) => { setPage(1); setSize(next) } }
-}
-
 const dot = (resource: InfraResource) => <span aria-hidden className={cn('mr-2 inline-block size-1.5 rounded-full align-middle', resource.silent ? 'bg-status-deg' : 'bg-status-ok')} />
 
+const whereOf = (resource: InfraResource) => [resource.provider, resource.region, resource.host_type].filter(Boolean).join(' · ') || null
+
 function HostTable({ hosts }: { hosts: InfraResource[] }) {
-  const paged = usePaged(hosts)
+  const { sorting, dir, on } = useSortState<'name' | 'where' | 'environment' | 'services' | 'status'>()
+  const rows = useMemo(() => sorted(hosts, sorting, (h, key) => (key === 'name' ? h.name : key === 'where' ? whereOf(h) : key === 'environment' ? h.environment : key === 'services' ? h.services.join(' ') || null : Number(h.silent))), [hosts, sorting])
+  const paged = usePaged(rows)
   return (
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
         <Table aria-label="Hosts" className="min-w-[640px]">
           <thead>
             <tr>
-              <Th className="min-w-[200px] pl-4">Host</Th>
-              <Th>Where</Th>
-              <Th className="w-[130px]">Environment</Th>
-              <Th className="min-w-[160px]">Services</Th>
-              <Th className="w-[200px]">Status</Th>
+              <SortTh label="Host" dir={dir('name')} onSort={on('name')} className="min-w-[200px] pl-4" />
+              <SortTh label="Where" dir={dir('where')} onSort={on('where')} />
+              <SortTh label="Environment" dir={dir('environment')} onSort={on('environment')} className="w-[130px]" />
+              <SortTh label="Services" dir={dir('services')} onSort={on('services')} className="min-w-[160px]" />
+              <SortTh label="Status" dir={dir('status')} onSort={on('status')} className="w-[200px]" />
               <Th className="w-[130px] pr-4"><span className="sr-only">Open</span></Th>
             </tr>
           </thead>
@@ -168,20 +167,25 @@ function HostTable({ hosts }: { hosts: InfraResource[] }) {
 }
 
 function ContainerTable({ containers }: { containers: InfraResource[] }) {
-  const paged = usePaged(containers)
+  const { sorting, dir, on } = useSortState<'name' | 'where' | 'environment' | 'services' | 'cpu' | 'memory' | 'status'>()
+  const rows = useMemo(
+    () => sorted(containers, sorting, (c, key) => (key === 'name' ? c.name : key === 'where' ? whereOf(c) : key === 'environment' ? c.environment : key === 'services' ? c.services.join(' ') || null : key === 'cpu' ? c.cpu_percent : key === 'memory' ? c.memory_bytes : Number(c.silent))),
+    [containers, sorting],
+  )
+  const paged = usePaged(rows)
   return (
     <Card className="overflow-hidden">
       <div className="overflow-x-auto">
         <Table aria-label="Containers" className="min-w-[700px]">
           <thead>
             <tr>
-              <Th className="min-w-[200px] pl-4">Container</Th>
-              <Th>Where</Th>
-              <Th className="w-[130px]">Environment</Th>
-              <Th className="min-w-[160px]">Services</Th>
-              <Th numeric className="w-[80px]">CPU</Th>
-              <Th numeric className="w-[90px]">Memory</Th>
-              <Th className="w-[200px] pl-6 pr-4">Status</Th>
+              <SortTh label="Container" dir={dir('name')} onSort={on('name')} className="min-w-[200px] pl-4" />
+              <SortTh label="Where" dir={dir('where')} onSort={on('where')} />
+              <SortTh label="Environment" dir={dir('environment')} onSort={on('environment')} className="w-[130px]" />
+              <SortTh label="Services" dir={dir('services')} onSort={on('services')} className="min-w-[160px]" />
+              <SortTh numeric label="CPU" dir={dir('cpu')} onSort={on('cpu', 'desc')} className="w-[80px]" />
+              <SortTh numeric label="Memory" dir={dir('memory')} onSort={on('memory', 'desc')} className="w-[90px]" />
+              <SortTh label="Status" dir={dir('status')} onSort={on('status')} className="w-[200px] pl-6 pr-4" />
             </tr>
           </thead>
           <tbody>
@@ -276,7 +280,7 @@ export function InfraOverview() {
         <Kpi label="Containers" value={String(count('container'))} sub={count('container') ? reporting('container') : 'none reporting'} />
         <Kpi label="Silent" value={String(silent)} sub={silent ? 'quiet for over five minutes' : 'everything is reporting'} tone={silent ? 'warn' : undefined} />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <FiltersBar active={(kind !== 'all' ? 1 : 0) + (status !== 'all' ? 1 : 0) + (provider ? 1 : 0) + (region ? 1 : 0) + (environment ? 1 : 0)}>
         <Segmented
           label="Kind"
           value={kind}
@@ -308,7 +312,7 @@ export function InfraOverview() {
             {environments.map((name) => <option key={name} value={name}>{name}</option>)}
           </NativeSelect>
         ) : null}
-      </div>
+      </FiltersBar>
       <p className="sr-only" aria-live="polite">{shown.length} of {resources.length} resources shown</p>
 
       {shown.length === 0 ? (

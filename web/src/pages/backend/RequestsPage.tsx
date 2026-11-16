@@ -2,12 +2,13 @@ import { Boxes, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { useSearchParam } from '@/lib/router'
+import { sorted } from '@/lib/sorting'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
-import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
@@ -18,7 +19,6 @@ import {
   groupingOf,
   useRequestRoutes,
   useRequestSeries,
-  type Route,
 } from '@/data/requests'
 import { useZoom } from '@/lib/bounds'
 import { useWindow } from '@/lib/window'
@@ -27,6 +27,8 @@ import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
+import { ROUTE_KEYS, routeFirst, routeValue } from './sortKeys'
+import { useUrlSort } from './useUrlSort'
 
 const BROKEN_THRESHOLD = 1
 
@@ -35,32 +37,19 @@ const SORTS = [
   { value: 'refused', label: '4xx rate' },
   { value: 'traffic', label: 'Requests' },
   { value: 'p95', label: 'p95' },
+  { value: 'share', label: 'Share of time' },
   { value: 'name', label: 'Name' },
+  { value: 'service', label: 'Service' },
+  { value: 'method', label: 'Method' },
 ] as const
 
-type Sort = (typeof SORTS)[number]['value']
-
-const sortOf = (value: unknown): Sort => SORTS.find((one) => one.value === value)?.value ?? 'broken'
-
 const percent = (rate: number | null) => (rate === null ? '—' : `${rate.toFixed(1)} %`)
-
-function sorted(routes: Route[], by: Sort): Route[] {
-  const order: Record<Sort, (a: Route, b: Route) => number> = {
-    broken: (a, b) => (b.brokenRate ?? -1) - (a.brokenRate ?? -1),
-    refused: (a, b) => (b.refusedRate ?? -1) - (a.refusedRate ?? -1),
-    traffic: (a, b) => b.perSecond - a.perSecond,
-    p95: (a, b) => b.p95Us - a.p95Us,
-    name: (a, b) => a.route.localeCompare(b.route),
-  }
-  return [...routes].sort(order[by])
-}
-
 
 export function RequestsPage() {
   const goTo = useRouterNavigate()
   const { ms: windowMs, label } = useWindow()
   const group = groupingOf(useSearchParam('g'))
-  const sort = sortOf(useSearchParam('s'))
+  const { sorting, pick, sortBy, dirOf } = useUrlSort(ROUTE_KEYS, 'broken', routeFirst)
   const environment = useSearchParam('env') ?? ''
   const [typedEnv, setTypedEnv] = useState(environment)
   const settledEnv = useSettled(typedEnv)
@@ -91,9 +80,10 @@ export function RequestsPage() {
     () =>
       sorted(
         routes.filter((row) => `${row.route} ${row.service} ${row.method}`.toLowerCase().includes(q.trim().toLowerCase())),
-        sort,
+        sorting,
+        routeValue,
       ),
-    [routes, sort, q],
+    [routes, sorting, q],
   )
   const totalUs = useMemo(() => rows.reduce((sum, row) => sum + row.totalUs, 0), [rows])
   const bars = useMemo<Bar[]>(
@@ -106,7 +96,7 @@ export function RequestsPage() {
   const span = zoom ? `${Math.max(1, Math.round(seconds))} s` : label
   const placing = placedCount(placement)
   const sifting = placing > 0 || settledEnv.trim() !== '' || q.trim() !== ''
-  const paged = usePaged(rows, `${group}|${sort}|${q}|${settledEnv}`)
+  const paged = usePaged(rows, `${group}|${sorting.key}|${sorting.dir}|${q}|${settledEnv}`)
 
   return (
     <>
@@ -167,7 +157,7 @@ export function RequestsPage() {
           <InputGroup className="w-[220px] max-w-full max-md:w-full">
             <input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} />
           </InputGroup>
-          <NativeSelect aria-label="Sort by" value={sort} onChange={(e) => show({ s: e.target.value === 'broken' ? undefined : e.target.value })} className="w-auto max-md:flex-1">
+          <NativeSelect aria-label="Sort by" value={sorting.key} onChange={(e) => pick(e.target.value as typeof sorting.key)} className="w-auto max-md:flex-1">
             {SORTS.map((one) => <option key={one.value} value={one.value}>Sort: {one.label}</option>)}
           </NativeSelect>
           <span className="flex-1 max-md:hidden" />
@@ -213,15 +203,15 @@ export function RequestsPage() {
             <Table aria-label={`Requests by ${noun}`}>
               <thead>
                 <tr>
-                  <Th>{noun === 'service' ? 'Service' : noun === 'method' ? 'Method' : 'Route'}</Th>
-                  {group === 'service' ? null : <Th className="w-[130px]">Service</Th>}
-                  {group === 'method' ? null : <Th className="w-[90px]">Method</Th>}
-                  <Th numeric className="w-[100px]">Requests</Th>
-                  <Th numeric className="w-[80px]">4xx</Th>
-                  <Th numeric className="w-[80px]">5xx</Th>
-                  <Th className="w-[160px]">Share of time</Th>
+                  <SortTh label={noun === 'service' ? 'Service' : noun === 'method' ? 'Method' : 'Route'} dir={dirOf(group === 'service' ? 'service' : group === 'method' ? 'method' : 'name')} onSort={() => sortBy(group === 'service' ? 'service' : group === 'method' ? 'method' : 'name')} />
+                  {group === 'service' ? null : <SortTh label="Service" dir={dirOf('service')} onSort={() => sortBy('service')} className="w-[130px]" />}
+                  {group === 'method' ? null : <SortTh label="Method" dir={dirOf('method')} onSort={() => sortBy('method')} className="w-[90px]" />}
+                  <SortTh label="Requests" numeric dir={dirOf('traffic')} onSort={() => sortBy('traffic')} className="w-[100px]" />
+                  <SortTh label="4xx" numeric dir={dirOf('refused')} onSort={() => sortBy('refused')} className="w-[80px]" />
+                  <SortTh label="5xx" numeric dir={dirOf('broken')} onSort={() => sortBy('broken')} className="w-[80px]" />
+                  <SortTh label="Share of time" dir={dirOf('share')} onSort={() => sortBy('share')} className="w-[160px]" />
                   <Th numeric className="w-[80px]">p50</Th>
-                  <Th numeric className="w-[80px]">p95</Th>
+                  <SortTh label="p95" numeric dir={dirOf('p95')} onSort={() => sortBy('p95')} className="w-[80px]" />
                 </tr>
               </thead>
               <tbody>

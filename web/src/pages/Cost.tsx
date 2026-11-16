@@ -5,11 +5,13 @@ import { PageHeader } from '@/components/ft/bits'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { Button } from '@/components/ui/button'
 import { HOUR, SIGNALS, bytes, count, dailyOf, projected, startOfMonth, startOfNextMonth, useMetered, type Signal } from '@/data/usage'
 import { pagesOf } from '@/lib/paging'
 import { Link } from '@/lib/router'
+import { sorted } from '@/lib/sorting'
+import { useSortState } from './useSortState'
 
 const DAY = 86_400_000
 
@@ -32,6 +34,7 @@ export function Cost() {
   const [zoom, setZoom] = useState<[number, number] | null>(null)
   const [size, setSize] = useState(DEFAULT_SIZE)
   const [page, setPage] = useState(1)
+  const { sorting, dir, on } = useSortState<string>()
 
   const [from, to] = useMemo(() => {
     if (zoom) return zoom
@@ -53,7 +56,10 @@ export function Cost() {
   }
   const split = metered ? metered.hours.length - metered.by_signal.unsplit_hours : 0
   const show = (unit: 'bytes' | 'points', value: number) => (unit === 'bytes' ? bytes(value) : count(value))
-  const rows = useMemo(() => series[0].days.map((_, at) => ({ at: series[0].days[at].at, cells: series.map((one) => one.days[at].bytes) })).reverse(), [series])
+  const rows = useMemo(() => {
+    const all = series[0].days.map((_, at) => ({ at: series[0].days[at].at, cells: series.map((one) => one.days[at].bytes) })).reverse()
+    return sorted(all, sorting, (row, key) => (key === 'at' ? row.at : (row.cells[SIGNALS.findIndex((signal) => signal.key === key)] ?? null)))
+  }, [series, sorting])
   const shown = Math.min(page, pagesOf(rows.length, size))
 
   return (
@@ -124,8 +130,8 @@ export function Cost() {
                 <Table aria-label="Ingested per period and signal">
                   <thead>
                     <tr>
-                      <Th>{step === HOUR ? 'Hour' : 'Day'}</Th>
-                      {SIGNALS.map((signal) => <Th key={signal.key} numeric className="w-[160px]">{signal.label}</Th>)}
+                      <SortTh label={step === HOUR ? 'Hour' : 'Day'} dir={dir('at')} onSort={on('at', 'desc')} />
+                      {SIGNALS.map((signal) => <SortTh key={signal.key} numeric label={signal.label} dir={dir(signal.key)} onSort={on(signal.key, 'desc')} className="w-[160px]" />)}
                     </tr>
                   </thead>
                   <tbody>

@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { NativeSelect } from '@/components/ui/input'
-import { Alert, Skeleton, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Alert, Skeleton, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { ServiceDot } from '@/components/ft/bits'
 import { because } from '@/auth/client'
 import { useMembers } from '@/data/members'
@@ -21,7 +21,9 @@ import {
   type IssueStatus,
 } from '@/data/issues'
 import { stamp } from '@/lib/format'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
+import { occurrenceValue, type OccurrenceKey } from './alerting/sorting'
 import { useOwners } from './Issues'
 
 const A_DAY = 24 * 60 * 60 * 1000
@@ -66,6 +68,9 @@ function Known({
   const decide = useDecide()
   const { occurrences, asking } = useOccurrences(issue, rangeMs)
   const latest = occurrences[0]
+  const [sorting, setSorting] = useState<Sorting<OccurrenceKey> | null>(null)
+  const listed = sorted(occurrences, sorting, occurrenceValue)
+  const dirOf = (key: OccurrenceKey) => (sorting?.key === key ? sorting.dir : null)
 
   const set = (said: { status?: IssueStatus; owner?: string | null }, told: string) =>
     decide.mutate(
@@ -172,15 +177,15 @@ function Known({
               <CardTitle>Occurrences</CardTitle>
               <CardKind>Table</CardKind>
               <span className="flex-1" />
-              <span className="text-caption text-muted-foreground">most recent first</span>
+              <span className="text-caption text-muted-foreground">{sorting ? 'sorted by the column you chose' : 'most recent first'}</span>
             </CardHeader>
             <div className="overflow-x-auto">
               <Table aria-label="Occurrences" className="min-w-[560px]">
                 <thead>
                   <tr>
-                    <Th className="w-[170px]">Time</Th>
-                    <Th className="w-[180px]">Trace</Th>
-                    <Th>Message</Th>
+                    <SortTh label="Time" dir={dirOf('time')} onSort={() => setSorting((was) => toggled(was, 'time'))} className="w-[170px]" />
+                    <SortTh label="Trace" dir={dirOf('trace')} onSort={() => setSorting((was) => toggled(was, 'trace', 'asc'))} className="w-[180px]" />
+                    <SortTh label="Message" dir={dirOf('message')} onSort={() => setSorting((was) => toggled(was, 'message', 'asc'))} />
                     <Th className="w-[110px]">
                       <span className="sr-only">Links</span>
                     </Th>
@@ -200,7 +205,7 @@ function Known({
                       </Td>
                     </Tr>
                   ) : (
-                    occurrences.map((seen) => (
+                    listed.map((seen) => (
                       <Tr key={`${seen.trace_id}-${seen.span_id}-${seen.at_ms}`}>
                         <Td className="font-mono">{stamp(seen.at_ms)}</Td>
                         <Td>

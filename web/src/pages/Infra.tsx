@@ -1,18 +1,23 @@
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
-import { ArrowDown, ArrowUp, Boxes, CircleAlert, CircleCheck, Clock, Layers, RotateCcw, Search, ScrollText, Server, Waypoints, X } from 'lucide-react'
+import { Boxes, CircleAlert, CircleCheck, Clock, Layers, ListFilter, RotateCcw, Search, ScrollText, Server, Waypoints, X } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParam } from '@/lib/router'
+import { Button } from '@/components/ui/button'
 import { Card, CardKind } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td, Th } from '@/components/ui/misc'
+import { Table, Td, Th, SortTh } from '@/components/ui/misc'
 import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { bytes, collectorConfig, isReporting, useCluster, type ClusterNode, type ClusterPod, type ClusterWorkload } from '@/data/infra'
 import { placementSearch } from '@/data/placement'
 import { pagesOf } from '@/lib/paging'
+import { sorted } from '@/lib/sorting'
 import { ApiError, because } from '@/auth/client'
 import { cn } from '@/lib/utils'
+import { KUBE_TABS, filterNodes, filterWorkloads, memoryShare as nodeMemoryShare, nodeValue, tabOf, workloadValue, type KubeTab, type NodeKey, type WorkloadKey } from './kubeTables'
+import { useSortState } from './useSortState'
+import { usePaged } from './usePaged'
 
 const HERE = '/infra/kubernetes'
 
@@ -53,6 +58,7 @@ function useKubernetesSearch() {
     namespace: useSearchParam('namespace') ?? '',
     by: (useSearchParam('by') as Grouping | undefined) ?? 'node',
     q: useSearchParam('q') ?? '',
+    tab: tabOf(useSearchParam('tab')),
     problems: useSearchParam('problems') === '1',
     sort: (useSearchParam('sort') as SortKey | undefined) ?? 'name',
     desc: useSearchParam('dir') === 'desc',
@@ -307,18 +313,6 @@ function NodePool({ nodes, pods, prefix, picked, onPick }: { nodes: ClusterNode[
   )
 }
 
-function SortHeader({ label, column, sort, desc, onSort, className }: { label: string; column: SortKey; sort: SortKey; desc: boolean; onSort: (column: SortKey) => void; className?: string }) {
-  const active = sort === column
-  return (
-    <Th numeric={column !== 'name'} className={className} aria-sort={active ? (desc ? 'descending' : 'ascending') : 'none'}>
-      <button type="button" onClick={() => onSort(column)} className={cn('inline-flex cursor-pointer items-center gap-1 bg-transparent p-0 font-semibold', active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground')}>
-        {label}
-        {active ? (desc ? <ArrowDown className="size-3" aria-hidden /> : <ArrowUp className="size-3" aria-hidden />) : null}
-      </button>
-    </Th>
-  )
-}
-
 function compare(sort: SortKey, desc: boolean) {
   const sign = desc ? -1 : 1
   return (a: ClusterPod, b: ClusterPod) => {
@@ -370,11 +364,11 @@ export function PodTable({ pods, workloads, by, sort, desc, prefix, set }: { pod
       <Table aria-label="Pods" className="min-w-[760px]">
         <thead>
           <tr>
-            <SortHeader label="Pod" column="name" sort={sort} desc={desc} onSort={onSort} className="min-w-[280px]" />
+            <SortTh label="Pod" dir={sort === 'name' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('name')} className="min-w-[280px]" />
             <Th className="w-[220px]">Status</Th>
-            <SortHeader label="Restarts" column="restarts" sort={sort} desc={desc} onSort={onSort} className="w-[100px]" />
-            <SortHeader label="CPU" column="cpu" sort={sort} desc={desc} onSort={onSort} className="w-[80px]" />
-            <SortHeader label="Memory" column="memory" sort={sort} desc={desc} onSort={onSort} className="w-[90px]" />
+            <SortTh label="Restarts" numeric dir={sort === 'restarts' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('restarts')} className="w-[100px]" />
+            <SortTh label="CPU" numeric dir={sort === 'cpu' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('cpu')} className="w-[80px]" />
+            <SortTh label="Memory" numeric dir={sort === 'memory' ? (desc ? 'desc' : 'asc') : null} onSort={() => onSort('memory')} className="w-[90px]" />
             <Th className="w-[150px]"><span className="sr-only">Open</span></Th>
           </tr>
         </thead>
@@ -426,6 +420,125 @@ export function PodTable({ pods, workloads, by, sort, desc, prefix, set }: { pod
   )
 }
 
+const TAB_LABEL: Record<KubeTab, string> = { nodes: 'Nodes', workloads: 'Workloads', pods: 'Pods' }
+
+function KubeTabs({ tab, set }: { tab: KubeTab | null; set: (part: Record<string, string | undefined>) => void }) {
+  const tabs: [KubeTab | null, string][] = [[null, 'Overview'], ...KUBE_TABS.map((one): [KubeTab, string] => [one, TAB_LABEL[one]])]
+  return (
+    <div role="tablist" aria-label="Kubernetes views" className="flex gap-1 overflow-x-auto border-b">
+      {tabs.map(([one, label]) => (
+        <button
+          key={label}
+          type="button"
+          role="tab"
+          id={`kube-tab-${one ?? 'overview'}`}
+          aria-selected={one === tab}
+          aria-controls="kube-panel"
+          onClick={() => set({ tab: one ?? undefined, q: undefined })}
+          className={cn('-mb-px h-10 cursor-pointer whitespace-nowrap border-b-2 border-transparent bg-transparent px-3 text-control font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring', one === tab && 'border-primary text-foreground')}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function SearchBox({ label, placeholder, typed, onType, onClear }: { label: string; placeholder: string; typed: string; onType: (value: string) => void; onClear: () => void }) {
+  return (
+    <InputGroup className="w-[320px] max-w-full max-md:w-full">
+      <Search aria-hidden />
+      <input aria-label={label} placeholder={placeholder} value={typed} onChange={(e) => onType(e.target.value)} />
+      {typed ? <button type="button" aria-label="Clear the filter" onClick={onClear} className="cursor-pointer bg-transparent p-0 text-muted-foreground hover:text-foreground"><X className="size-3.5" aria-hidden /></button> : null}
+    </InputGroup>
+  )
+}
+
+function NodeStatus({ node }: { node: ClusterNode }) {
+  const chip = 'inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[11px] font-medium'
+  if (node.ready === false) return <span className={cn(chip, 'bg-destructive-subtle text-destructive-text')}>Not ready</span>
+  if (node.ready === null) return <span className={cn(chip, 'bg-muted text-faint-foreground')}>Unknown</span>
+  return <span className={cn(chip, 'bg-success-subtle text-success-text')}>Ready</span>
+}
+
+function NodesTab({ nodes, prefix, q }: { nodes: ClusterNode[]; prefix: string; q: string }) {
+  const { sorting, dir, on } = useSortState<NodeKey>()
+  const rows = useMemo(() => sorted(filterNodes(nodes, q), sorting, nodeValue), [nodes, q, sorting])
+  const paged = usePaged(rows, 25, q)
+  return (
+    <Card className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <Table aria-label="Nodes" className="min-w-[640px]">
+          <thead>
+            <tr>
+              <SortTh label="Node" dir={dir('name')} onSort={on('name')} className="min-w-[240px]" />
+              <SortTh label="Status" dir={dir('status')} onSort={on('status')} className="w-[140px]" />
+              <SortTh numeric label="Pods" dir={dir('pods')} onSort={on('pods', 'desc')} className="w-[90px]" />
+              <SortTh numeric label="CPU" dir={dir('cpu')} onSort={on('cpu', 'desc')} className="w-[90px]" />
+              <SortTh numeric label="Memory" dir={dir('memory')} onSort={on('memory', 'desc')} className="w-[200px]" />
+            </tr>
+          </thead>
+          <tbody>
+            {paged.visible.map((node) => {
+              const share = nodeMemoryShare(node)
+              const total = node.memory !== null && node.memory_available !== null ? node.memory + node.memory_available : null
+              return (
+                <tr key={node.name} className={cn('hover:[&>td]:bg-row-hover', node.ready === false && '[&>td]:bg-destructive-subtle/60')}>
+                  <Td className="max-w-0"><Link to={`${HERE}/nodes/${encodeURIComponent(node.name)}`} title={node.name} className="block truncate font-mono font-semibold text-foreground no-underline hover:underline">{node.name.slice(prefix.length) || node.name}</Link></Td>
+                  <Td><NodeStatus node={node} /></Td>
+                  <Td numeric>{node.pods}</Td>
+                  <Td numeric>{millicores(node.cpu)}</Td>
+                  <Td numeric>{share !== null ? `${Math.round(share * 100)} % of ${bytes(total)}` : bytes(node.memory)}</Td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </Table>
+        {!rows.length ? <p className="m-0 px-3 py-6 text-center text-control text-muted-foreground">{nodes.length ? 'No node matches.' : 'No node is reporting.'}</p> : null}
+      </div>
+      {rows.length > 10 ? <Pager total={rows.length} page={paged.at} size={paged.size} onPage={paged.setPage} onSize={paged.setSize} noun="nodes" className="border-t" /> : null}
+    </Card>
+  )
+}
+
+function WorkloadsTab({ workloads, q, onPods }: { workloads: ClusterWorkload[]; q: string; onPods: (name: string) => void }) {
+  const { sorting, dir, on } = useSortState<WorkloadKey>()
+  const rows = useMemo(() => sorted(filterWorkloads(workloads, q), sorting, workloadValue), [workloads, q, sorting])
+  const paged = usePaged(rows, 25, q)
+  return (
+    <Card className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <Table aria-label="Workloads" className="min-w-[720px]">
+          <thead>
+            <tr>
+              <SortTh label="Workload" dir={dir('name')} onSort={on('name')} className="min-w-[240px]" />
+              <SortTh label="Kind" dir={dir('kind')} onSort={on('kind')} className="w-[140px]" />
+              <SortTh label="Namespace" dir={dir('namespace')} onSort={on('namespace')} className="w-[180px]" />
+              <SortTh numeric label="Ready" dir={dir('ready')} onSort={on('ready')} className="w-[110px]" />
+              <SortTh numeric label="Pods" dir={dir('pods')} onSort={on('pods', 'desc')} className="w-[90px]" />
+              <Th className="w-[120px]"><span className="sr-only">Open</span></Th>
+            </tr>
+          </thead>
+          <tbody>
+            {paged.visible.map((workload) => (
+              <tr key={`${workload.cluster ?? ''}/${workload.namespace}/${workload.kind}/${workload.name}`} className={cn('hover:[&>td]:bg-row-hover', short(workload) && '[&>td]:bg-warning-subtle/60')}>
+                <Td className="max-w-0"><span className="block truncate font-mono font-semibold" title={workload.name}>{workload.name}</span></Td>
+                <Td className="text-muted-foreground">{workload.kind}</Td>
+                <Td className="font-mono text-muted-foreground">{workload.namespace}</Td>
+                <Td numeric className={cn(short(workload) && 'font-semibold text-warning-text')}>{workload.desired === null ? '—' : `${workload.ready ?? 0} / ${workload.desired}`}</Td>
+                <Td numeric>{workload.pods}</Td>
+                <Td><button type="button" onClick={() => onPods(workload.name)} aria-label={`Show the pods of ${workload.name}`} className="cursor-pointer bg-transparent p-0 text-control text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-ring">Show pods</button></Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+        {!rows.length ? <p className="m-0 px-3 py-6 text-center text-control text-muted-foreground">{workloads.length ? 'No workload matches.' : 'No workload is reporting.'}</p> : null}
+      </div>
+      {rows.length > 10 ? <Pager total={rows.length} page={paged.at} size={paged.size} onPage={paged.setPage} onSize={paged.setSize} noun="workloads" className="border-t" /> : null}
+    </Card>
+  )
+}
+
 function NotReporting() {
   return (
     <EmptyState icon={<Boxes />} title="Kubernetes is not reporting" code={collectorConfig(window.location.origin)}>
@@ -436,7 +549,8 @@ function NotReporting() {
 
 export function Kubernetes() {
   const search = useKubernetesSearch()
-  const { cluster, namespace, by, q, problems: problemsOnly, sort, desc, set } = search
+  const { cluster, namespace, by, q, tab, problems: problemsOnly, sort, desc, set } = search
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const { view, pending, failed } = useCluster(cluster, namespace)
   const [typed, setTyped] = useState(q)
   useEffect(() => setTyped(q), [q])
@@ -470,6 +584,7 @@ export function Kubernetes() {
   const memoryUsed = view.nodes.reduce((sum, node) => sum + (node.memory ?? 0), 0)
   const memoryTotal = view.nodes.reduce((sum, node) => sum + (node.memory !== null && node.memory_available !== null ? node.memory + node.memory_available : 0), 0)
   const memoryShare = memoryTotal ? memoryUsed / memoryTotal : null
+  const filterCount = (cluster ? 1 : 0) + (namespace ? 1 : 0) + (problemsOnly ? 1 : 0) + (by !== 'node' ? 1 : 0)
 
   const header = (
     <PageHeader
@@ -482,11 +597,14 @@ export function Kubernetes() {
         </span>
       ) : undefined}
     >
-      <NativeSelect aria-label="Cluster" value={cluster} onChange={(e) => set({ cluster: e.target.value || undefined, namespace: undefined })} className="w-[170px] font-mono max-md:flex-1">
+      <Button size="sm" variant="outline" className="md:hidden" aria-expanded={filtersOpen} aria-controls="kube-filters" onClick={() => setFiltersOpen((was) => !was)}>
+        <ListFilter aria-hidden />Filters{filterCount > 0 ? <span className="rounded-full bg-primary px-1.5 font-mono text-[11px] text-primary-foreground">{filterCount}</span> : null}
+      </Button>
+      <NativeSelect aria-label="Cluster" value={cluster} onChange={(e) => set({ cluster: e.target.value || undefined, namespace: undefined })} className={cn('w-[170px] font-mono max-md:flex-1', !filtersOpen && 'max-md:hidden')}>
         <option value="">All clusters</option>
         {view.clusters.map((name) => <option key={name} value={name}>{name}</option>)}
       </NativeSelect>
-      <NativeSelect aria-label="Namespace" value={namespace} onChange={(e) => set({ namespace: e.target.value || undefined })} className="w-[170px] max-md:flex-1">
+      <NativeSelect aria-label="Namespace" value={namespace} onChange={(e) => set({ namespace: e.target.value || undefined })} className={cn('w-[170px] max-md:flex-1', !filtersOpen && 'max-md:hidden')}>
         <option value="">All namespaces</option>
         {view.namespaces.map((name) => <option key={name} value={name}>{name}</option>)}
       </NativeSelect>
@@ -516,41 +634,63 @@ export function Kubernetes() {
     <>
       {header}
       <p className="sr-only" aria-live="polite">{problems.length ? `${problems.length} problems in the cluster` : 'The cluster is healthy'}</p>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Nodes ready" value={`${view.nodes.length - downNodes}/${view.nodes.length}`} tone={downNodes ? 'bad' : 'ok'} />
-        <Stat label="Pods" value={String(view.pods.length)} suffix={`${view.namespaces.length} namespaces`} />
-        <Stat label="Healthy" value={String(view.pods.length - ill)} suffix="pods" tone="ok" />
-        <Stat label="Unhealthy" value={String(ill)} suffix={ill ? 'pods' : 'none'} tone={ill ? 'bad' : 'ok'} />
-        <Stat label="Restarts 10 min" value={String(restarts)} tone={restarts ? 'warn' : 'plain'} />
-        <Stat label="Memory" value={memoryShare !== null ? `${Math.round(memoryShare * 100)}%` : '—'} suffix={memoryTotal ? `of ${bytes(memoryTotal)}` : undefined} tone={memoryShare !== null && memoryShare > 0.85 ? 'warn' : 'plain'} />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <NodePool nodes={view.nodes} pods={view.pods} prefix={prefix} picked={q} onPick={(name) => set({ q: name || undefined })} />
-        <Attention problems={problems} prefix={prefix} onPick={(name) => set({ q: name })} />
-      </div>
-
-      <section aria-labelledby="pods" className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 id="pods" className="text-heading mr-2">Pods <span className="font-normal text-muted-foreground">{shown.length}</span></h2>
-          <InputGroup className="w-[320px] max-w-full max-md:w-full">
-            <Search aria-hidden />
-            <input aria-label="Filter pods" placeholder="Filter by pod, workload, node, service" value={typed} onChange={(e) => setTyped(e.target.value)} />
-            {typed ? <button type="button" aria-label="Clear the filter" onClick={() => { setTyped(''); set({ q: undefined }) }} className="cursor-pointer bg-transparent p-0 text-muted-foreground hover:text-foreground"><X className="size-3.5" aria-hidden /></button> : null}
-          </InputGroup>
-          <button
-            type="button"
-            aria-pressed={problemsOnly}
-            onClick={() => set({ problems: problemsOnly ? undefined : '1' })}
-            className={cn('inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-control font-semibold focus-visible:outline-2 focus-visible:outline-ring', problemsOnly ? 'border-destructive-border bg-destructive-subtle text-destructive-text' : 'border-line-strong bg-card text-muted-foreground hover:text-foreground')}
-          >
-            <CircleAlert className="size-3.5" aria-hidden />
-            Unhealthy only{ill ? ` (${ill})` : ''}
-          </button>
-          <span className="flex-1" />
-          <Segmented label="Group pods by" value={by} onChange={(value) => set({ by: value === 'node' ? undefined : value })} options={[{ value: 'node', label: 'Node' }, { value: 'namespace', label: 'Namespace' }, { value: 'workload', label: 'Workload' }]} />
+      <KubeTabs tab={tab} set={set} />
+      <div id="kube-panel" role="tabpanel" aria-labelledby={`kube-tab-${tab ?? 'overview'}`} className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <Stat label="Nodes ready" value={`${view.nodes.length - downNodes}/${view.nodes.length}`} tone={downNodes ? 'bad' : 'ok'} />
+          <Stat label="Pods" value={String(view.pods.length)} suffix={`${view.namespaces.length} namespaces`} />
+          <Stat label="Healthy" value={String(view.pods.length - ill)} suffix="pods" tone="ok" />
+          <Stat label="Unhealthy" value={String(ill)} suffix={ill ? 'pods' : 'none'} tone={ill ? 'bad' : 'ok'} />
+          <Stat label="Restarts 10 min" value={String(restarts)} tone={restarts ? 'warn' : 'plain'} />
+          <Stat label="Memory" value={memoryShare !== null ? `${Math.round(memoryShare * 100)}%` : '—'} suffix={memoryTotal ? `of ${bytes(memoryTotal)}` : undefined} tone={memoryShare !== null && memoryShare > 0.85 ? 'warn' : 'plain'} />
         </div>
-        <PodTable pods={shown} workloads={view.workloads} by={by} sort={sort} desc={desc} prefix={prefix} set={set} />
-      </section>
+        {tab === null ? (
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <NodePool nodes={view.nodes} pods={view.pods} prefix={prefix} picked={q} onPick={(name) => set({ q: name || undefined })} />
+            <Attention problems={problems} prefix={prefix} onPick={(name) => set({ q: name })} />
+          </div>
+        ) : null}
+        {tab === 'nodes' ? (
+          <section aria-labelledby="nodes-tab" className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="nodes-tab" className="text-heading mr-2">Nodes <span className="font-normal text-muted-foreground">{filterNodes(view.nodes, q).length}</span></h2>
+              <SearchBox label="Filter nodes" placeholder="Filter by node name" typed={typed} onType={setTyped} onClear={() => { setTyped(''); set({ q: undefined }) }} />
+            </div>
+            <NodesTab nodes={view.nodes} prefix={prefix} q={q} />
+          </section>
+        ) : null}
+        {tab === 'workloads' ? (
+          <section aria-labelledby="workloads-tab" className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="workloads-tab" className="text-heading mr-2">Workloads <span className="font-normal text-muted-foreground">{filterWorkloads(view.workloads, q).length}</span></h2>
+              <SearchBox label="Filter workloads" placeholder="Filter by workload, namespace, kind" typed={typed} onType={setTyped} onClear={() => { setTyped(''); set({ q: undefined }) }} />
+            </div>
+            <WorkloadsTab workloads={view.workloads} q={q} onPods={(name) => set({ tab: 'pods', q: name })} />
+          </section>
+        ) : null}
+        {tab === null || tab === 'pods' ? (
+          <section aria-labelledby="pods" className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 id="pods" className="text-heading mr-2">Pods <span className="font-normal text-muted-foreground">{shown.length}</span></h2>
+              <SearchBox label="Filter pods" placeholder="Filter by pod, workload, node, service" typed={typed} onType={setTyped} onClear={() => { setTyped(''); set({ q: undefined }) }} />
+              <button
+                type="button"
+                aria-pressed={problemsOnly}
+                onClick={() => set({ problems: problemsOnly ? undefined : '1' })}
+                className={cn('inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-control font-semibold focus-visible:outline-2 focus-visible:outline-ring', !filtersOpen && 'max-md:hidden', problemsOnly ? 'border-destructive-border bg-destructive-subtle text-destructive-text' : 'border-line-strong bg-card text-muted-foreground hover:text-foreground')}
+              >
+                <CircleAlert className="size-3.5" aria-hidden />
+                Unhealthy only{ill ? ` (${ill})` : ''}
+              </button>
+              <span className="flex-1" />
+              <span id="kube-filters" className={cn(!filtersOpen && 'max-md:hidden')}>
+                <Segmented label="Group pods by" value={by} onChange={(value) => set({ by: value === 'node' ? undefined : value })} options={[{ value: 'node', label: 'Node' }, { value: 'namespace', label: 'Namespace' }, { value: 'workload', label: 'Workload' }]} />
+              </span>
+            </div>
+            <PodTable pods={shown} workloads={view.workloads} by={by} sort={sort} desc={desc} prefix={prefix} set={set} />
+          </section>
+        ) : null}
+      </div>
     </>
   )
 }

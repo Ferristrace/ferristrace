@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td, Th } from '@/components/ui/misc'
+import { Table, Td, SortTh } from '@/components/ui/misc'
 import { Pager } from '@/components/ui/pager'
 import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { StackedChart, stackColour, type Marker } from '@/components/ft/charts'
@@ -28,6 +28,9 @@ import { timeLabels } from '@/data/series'
 import { ApiError, because } from '@/auth/client'
 import { num, stamp } from '@/lib/format'
 import { pagesOf } from '@/lib/paging'
+import { sorted } from '@/lib/sorting'
+import { FiltersBar } from './FiltersBar'
+import { useSortState } from './useSortState'
 import { useSettled } from '@/lib/settle'
 import { cn } from '@/lib/utils'
 
@@ -144,6 +147,11 @@ function Calls({ windowMs, groupBy, selected, filters }: { windowMs: number; gro
   const { calls, pending, failed } = useGroupCalls(windowMs, groupBy, selected, filters)
   const [size, setSize] = useState(DEFAULT_SIZE)
   const [page, setPage] = useState(1)
+  const { sorting, dir, on } = useSortState<'time' | 'model' | 'feature' | 'in' | 'out' | 'duration' | 'cost'>()
+  const ordered = useMemo(
+    () => sorted(calls, sorting, (c, key) => (key === 'time' ? c.timeMs : key === 'model' ? c.model : key === 'feature' ? c.feature : key === 'in' ? c.inputTokens : key === 'out' ? c.outputTokens : key === 'duration' ? c.durationMs : c.cost)),
+    [calls, sorting],
+  )
   const at = Math.min(page, pagesOf(calls.length, size))
   return (
     <Card className="overflow-hidden">
@@ -153,9 +161,9 @@ function Calls({ windowMs, groupBy, selected, filters }: { windowMs: number; gro
       {calls.length > 0 ? (
         <div className="overflow-x-auto">
           <Table aria-label={`Calls of ${named(selected, groupBy)}`}>
-            <thead><tr><Th className="w-[170px]">Time</Th><Th>Model</Th><Th>Feature</Th><Th numeric className="w-[90px]">Tokens in</Th><Th numeric className="w-[90px]">Tokens out</Th><Th numeric className="w-[90px]">Duration</Th><Th numeric className="w-[90px]">Cost</Th></tr></thead>
+            <thead><tr><SortTh label="Time" dir={dir('time')} onSort={on('time', 'desc')} className="w-[170px]" /><SortTh label="Model" dir={dir('model')} onSort={on('model')} /><SortTh label="Feature" dir={dir('feature')} onSort={on('feature')} /><SortTh numeric label="Tokens in" dir={dir('in')} onSort={on('in', 'desc')} className="w-[90px]" /><SortTh numeric label="Tokens out" dir={dir('out')} onSort={on('out', 'desc')} className="w-[90px]" /><SortTh numeric label="Duration" dir={dir('duration')} onSort={on('duration', 'desc')} className="w-[90px]" /><SortTh numeric label="Cost" dir={dir('cost')} onSort={on('cost', 'desc')} className="w-[90px]" /></tr></thead>
             <tbody>
-              {calls.slice((at - 1) * size, at * size).map((call) => {
+              {ordered.slice((at - 1) * size, at * size).map((call) => {
                 const to = `/traces/${call.traceId}`
                 return (
                   <tr key={`${call.traceId}-${call.spanId}`} onClick={() => navigate(to)} className="cursor-pointer hover:[&>td]:bg-row-hover">
@@ -197,6 +205,11 @@ export function Ai() {
   const toggle = (key: string) => setSelected(key === selected ? null : key)
   const [size, setSize] = useState(DEFAULT_SIZE)
   const [page, setPage] = useState(1)
+  const spendSort = useSortState<'key' | 'cost' | 'calls' | 'in' | 'out' | 'p50' | 'p95' | 'errors'>()
+  const rows = useMemo(
+    () => sorted(groups, spendSort.sorting, (g, key) => (key === 'key' ? named(g.key, groupBy) : key === 'cost' ? g.cost : key === 'calls' ? g.calls : key === 'in' ? g.inputTokens : key === 'out' ? g.outputTokens : key === 'p50' ? g.p50Ms : key === 'p95' ? g.p95Ms : g.errors)),
+    [groups, spendSort.sorting, groupBy],
+  )
   const at = Math.min(page, pagesOf(groups.length, size))
   const shares = useMemo(() => slicesOf(groups, groupBy, (group) => group.cost), [groups, groupBy])
   const slowest = useMemo(() => [...groups].sort((a, b) => b.p95Ms - a.p95Ms).slice(0, SHARE_ROWS).map((group) => ({ key: group.key, label: named(group.key, groupBy), value: group.p95Ms, text: formatMs(group.p95Ms) })), [groups, groupBy])
@@ -208,14 +221,14 @@ export function Ai() {
       <PageHeader title="AI spend" meta={<CardKind>last {windowLabel}</CardKind>}>
         <Segmented label="Window" value={range} onChange={setRange} options={SPEND_WINDOWS.map((w) => ({ value: w.value, label: w.label }))} />
       </PageHeader>
-      <div className="flex flex-wrap items-center gap-2" role="search">
+      <FiltersBar active={Object.values(typed).filter((value) => value.trim() !== '').length} role="search">
         {FILTER_FIELDS.map((field) => (
           <InputGroup key={field.name} className="w-[160px] max-w-full max-md:w-[calc(50%-4px)]">
             <input aria-label={field.placeholder} placeholder={field.placeholder} value={typed[field.name]} onChange={(e) => setTyped({ ...typed, [field.name]: e.target.value })} />
           </InputGroup>
         ))}
         <Segmented label="Group by" value={groupBy} onChange={(next) => { setGroupBy(next); setSelected(null); setPage(1) }} options={GROUP_BYS.map((g) => ({ value: g.value, label: g.label }))} />
-      </div>
+      </FiltersBar>
       {unconfigured ? (
         <EmptyState title="AI spend is not configured">This deployment has no span store, so there are no LLM calls to read. Configure one to see them here.</EmptyState>
       ) : failed ? (
@@ -274,9 +287,9 @@ export function Ai() {
             <CardHeader><CardTitle>Breakdown by {groupLabel.toLowerCase()}</CardTitle><CardKind>Table</CardKind></CardHeader>
             <div className="overflow-x-auto">
               <Table aria-label="Spend by group">
-                <thead><tr><Th>{groupLabel}</Th><Th numeric className="w-[100px]">Cost</Th><Th numeric className="w-[80px]">Calls</Th><Th numeric className="w-[90px]">Tokens in</Th><Th numeric className="w-[90px]">Tokens out</Th><Th numeric className="w-[80px]">p50</Th><Th numeric className="w-[80px]">p95</Th><Th numeric className="w-[80px]">Errors</Th></tr></thead>
+                <thead><tr><SortTh label={groupLabel} dir={spendSort.dir('key')} onSort={spendSort.on('key')} /><SortTh numeric label="Cost" dir={spendSort.dir('cost')} onSort={spendSort.on('cost', 'desc')} className="w-[100px]" /><SortTh numeric label="Calls" dir={spendSort.dir('calls')} onSort={spendSort.on('calls', 'desc')} className="w-[80px]" /><SortTh numeric label="Tokens in" dir={spendSort.dir('in')} onSort={spendSort.on('in', 'desc')} className="w-[90px]" /><SortTh numeric label="Tokens out" dir={spendSort.dir('out')} onSort={spendSort.on('out', 'desc')} className="w-[90px]" /><SortTh numeric label="p50" dir={spendSort.dir('p50')} onSort={spendSort.on('p50', 'desc')} className="w-[80px]" /><SortTh numeric label="p95" dir={spendSort.dir('p95')} onSort={spendSort.on('p95', 'desc')} className="w-[80px]" /><SortTh numeric label="Errors" dir={spendSort.dir('errors')} onSort={spendSort.on('errors', 'desc')} className="w-[80px]" /></tr></thead>
                 <tbody>
-                  {groups.slice((at - 1) * size, at * size).map((g) => (
+                  {rows.slice((at - 1) * size, at * size).map((g) => (
                     <tr key={g.key} onClick={() => toggle(g.key)} className={cn('cursor-pointer hover:[&>td]:bg-row-hover', g.key === selected && '[&>td]:bg-accent-subtle')}>
                       <Td>
                         <button type="button" aria-pressed={g.key === selected} onClick={(e) => { e.stopPropagation(); toggle(g.key) }} className="cursor-pointer bg-transparent p-0 font-mono font-semibold text-foreground">{named(g.key, groupBy)}</button>

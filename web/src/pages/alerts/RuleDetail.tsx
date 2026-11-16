@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
 import { conditionOf, duration, scopeOf, signalLink, unitOf, useAlertHistory, useChannels, useDeleteRule, useSilenceRule, useUnsilenceRule, withUnit, SILENCE_MAX_DAYS, type AlertStatus, type Rule } from '@/data/alerts'
@@ -14,8 +14,10 @@ import { useMetricCatalogue } from '@/data/metrics'
 import { useDeclareIncident } from '@/data/incidents'
 import { useState } from 'react'
 import { stamp } from '@/lib/format'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { Link, useNavigate } from '@/lib/router'
 import { labelOf } from '@/components/ft/MetricChart'
+import { eventValue, seriesValue, type EventKey, type SeriesKey } from '../alerting/sorting'
 import { AlertContext, StateBadge } from './bits'
 
 const SHOWN = 100
@@ -95,6 +97,8 @@ export function RuleDetail({ rule, project, mayChange, onEdit, onClose }: { rule
   const declare = useDeclareIncident()
   const navigate = useNavigate()
   const [confirming, setConfirming] = useState(false)
+  const [seriesSorting, setSeriesSorting] = useState<Sorting<SeriesKey> | null>(null)
+  const [eventSorting, setEventSorting] = useState<Sorting<EventKey> | null>(null)
   const catalogue = useMetricCatalogue(rule?.signal.kind === 'metrics' ? rule.signal.name : '', rule?.project ?? undefined)
   const metricName = rule?.signal.kind === 'metrics' ? rule.signal.name : ''
   const metricUnit = metricName ? catalogue.metrics.find((one) => one.name === metricName)?.unit ?? '' : ''
@@ -102,6 +106,8 @@ export function RuleDetail({ rule, project, mayChange, onEdit, onClose }: { rule
   const link = rule ? signalLink(rule.signal) : null
   const named = rule ? rule.channels.map((id) => channels?.find((one) => one.id === id)?.name ?? id) : []
   const state = rule?.state
+  const seriesDir = (key: SeriesKey) => (seriesSorting?.key === key ? seriesSorting.dir : null)
+  const eventDir = (key: EventKey) => (eventSorting?.key === key ? eventSorting.dir : null)
   const word = (status: AlertStatus) => status.replace('_', ' ')
 
   return (
@@ -139,8 +145,12 @@ export function RuleDetail({ rule, project, mayChange, onEdit, onClose }: { rule
             {state.series.length > 1 ? (
               <Card className="overflow-x-auto">
                 <Table aria-label="State per series">
-                  <thead><tr><Th>Series</Th><Th className="w-[110px]">State</Th><Th numeric className="w-[140px]">Value</Th></tr></thead>
-                  <tbody>{state.series.map((one) => (
+                  <thead><tr>
+                    <SortTh label="Series" dir={seriesDir('series')} onSort={() => setSeriesSorting((was) => toggled(was, 'series', 'asc'))} />
+                    <SortTh label="State" dir={seriesDir('state')} onSort={() => setSeriesSorting((was) => toggled(was, 'state'))} className="w-[110px]" />
+                    <SortTh numeric label="Value" dir={seriesDir('value')} onSort={() => setSeriesSorting((was) => toggled(was, 'value'))} className="w-[140px]" />
+                  </tr></thead>
+                  <tbody>{sorted(state.series, seriesSorting, (one, key) => seriesValue({ label: labelOf(one.labels), status: one.status, value: one.value }, key)).map((one) => (
                     <Tr key={labelOf(one.labels)}><Td className="font-mono">{labelOf(one.labels)}</Td><Td><StateBadge status={one.status} /></Td><Td numeric>{withUnit(one.value, unit)}</Td></Tr>
                   ))}</tbody>
                 </Table>
@@ -152,8 +162,12 @@ export function RuleDetail({ rule, project, mayChange, onEdit, onClose }: { rule
                 history.events.length === 0 ? <p className="m-0 px-3.5 py-3 text-control text-muted-foreground">No state change in the last 30 days.</p> : (
                   <div className="max-h-[260px] overflow-auto">
                     <Table aria-label="Rule history">
-                      <thead><tr><Th className="w-[170px]">When</Th><Th>Change</Th><Th numeric className="w-[110px]">Value</Th></tr></thead>
-                      <tbody>{history.events.slice(0, SHOWN).map((one) => (
+                      <thead><tr>
+                        <SortTh label="When" dir={eventDir('when')} onSort={() => setEventSorting((was) => toggled(was, 'when'))} className="w-[170px]" />
+                        <Th>Change</Th>
+                        <SortTh numeric label="Value" dir={eventDir('value')} onSort={() => setEventSorting((was) => toggled(was, 'value'))} className="w-[110px]" />
+                      </tr></thead>
+                      <tbody>{sorted(history.events, eventSorting, (one, key) => eventValue(one, key)).slice(0, SHOWN).map((one) => (
                         <Tr key={`${one.at_ms}-${labelOf(one.labels)}-${one.to}`}>
                           <Td className="font-mono">{stamp(one.at_ms)}</Td>
                           <Td><span className="flex flex-wrap items-center gap-1.5">{word(one.from)} <span aria-hidden>→</span> <StateBadge status={one.to} />{Object.keys(one.labels).length ? <span className="font-mono text-caption text-muted-foreground">{labelOf(one.labels)}</span> : null}{one.context ? <span className="basis-full"><AlertContext context={one.context} /></span> : null}</span></Td>

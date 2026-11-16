@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { Table, Td, Th, Tr, Kbd } from '@/components/ui/misc'
+import { Table, Td, Tr, Kbd, SortTh } from '@/components/ui/misc'
 import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { ERROR_THRESHOLD, useServiceTable } from '@/data/services'
 import { useWindow } from '@/lib/window'
@@ -15,20 +15,25 @@ import { placementSearch, usePlacement } from '@/data/placement'
 import { PlacementPicker } from '@/components/ft/Placement'
 import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
 import { Note, PagedFooter, PanelEmpty, Pill, Pills, SEARCH, SkeletonRows, Toolbar, usePaged } from './backend/kit'
+import { serviceValue, textFirst, type ServiceKey } from './backend/sortKeys'
 
 const SORTS = [
   { value: 'err', label: 'Error rate' },
   { value: 'rps', label: 'Requests' },
+  { value: 'p50', label: 'p50' },
   { value: 'p95', label: 'p95' },
+  { value: 'p99', label: 'p99' },
+  { value: 'seen', label: 'Last span' },
   { value: 'name', label: 'Name' },
 ] as const
 
 export function Services() {
   const { ms: windowMs, label } = useWindow()
   const [q, setQ] = useState('')
-  const [sort, setSort] = useState<'err' | 'rps' | 'p95' | 'name'>('err')
+  const [sorting, setSorting] = useState<Sorting<ServiceKey>>({ key: 'err', dir: 'desc' })
   const [hideEmpty, setHideEmpty] = useState(false)
   const route = useRouterNavigate()
   const environment = useSearchParam('env') ?? ''
@@ -42,9 +47,11 @@ export function Services() {
   }, [settledEnv])
   const rows = useMemo(() => {
     const r = services.filter((s) => s.name.includes(q.trim()) && (!hideEmpty || s.err !== null))
-    return [...r].sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'rps' ? b.perSecond - a.perSecond : sort === 'p95' ? b.p95Us - a.p95Us : (b.err ?? -1) - (a.err ?? -1))
-  }, [q, sort, hideEmpty, services])
-  const paged = usePaged(rows, `${q}|${sort}|${hideEmpty}|${settledEnv}`)
+    return sorted(r, sorting, serviceValue)
+  }, [q, sorting, hideEmpty, services])
+  const dirOf = (key: ServiceKey) => (sorting.key === key ? sorting.dir : null)
+  const sortBy = (key: ServiceKey) => setSorting(toggled(sorting, key, textFirst(key)))
+  const paged = usePaged(rows, `${q}|${sorting.key}|${sorting.dir}|${hideEmpty}|${settledEnv}`)
   const pressured = services.filter((s) => (s.err ?? 0) >= ERROR_THRESHOLD).length
   return (
     <>
@@ -52,7 +59,7 @@ export function Services() {
       <Toolbar role="search">
         <InputGroup className={SEARCH}><Search aria-hidden /><input aria-label="Find service" placeholder="Find service" value={q} onChange={(e) => setQ(e.target.value)} /><Kbd>/</Kbd></InputGroup>
         <InputGroup className="w-[220px] max-w-full max-md:w-full"><input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} /></InputGroup>
-        <NativeSelect aria-label="Sort by" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="w-auto max-md:flex-1">
+        <NativeSelect aria-label="Sort by" value={sorting.key} onChange={(e) => setSorting({ key: e.target.value as ServiceKey, dir: textFirst(e.target.value) })} className="w-auto max-md:flex-1">
           {SORTS.map((o) => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
         </NativeSelect>
         <span className="flex-1 max-md:hidden" />
@@ -69,7 +76,7 @@ export function Services() {
         ) : (
           <div className="overflow-x-auto">
             <Table aria-label="Services">
-              <thead><tr><Th>Service</Th><Th numeric className="w-[100px]">Requests</Th><Th numeric className="w-[110px]">Error rate</Th><Th numeric className="w-[80px]">p50</Th><Th numeric className="w-[80px]">p95</Th><Th numeric className="w-[80px]">p99</Th><Th className="w-[120px]">Last span</Th></tr></thead>
+              <thead><tr><SortTh label="Service" dir={dirOf('name')} onSort={() => sortBy('name')} /><SortTh label="Requests" numeric dir={dirOf('rps')} onSort={() => sortBy('rps')} className="w-[100px]" /><SortTh label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[110px]" /><SortTh label="p50" numeric dir={dirOf('p50')} onSort={() => sortBy('p50')} className="w-[80px]" /><SortTh label="p95" numeric dir={dirOf('p95')} onSort={() => sortBy('p95')} className="w-[80px]" /><SortTh label="p99" numeric dir={dirOf('p99')} onSort={() => sortBy('p99')} className="w-[80px]" /><SortTh label="Last span" dir={dirOf('seen')} onSort={() => sortBy('seen')} className="w-[120px]" /></tr></thead>
               <tbody>
                 {paged.shown.map((s) => {
                   const bad = (s.err ?? 0) >= ERROR_THRESHOLD

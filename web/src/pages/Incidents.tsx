@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input, InputGroup, NativeSelect } from '@/components/ui/input'
-import { Alert, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Alert, Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
 import { Switch } from '@/components/ui/switch'
@@ -23,8 +23,11 @@ import { usePostmortemStates, type PostmortemStatus } from '@/data/postmortems'
 import { useProjects } from '@/data/projects'
 import { stamp } from '@/lib/format'
 import { pagesOf } from '@/lib/paging'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { Link, useNavigate } from '@/lib/router'
 import { cn } from '@/lib/utils'
+import { FiltersButton } from './alerting/FiltersButton'
+import { incidentValue, type IncidentKey } from './alerting/sorting'
 
 export const SeverityPill = ({ severity }: { severity: IncidentSeverity }) => <Badge variant={severityVariant(severity)} mono>{severity.toUpperCase()}</Badge>
 
@@ -39,15 +42,22 @@ export function Incidents() {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(10)
+  const [sorting, setSorting] = useState<Sorting<IncidentKey> | null>(null)
+  const [filtering, setFiltering] = useState(false)
   const { incidents, failed, nothing } = useIncidents(scope)
   const projects = useProjects()
   const postmortems = usePostmortemStates()
   const mayDeclare = Boolean(active)
   const projectName = (id: string | null) => (id === null ? 'All projects' : projects.find((one) => one.id === id)?.name ?? id)
   const needle = query.trim().toLowerCase()
-  const shown = (incidents ?? []).filter((one) => (severity === '' || one.severity === severity) && (statuses.length === 0 || statuses.includes(one.status)) && (needle === '' || one.title.toLowerCase().includes(needle)))
+  const rows = (incidents ?? [])
+    .filter((one) => (severity === '' || one.severity === severity) && (statuses.length === 0 || statuses.includes(one.status)) && (needle === '' || one.title.toLowerCase().includes(needle)))
+    .map((incident) => ({ incident, title: incident.title, severity: incident.severity, status: incident.status, owner: incident.owner ? personOf(incident.owner) : null, project: projectName(incident.project), opened_ms: incident.opened_ms }))
+  const shown = sorted(rows, sorting, incidentValue)
   const current = Math.min(page, pagesOf(shown.length, size))
   const visible = shown.slice((current - 1) * size, current * size)
+  const sortBy = (key: IncidentKey, first?: 'asc' | 'desc') => { setSorting((was) => toggled(was, key, first)); setPage(1) }
+  const dirOf = (key: IncidentKey) => (sorting?.key === key ? sorting.dir : null)
   const openCount = (incidents ?? []).filter((one) => one.status !== 'resolved').length
   const toggle = (status: IncidentStatus) => { setStatuses((held) => (held.includes(status) ? held.filter((one) => one !== status) : [...held, status])); setPage(1) }
   const chips = scope === 'resolved' ? [] : STATUSES.filter((one) => scope === 'all' || one !== 'resolved')
@@ -58,15 +68,18 @@ export function Incidents() {
         {mayDeclare ? <Button variant="primary" size="sm" onClick={() => setDeclaring(true)}><Plus />Declare incident</Button> : null}
       </PageHeader>
       <div className="flex flex-wrap items-center gap-2" role="search">
-        <InputGroup className="w-[320px] max-w-full"><Search aria-hidden /><input aria-label="Search incidents" placeholder="Search incidents" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1) }} /></InputGroup>
-        <Segmented<IncidentScope> label="Incidents shown" value={scope} onChange={(value) => { setScope(value); setStatuses([]); setPage(1) }} options={[{ value: 'open', label: 'Open' }, { value: 'resolved', label: 'Resolved' }, { value: 'all', label: 'All' }]} />
-        <NativeSelect aria-label="Filter by severity" value={severity} onChange={(e) => { setSeverity(e.target.value as IncidentSeverity | ''); setPage(1) }} className="w-[150px]">
-          <option value="">Severity: any</option>
-          {SEVERITIES.map((one) => <option key={one} value={one}>{one.toUpperCase()}</option>)}
-        </NativeSelect>
+        <InputGroup className="w-[320px] max-w-full max-md:flex-1"><Search aria-hidden /><input aria-label="Search incidents" placeholder="Search incidents" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1) }} /></InputGroup>
+        <FiltersButton open={filtering} count={(severity === '' ? 0 : 1) + statuses.length} controls="incident-filters" onToggle={() => setFiltering((was) => !was)} />
+        <div id="incident-filters" className={cn('flex flex-wrap items-center gap-2 max-md:w-full', !filtering && 'max-md:hidden')}>
+          <Segmented<IncidentScope> label="Incidents shown" value={scope} onChange={(value) => { setScope(value); setStatuses([]); setPage(1) }} options={[{ value: 'open', label: 'Open' }, { value: 'resolved', label: 'Resolved' }, { value: 'all', label: 'All' }]} />
+          <NativeSelect aria-label="Filter by severity" value={severity} onChange={(e) => { setSeverity(e.target.value as IncidentSeverity | ''); setPage(1) }} className="w-[150px]">
+            <option value="">Severity: any</option>
+            {SEVERITIES.map((one) => <option key={one} value={one}>{one.toUpperCase()}</option>)}
+          </NativeSelect>
+        </div>
       </div>
       {chips.length ? (
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by status">
+        <div className={cn('flex flex-wrap items-center gap-1.5', !filtering && 'max-md:hidden')} role="group" aria-label="Filter by status">
           {chips.map((one) => (
             <button key={one} type="button" aria-pressed={statuses.includes(one)} onClick={() => toggle(one)} className={cn('cursor-pointer rounded-full border px-2.5 py-0.5 text-caption font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring', statuses.includes(one) && 'border-accent-text bg-accent-subtle text-accent-text')}>{one}</button>
           ))}
@@ -86,10 +99,19 @@ export function Incidents() {
       ) : (
         <Card className="overflow-x-auto">
           <Table aria-label="Incidents">
-            <thead><tr><Th>Incident</Th><Th className="w-[80px]">Severity</Th><Th className="w-[130px]">Status</Th><Th className="w-[180px]">Owner</Th><Th className="w-[140px]">Project</Th><Th className="w-[170px]">Opened</Th></tr></thead>
+            <thead>
+              <tr>
+                <SortTh label="Incident" dir={dirOf('incident')} onSort={() => sortBy('incident', 'asc')} />
+                <SortTh label="Severity" dir={dirOf('severity')} onSort={() => sortBy('severity')} className="w-[100px]" />
+                <SortTh label="Status" dir={dirOf('status')} onSort={() => sortBy('status')} className="w-[130px]" />
+                <SortTh label="Owner" dir={dirOf('owner')} onSort={() => sortBy('owner', 'asc')} className="w-[180px]" />
+                <SortTh label="Project" dir={dirOf('project')} onSort={() => sortBy('project', 'asc')} className="w-[140px]" />
+                <SortTh label="Opened" dir={dirOf('opened')} onSort={() => sortBy('opened')} className="w-[170px]" />
+              </tr>
+            </thead>
             <tbody>
               {shown.length === 0 ? <Tr><Td colSpan={6} className="text-muted-foreground">No incident matches these filters.</Td></Tr> : null}
-              {visible.map((incident) => <IncidentRow key={incident.id} incident={incident} project={projectName(incident.project)} postmortem={postmortems.get(incident.id)} />)}
+              {visible.map(({ incident, project }) => <IncidentRow key={incident.id} incident={incident} project={project} postmortem={postmortems.get(incident.id)} />)}
             </tbody>
           </Table>
           <Pager total={shown.length} page={current} size={size} onPage={setPage} onSize={(next) => { setSize(next); setPage(1) }} noun="incidents" className="border-t" />

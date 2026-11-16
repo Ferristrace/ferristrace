@@ -1,21 +1,22 @@
 import { Boxes, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { MetricChart } from '@/components/ft/MetricChart'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
 import { usePlacement } from '@/data/placement'
-import { HOST_KEY, useHosts, type Host } from '@/data/hosts'
-import { useSearchParam } from '@/lib/router'
+import { HOST_KEY, useHosts } from '@/data/hosts'
+import { sorted } from '@/lib/sorting'
 import { useWindow } from '@/lib/window'
 import { because } from '@/auth/client'
 import { cn } from '@/lib/utils'
 import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
+import { HOST_KEYS, hostValue, textFirst } from './sortKeys'
+import { useUrlSort } from './useUrlSort'
 
 const HOT_CPU = 75
 const FULL_DISK = 85
@@ -24,12 +25,9 @@ const SORTS = [
   { value: 'cpu', label: 'CPU' },
   { value: 'memory', label: 'Memory' },
   { value: 'disk', label: 'Disk' },
+  { value: 'load', label: 'Load 1m' },
   { value: 'name', label: 'Name' },
 ] as const
-
-type Sort = (typeof SORTS)[number]['value']
-
-const sortOf = (value: unknown): Sort => SORTS.find((one) => one.value === value)?.value ?? 'cpu'
 
 const pct = (value: number | null) => (value === null ? '—' : `${value.toFixed(0)} %`)
 
@@ -45,17 +43,6 @@ const mean = (values: (number | null)[]) => {
 const peak = (values: (number | null)[]) => {
   const seen = known(values)
   return seen.length === 0 ? null : Math.max(...seen)
-}
-
-function sorted(hosts: Host[], by: Sort): Host[] {
-  const low = (value: number | null) => value ?? -1
-  const order: Record<Sort, (a: Host, b: Host) => number> = {
-    cpu: (a, b) => low(b.cpu) - low(a.cpu),
-    memory: (a, b) => low(b.memory) - low(a.memory),
-    disk: (a, b) => low(b.disk) - low(a.disk),
-    name: (a, b) => a.name.localeCompare(b.name),
-  }
-  return [...hosts].sort(order[by])
 }
 
 function Meter({ value, hot }: { value: number | null; hot: boolean }) {
@@ -74,27 +61,19 @@ function Meter({ value, hot }: { value: number | null; hot: boolean }) {
 }
 
 export function SystemPage() {
-  const goTo = useRouterNavigate()
   const { ms: windowMs, label } = useWindow()
-  const sort = sortOf(useSearchParam('s'))
+  const { sorting, pick, sortBy, dirOf } = useUrlSort(HOST_KEYS, 'cpu', textFirst)
   const [q, setQ] = useState('')
   const { placement, place } = usePlacement()
   const { hosts, busy, pending, failed, instrumented } = useHosts(windowMs, placement)
 
-  const show = (part: Record<string, string | undefined>) =>
-    void goTo({
-      to: '.' as never,
-      search: ((was: Record<string, unknown>) => ({ ...was, ...part })) as never,
-      replace: true,
-    })
-
   const rows = useMemo(
-    () => sorted(hosts.filter((host) => host.name.toLowerCase().includes(q.trim().toLowerCase())), sort),
-    [hosts, sort, q],
+    () => sorted(hosts.filter((host) => host.name.toLowerCase().includes(q.trim().toLowerCase())), sorting, hostValue),
+    [hosts, sorting, q],
   )
   const placing = placedCount(placement)
   const sifting = placing > 0 || q.trim() !== ''
-  const paged = usePaged(rows, `${sort}|${q}`)
+  const paged = usePaged(rows, `${sorting.key}|${sorting.dir}|${q}`)
   const cpus = hosts.map((host) => host.cpu)
   const disks = hosts.map((host) => host.disk)
   const hottest = peak(cpus)
@@ -159,7 +138,7 @@ export function SystemPage() {
             />
             <Kbd>/</Kbd>
           </InputGroup>
-          <NativeSelect aria-label="Sort by" value={sort} onChange={(e) => show({ s: e.target.value === 'cpu' ? undefined : e.target.value })} className="w-auto max-md:flex-1">
+          <NativeSelect aria-label="Sort by" value={sorting.key} onChange={(e) => pick(e.target.value as typeof sorting.key)} className="w-auto max-md:flex-1">
             {SORTS.map((one) => <option key={one.value} value={one.value}>Sort: {one.label}</option>)}
           </NativeSelect>
           <span className="flex-1 max-md:hidden" />
@@ -231,11 +210,11 @@ export function SystemPage() {
             <Table aria-label="Hosts">
               <thead>
                 <tr>
-                  <Th>Host</Th>
-                  <Th className="w-[160px]">CPU</Th>
-                  <Th className="w-[160px]">Memory</Th>
-                  <Th className="w-[160px]">Disk</Th>
-                  <Th numeric className="w-[90px]">Load 1m</Th>
+                  <SortTh label="Host" dir={dirOf('name')} onSort={() => sortBy('name')} />
+                  <SortTh label="CPU" dir={dirOf('cpu')} onSort={() => sortBy('cpu')} className="w-[160px]" />
+                  <SortTh label="Memory" dir={dirOf('memory')} onSort={() => sortBy('memory')} className="w-[160px]" />
+                  <SortTh label="Disk" dir={dirOf('disk')} onSort={() => sortBy('disk')} className="w-[160px]" />
+                  <SortTh label="Load 1m" numeric dir={dirOf('load')} onSort={() => sortBy('load')} className="w-[90px]" />
                 </tr>
               </thead>
               <tbody>

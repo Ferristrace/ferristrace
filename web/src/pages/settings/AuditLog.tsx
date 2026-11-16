@@ -5,11 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { NativeSelect } from '@/components/ui/input'
 import { Pager } from '@/components/ui/pager'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { AUDIT_ACTIONS, OPERATOR, actorName, useAuditLog, type AuditEntry, type AuditFilter } from '@/data/audit'
 import { useMembers } from '@/data/members'
 import { stamp } from '@/lib/format'
 import { pagesOf } from '@/lib/paging'
+import { sorted } from '@/lib/sorting'
+import { FiltersBar } from '../FiltersBar'
+import { useSortState } from '../useSortState'
 import { H } from './parts'
 
 function details(entry: AuditEntry) {
@@ -26,7 +29,10 @@ export function AuditLog() {
   const { members } = useMembers()
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(25)
-  const roll = entries ?? []
+  const { sorting, dir, on } = useSortState<'time' | 'actor' | 'action' | 'target' | 'detail'>()
+  const roll = sorted(entries ?? [], sorting, (e, key) =>
+    key === 'time' ? e.at_ms : key === 'actor' ? actorName(e) : key === 'action' ? e.action : key === 'target' ? `${e.target.kind} ${e.target.id ?? ''}` : details(e),
+  )
   const current = Math.min(page, pagesOf(roll.length, size))
   const visible = roll.slice((current - 1) * size, current * size)
 
@@ -42,7 +48,7 @@ export function AuditLog() {
   return (
     <>
       <H title="Audit log" sub="Every change to the organisation, its projects, teams, members and keys, newest first." />
-      <div className="flex flex-wrap items-center gap-2">
+      <FiltersBar active={(filter.action ? 1 : 0) + (filter.actor ? 1 : 0)}>
         <NativeSelect aria-label="Action" value={filter.action} onChange={(e) => { setFilter((now) => ({ ...now, action: e.target.value })); setPage(1) }} className="w-[220px] max-md:flex-1">
           <option value="">Action: any</option>
           {AUDIT_ACTIONS.map((action) => <option key={action} value={action}>{action}</option>)}
@@ -52,13 +58,13 @@ export function AuditLog() {
           <option value={OPERATOR}>Operator (command line)</option>
           {(members ?? []).map((member) => <option key={member.account} value={member.account}>{member.email}</option>)}
         </NativeSelect>
-      </div>
+      </FiltersBar>
       <Card className="overflow-x-auto">
         {entries ? (
           <Table>
-            <thead><tr><Th className="w-[170px]">Time</Th><Th className="w-[200px]">Actor</Th><Th className="w-[190px]">Action</Th><Th className="w-[220px]">Target</Th><Th>Detail</Th></tr></thead>
+            <thead><tr><SortTh label="Time" dir={dir('time')} onSort={on('time', 'desc')} className="w-[170px]" /><SortTh label="Actor" dir={dir('actor')} onSort={on('actor')} className="w-[200px]" /><SortTh label="Action" dir={dir('action')} onSort={on('action')} className="w-[190px]" /><SortTh label="Target" dir={dir('target')} onSort={on('target')} className="w-[220px]" /><SortTh label="Detail" dir={dir('detail')} onSort={on('detail')} /></tr></thead>
             <tbody>
-              {entries.length === 0 ? <Tr><Td colSpan={5} className="text-muted-foreground">Nothing has been recorded{filter.action || filter.actor ? ' for this filter' : ' yet'}.</Td></Tr> : null}
+              {roll.length === 0 ? <Tr><Td colSpan={5} className="text-muted-foreground">Nothing has been recorded{filter.action || filter.actor ? ' for this filter' : ' yet'}.</Td></Tr> : null}
               {visible.map((entry) => (
                 <Tr key={entry.id}>
                   <Td className="font-mono">{stamp(entry.at_ms)}</Td>

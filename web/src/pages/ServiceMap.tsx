@@ -1,19 +1,23 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import { Link } from '@/lib/router'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup } from '@/components/ui/input'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Tr, SortTh } from '@/components/ui/misc'
 import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
-import { ERROR_THRESHOLD, useServiceDependencies } from '@/data/services'
+import { ERROR_THRESHOLD, useServiceDependencies, useServiceTable } from '@/data/services'
 import { svcIndex } from '@/lib/otel'
 import { useWindow } from '@/lib/window'
 import { placementSearch, usePlacement } from '@/data/placement'
 import { PlacementPicker } from '@/components/ft/Placement'
 import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
 import { Note, PagedFooter, Pill, Pills, SkeletonRows, Toolbar, usePaged } from './backend/kit'
+import { edgeFirst, edgeValue, type EdgeKey } from './backend/sortKeys'
+import { NodePanel } from './services/NodePanel'
+import { neighbours } from './services/serviceView'
 
 const SIZE = 560
 const CENTER = SIZE / 2
@@ -57,8 +61,26 @@ export function ServiceMap() {
     return totals
   }, [edges])
   const maxCalls = Math.max(1, ...callsOf.values())
-  const rows = useMemo(() => [...edges].sort((a, b) => b.calls - a.calls), [edges])
-  const paged = usePaged(rows, '', 10)
+  const [sorting, setSorting] = useState<Sorting<EdgeKey> | null>({ key: 'calls', dir: 'desc' })
+  const rows = useMemo(() => sorted(edges, sorting, edgeValue), [edges, sorting])
+  const dirOf = (key: EdgeKey) => (sorting?.key === key ? sorting.dir : null)
+  const sortBy = (key: EdgeKey) => setSorting(toggled(sorting, key, edgeFirst(key)))
+  const paged = usePaged(rows, `${sorting?.key}|${sorting?.dir}`, 10)
+  const [picked, setPicked] = useState<string | null>(null)
+  const selected = picked !== null && names.includes(picked) ? picked : null
+  const nodes = useRef(new Map<string, SVGGElement>())
+  const { services } = useServiceTable(settledEnv, windowMs, placement)
+  const around = useMemo(() => (selected === null ? null : neighbours(edges, selected)), [edges, selected])
+  const close = () => {
+    if (selected !== null) nodes.current.get(selected)?.focus()
+    setPicked(null)
+  }
+  useEffect(() => {
+    if (selected === null) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { nodes.current.get(selected)?.focus(); setPicked(null) } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selected])
   const pressured = edges.filter((edge) => (edge.err ?? 0) >= ERROR_THRESHOLD).length
 
   return (
@@ -80,9 +102,9 @@ export function ServiceMap() {
           <Card className="overflow-hidden">
             <CardHeader><CardTitle>Call graph</CardTitle><CardKind>Graph</CardKind></CardHeader>
           <figure className="m-0 flex min-w-0 flex-1 flex-col gap-2 p-3">
-            <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width="100%" height={SIZE} role="img" aria-label={`Service dependency map, ${edges.length} call paths, last ${label}`} className="block overflow-visible">
+            <svg viewBox={`0 0 ${SIZE} ${SIZE}`} width="100%" height={SIZE} role="group" aria-label={`Service dependency map, ${edges.length} call paths, last ${label}`} className="block overflow-visible">
               <defs>
-                <marker id={`${markerId}-arrow`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <marker id={`${markerId}-arrow`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
                   <path d="M0,0 L10,5 L0,10 z" fill="var(--muted-foreground)" />
                 </marker>
               </defs>
@@ -101,6 +123,7 @@ export function ServiceMap() {
                 const y2 = to.y - (dy / length) * toR
                 const bad = (edge.err ?? 0) >= ERROR_THRESHOLD
                 const width = Math.min(8, 1.5 + Math.log2(edge.calls + 1))
+                const faded = selected !== null && edge.caller !== selected && edge.callee !== selected
                 return (
                   <line
                     key={`${edge.caller}->${edge.callee}`}
@@ -109,6 +132,7 @@ export function ServiceMap() {
                     strokeWidth={width}
                     strokeLinecap="round"
                     markerEnd={`url(#${markerId}-arrow)`}
+                    className={cn(faded && 'opacity-30')}
                   >
                     <title>{`${edge.caller} → ${edge.callee}: ${edge.calls} calls${bad ? `, ${(edge.err ?? 0).toFixed(1)} % errors` : ''}`}</title>
                   </line>
@@ -118,9 +142,20 @@ export function ServiceMap() {
                 const at = positions.get(name)
                 if (!at) return null
                 const r = nodeRadius(callsOf.get(name) ?? 0, maxCalls)
+                const on = selected === name
                 return (
-                  <g key={name}>
-                    <circle cx={at.x} cy={at.y} r={r} fill={`var(--svc-${svcIndex(name)})`} stroke="var(--card)" strokeWidth="2" />
+                  <g
+                    key={name}
+                    ref={(node) => { if (node) nodes.current.set(name, node); else nodes.current.delete(name) }}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={on}
+                    aria-label={`${name}, show details`}
+                    onClick={() => setPicked(on ? null : name)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPicked(on ? null : name) } }}
+                    className="cursor-pointer outline-none [&:focus-visible>circle]:stroke-ring"
+                  >
+                    <circle cx={at.x} cy={at.y} r={r} fill={`var(--svc-${svcIndex(name)})`} stroke={on ? 'var(--foreground)' : 'var(--card)'} strokeWidth={on ? 3 : 2} />
                     <text x={at.x} y={at.y + r + 14} textAnchor="middle" className="fill-foreground text-[11px] font-mono font-semibold">{name}</text>
                   </g>
                 )
@@ -128,11 +163,13 @@ export function ServiceMap() {
             </svg>
           </figure>
           </Card>
+          <div className="flex min-w-0 flex-col gap-3">
+          {selected !== null && around ? <NodePanel name={selected} service={services.find((one) => one.name === selected)} callers={around.callers} callees={around.callees} kept={kept} label={label} onClose={close} /> : null}
           <Card className="min-w-0 overflow-hidden">
             <CardHeader><CardTitle>Dependencies</CardTitle><CardKind>Table</CardKind><span className="text-caption text-muted-foreground">{rows.length} call {rows.length === 1 ? 'path' : 'paths'}</span></CardHeader>
             <div className="overflow-x-auto">
             <Table aria-label="Dependencies">
-              <thead><tr><Th>Caller</Th><Th>Callee</Th><Th numeric className="w-[90px]">Calls</Th><Th numeric className="w-[100px]">Error rate</Th></tr></thead>
+              <thead><tr><SortTh label="Caller" dir={dirOf('caller')} onSort={() => sortBy('caller')} /><SortTh label="Callee" dir={dirOf('callee')} onSort={() => sortBy('callee')} /><SortTh label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[90px]" /><SortTh label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[100px]" /></tr></thead>
               <tbody>
                 {paged.shown.map((edge) => {
                   const bad = (edge.err ?? 0) >= ERROR_THRESHOLD
@@ -151,8 +188,9 @@ export function ServiceMap() {
             </Table>
             </div>
             <PagedFooter paged={paged} noun="call paths" />
-            <Note>Built from each span whose parent lives in another service. Highlighted from {ERROR_THRESHOLD} % errors, the status page threshold.</Note>
+            <Note>Built from each span whose parent lives in another service. Highlighted from {ERROR_THRESHOLD} % errors, the status page threshold. Select a service on the map to see its figures.</Note>
           </Card>
+          </div>
         </div>
       ) : null}
     </>

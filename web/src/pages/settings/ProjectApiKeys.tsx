@@ -8,12 +8,14 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/input'
-import { Alert, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Alert, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { KEY_SCOPES, keyNameProblem, useIssueKey, useKeys, useRevokeKey, type ApiKey, type IssuedKey, type KeyScope } from '@/data/keys'
 import { useCatalogue } from '@/data/projects'
 import { stamp } from '@/lib/format'
 import { Link } from '@/lib/router'
 import { useScope } from '@/lib/scope'
+import { sorted } from '@/lib/sorting'
+import { useSortState } from '../useSortState'
 import { H } from './parts'
 
 const SCOPE_HINT: Record<KeyScope, string> = {
@@ -33,6 +35,7 @@ export function ProjectApiKeys() {
   const [scopes, setScopes] = useState<KeyScope[]>(['ingest'])
   const [issued, setIssued] = useState<IssuedKey | null>(null)
   const [revoking, setRevoking] = useState<ApiKey | null>(null)
+  const { sorting, dir, on } = useSortState<'name' | 'prefix' | 'scopes' | 'created' | 'used'>()
 
   const catalogue = projects ?? []
   const project = catalogue.find((one) => one.id === chosen) ?? catalogue[0]
@@ -49,7 +52,11 @@ export function ProjectApiKeys() {
     )
   }
 
-  const held = (keys ?? []).filter((one) => one.project === project.id || one.project === null)
+  const held = sorted(
+    (keys ?? []).filter((one) => one.project === project.id || one.project === null),
+    sorting,
+    (k, key) => (key === 'name' ? k.name || null : key === 'prefix' ? k.prefix : key === 'scopes' ? k.scopes.join(',') : key === 'created' ? k.created_at_ms : k.last_used_at_ms),
+  )
   const problem = name.length === 0 ? null : keyNameProblem(name)
   const close = () => {
     setAsking(false)
@@ -68,7 +75,7 @@ export function ProjectApiKeys() {
       <Card className="overflow-x-auto">
         {keys ? (
           <Table>
-            <thead><tr><Th>Name</Th><Th className="w-[200px]">Key</Th><Th className="w-[140px]">Scopes</Th><Th className="w-[170px]">Created</Th><Th className="w-[170px]">Last used</Th>{mayChange ? <Th className="w-[100px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
+            <thead><tr><SortTh label="Name" dir={dir('name')} onSort={on('name')} /><SortTh label="Key" dir={dir('prefix')} onSort={on('prefix')} className="w-[200px]" /><SortTh label="Scopes" dir={dir('scopes')} onSort={on('scopes')} className="w-[140px]" /><SortTh label="Created" dir={dir('created')} onSort={on('created', 'desc')} className="w-[170px]" /><SortTh label="Last used" dir={dir('used')} onSort={on('used', 'desc')} className="w-[170px]" />{mayChange ? <Th className="w-[100px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
             <tbody>
               {held.length === 0 ? <Tr><Td colSpan={mayChange ? 6 : 5} className="text-muted-foreground">No key authenticates for this project yet.</Td></Tr> : null}
               {held.map((k) => (

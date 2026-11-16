@@ -2,12 +2,13 @@ import { Boxes, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { useSearchParam } from '@/lib/router'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
-import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
@@ -19,7 +20,6 @@ import {
   useStatementFanouts,
   useStatements,
   useStatementSeries,
-  type Statement,
 } from '@/data/statements'
 import { ERROR_THRESHOLD } from '@/data/services'
 import { useZoom } from '@/lib/bounds'
@@ -29,35 +29,26 @@ import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
+import { STATEMENT_KEYS, fanoutFirst, fanoutValue, statementFirst, statementValue, type FanoutKey } from './sortKeys'
+import { useUrlSort } from './useUrlSort'
 
 const SORTS = [
   { value: 'time', label: 'Total time' },
   { value: 'calls', label: 'Calls' },
   { value: 'errors', label: 'Error rate' },
   { value: 'name', label: 'Name' },
+  { value: 'database', label: 'Database' },
+  { value: 'system', label: 'System' },
 ] as const
 
-type Sort = (typeof SORTS)[number]['value']
-
-const sortOf = (value: unknown): Sort => SORTS.find((one) => one.value === value)?.value ?? 'time'
-
 const percent = (rate: number | null) => (rate === null ? '—' : `${rate.toFixed(1)} %`)
-
-function sorted(statements: Statement[], by: Sort): Statement[] {
-  const order: Record<Sort, (a: Statement, b: Statement) => number> = {
-    time: (a, b) => b.totalUs - a.totalUs,
-    calls: (a, b) => b.perSecond - a.perSecond,
-    errors: (a, b) => (b.errorRate ?? -1) - (a.errorRate ?? -1),
-    name: (a, b) => a.group.localeCompare(b.group),
-  }
-  return [...statements].sort(order[by])
-}
 
 export function QueriesPage() {
   const goTo = useRouterNavigate()
   const { ms: windowMs, label } = useWindow()
   const group = groupingOf(useSearchParam('g'))
-  const sort = sortOf(useSearchParam('s'))
+  const { sorting, pick, sortBy, dirOf } = useUrlSort(STATEMENT_KEYS, 'time', statementFirst)
+  const [fanning, setFanning] = useState<Sorting<FanoutKey> | null>(null)
   const environment = useSearchParam('env') ?? ''
   const [typedEnv, setTypedEnv] = useState(environment)
   const settledEnv = useSettled(typedEnv)
@@ -89,10 +80,14 @@ export function QueriesPage() {
     () =>
       sorted(
         statements.filter((row) => `${row.group} ${row.database} ${row.system}`.toLowerCase().includes(q.trim().toLowerCase())),
-        sort,
+        sorting,
+        statementValue,
       ),
-    [statements, sort, q],
+    [statements, sorting, q],
   )
+  const fanned = useMemo(() => sorted(fanouts, fanning, fanoutValue), [fanouts, fanning])
+  const fanDir = (key: FanoutKey) => (fanning?.key === key ? fanning.dir : null)
+  const fanBy = (key: FanoutKey) => setFanning(toggled(fanning, key, fanoutFirst(key)))
   const bars = useMemo<Bar[]>(
     () => (series?.points ?? []).map((point) => ({ at: point.atMs, count: point.calls, errors: point.errors })),
     [series],
@@ -103,7 +98,7 @@ export function QueriesPage() {
   const span = zoom ? `${Math.max(1, Math.round(seconds))} s` : label
   const placing = placedCount(placement)
   const sifting = placing > 0 || settledEnv.trim() !== '' || q.trim() !== ''
-  const paged = usePaged(rows, `${group}|${sort}|${q}|${settledEnv}`)
+  const paged = usePaged(rows, `${group}|${sorting.key}|${sorting.dir}|${q}|${settledEnv}`)
   const totalUs = rows.reduce((sum, row) => sum + row.totalUs, 0)
   const bad = series?.errorRate !== null && series?.errorRate !== undefined && series.errorRate >= ERROR_THRESHOLD
 
@@ -166,14 +161,14 @@ export function QueriesPage() {
             <Table aria-label="Statements that fan out inside a trace">
               <thead>
                 <tr>
-                  <Th>Statement</Th>
-                  <Th numeric className="w-[110px]">Worst trace</Th>
-                  <Th numeric className="w-[90px]">Traces</Th>
-                  <Th numeric className="w-[90px]">Calls</Th>
+                  <SortTh label="Statement" dir={fanDir('statement')} onSort={() => fanBy('statement')} />
+                  <SortTh label="Worst trace" numeric dir={fanDir('worst')} onSort={() => fanBy('worst')} className="w-[110px]" />
+                  <SortTh label="Traces" numeric dir={fanDir('traces')} onSort={() => fanBy('traces')} className="w-[90px]" />
+                  <SortTh label="Calls" numeric dir={fanDir('calls')} onSort={() => fanBy('calls')} className="w-[90px]" />
                 </tr>
               </thead>
               <tbody>
-                {fanouts.map((fanout) => (
+                {fanned.map((fanout) => (
                   <Tr key={fanout.statement}>
                     <Td>
                       <span className="truncate font-mono text-control" title={fanout.statement}>
@@ -213,7 +208,7 @@ export function QueriesPage() {
           <InputGroup className="w-[220px] max-w-full max-md:w-full">
             <input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} />
           </InputGroup>
-          <NativeSelect aria-label="Sort by" value={sort} onChange={(e) => show({ s: e.target.value === 'time' ? undefined : e.target.value })} className="w-auto max-md:flex-1">
+          <NativeSelect aria-label="Sort by" value={sorting.key} onChange={(e) => pick(e.target.value as typeof sorting.key)} className="w-auto max-md:flex-1">
             {SORTS.map((one) => <option key={one.value} value={one.value}>Sort: {one.label}</option>)}
           </NativeSelect>
           <span className="flex-1 max-md:hidden" />
@@ -260,14 +255,14 @@ export function QueriesPage() {
             <Table aria-label={`Database ${noun}s`}>
               <thead>
                 <tr>
-                  <Th>{noun === 'database' ? 'Database' : noun === 'operation' ? 'Operation' : 'Statement'}</Th>
-                  {group === 'database' ? null : <Th className="w-[130px]">Database</Th>}
-                  <Th className="w-[90px]">System</Th>
-                  <Th numeric className="w-[100px]">Calls</Th>
-                  <Th numeric className="w-[90px]">Errors</Th>
+                  <SortTh label={noun === 'database' ? 'Database' : noun === 'operation' ? 'Operation' : 'Statement'} dir={dirOf(group === 'database' ? 'database' : 'name')} onSort={() => sortBy(group === 'database' ? 'database' : 'name')} />
+                  {group === 'database' ? null : <SortTh label="Database" dir={dirOf('database')} onSort={() => sortBy('database')} className="w-[130px]" />}
+                  <SortTh label="System" dir={dirOf('system')} onSort={() => sortBy('system')} className="w-[90px]" />
+                  <SortTh label="Calls" numeric dir={dirOf('calls')} onSort={() => sortBy('calls')} className="w-[100px]" />
+                  <SortTh label="Errors" numeric dir={dirOf('errors')} onSort={() => sortBy('errors')} className="w-[90px]" />
                   <Th numeric className="w-[80px]">p50</Th>
                   <Th numeric className="w-[80px]">p95</Th>
-                  <Th className="w-[160px]">Share of time</Th>
+                  <SortTh label="Share of time" dir={dirOf('time')} onSort={() => sortBy('time')} className="w-[160px]" />
                 </tr>
               </thead>
               <tbody>

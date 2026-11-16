@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/input'
-import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { useMembers } from '@/data/members'
+import { useSchedules } from '@/data/oncall'
+import { useOnCallNowOf } from '@/data/oncallNow'
 import { useProjects } from '@/data/projects'
 import {
   initialsOf,
@@ -21,6 +23,9 @@ import {
   useTeams,
   type Team,
 } from '@/data/teams'
+import { sorted } from '@/lib/sorting'
+import { useSortState } from '../useSortState'
+import { dutiesOf, dutyText, type Duty } from './duties'
 import { OnCall } from './OnCall'
 import { H } from './parts'
 
@@ -31,7 +36,12 @@ export function Teams() {
   const [managing, setManaging] = useState<Team | null>(null)
   const [paging, setPaging] = useState<Team | null>(null)
   const mayArrange = active?.role === 'owner' || active?.role === 'admin'
-  const roll = teams ?? []
+  const { schedules } = useSchedules()
+  const now = useOnCallNowOf(schedules.map((schedule) => schedule.id))
+  const { sorting, dir, on } = useSortState<'team' | 'members' | 'projects' | 'oncall'>()
+  const roll = sorted(teams ?? [], sorting, (t, key) =>
+    key === 'team' ? t.name : key === 'members' ? t.members.length : key === 'projects' ? t.projects.map((p) => p.name).join(', ') : dutyText(dutiesOf(t.id, schedules, now)) || null,
+  )
 
   const open = managing && roll.find((team) => team.id === managing.id)
   const onCall = paging && roll.find((team) => team.id === paging.id)
@@ -43,12 +53,13 @@ export function Teams() {
       </H>
       <Card className="overflow-x-auto">
         <Table aria-label="Teams">
-          <thead><tr><Th>Team</Th><Th numeric className="w-[100px]">Members</Th><Th className="w-[260px]">Projects</Th><Th className="w-[180px]"><span className="sr-only">Actions</span></Th></tr></thead>
+          <thead><tr><SortTh label="Team" dir={dir('team')} onSort={on('team')} /><SortTh numeric label="Members" dir={dir('members')} onSort={on('members', 'desc')} className="w-[100px]" /><SortTh label="Projects" dir={dir('projects')} onSort={on('projects')} className="w-[260px]" /><SortTh label="On call now" dir={dir('oncall')} onSort={on('oncall')} className="w-[240px]" /><Th className="w-[180px]"><span className="sr-only">Actions</span></Th></tr></thead>
           <tbody>{roll.map((t) => (
             <Tr key={t.id}>
               <Td className="h-11"><span className="inline-flex items-center gap-2.5"><span className="inline-flex size-7 items-center justify-center rounded-md bg-muted text-[11px] font-bold text-muted-foreground" aria-hidden>{initialsOf(t.name)}</span><span className="font-semibold">{t.name}</span></span></Td>
               <Td numeric>{t.members.length}</Td>
               <Td className="text-control">{t.projects.length > 0 ? t.projects.map((p) => p.name).join(', ') : <span className="text-muted-foreground">No project yet</span>}</Td>
+              <Td className="text-control"><OnCallNow duties={dutiesOf(t.id, schedules, now)} /></Td>
               <Td numeric><Button variant="ghost" size="sm" onClick={() => setPaging(t)}>On-call</Button>{mayArrange ? <Button variant="ghost" size="sm" onClick={() => setManaging(t)}>Manage</Button> : null}</Td>
             </Tr>
           ))}</tbody>
@@ -60,6 +71,15 @@ export function Teams() {
       <ManageTeam team={open ?? null} onOpenChange={(o) => !o && setManaging(null)} />
       <OnCall team={onCall ?? null} mayArrange={mayArrange} onOpenChange={(o) => !o && setPaging(null)} />
     </>
+  )
+}
+
+function OnCallNow({ duties }: { duties: Duty[] }) {
+  if (duties.length === 0) return <span className="text-muted-foreground">Nobody</span>
+  return (
+    <span className="flex flex-col leading-4">
+      {duties.map((duty) => <span key={`${duty.schedule}/${duty.who}`}><span className="font-semibold">{duty.who}</span><span className="text-caption text-muted-foreground"> · {duty.schedule}</span></span>)}
+    </span>
   )
 }
 

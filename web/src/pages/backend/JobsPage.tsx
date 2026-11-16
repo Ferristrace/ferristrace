@@ -2,17 +2,18 @@ import { Boxes, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { useSearchParam } from '@/lib/router'
+import { sorted } from '@/lib/sorting'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
-import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Th, Tr, SortTh } from '@/components/ui/misc'
 import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
 import { usePlacement } from '@/data/placement'
-import { GROUPINGS, groupingNoun, groupingOf, useJobs, useJobSeries, type Run } from '@/data/jobs'
+import { GROUPINGS, groupingNoun, groupingOf, useJobs, useJobSeries } from '@/data/jobs'
 import { useZoom } from '@/lib/bounds'
 import { useWindow } from '@/lib/window'
 import { because } from '@/auth/client'
@@ -20,6 +21,8 @@ import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
+import { RUN_KEYS, runFirst, runValue } from './sortKeys'
+import { useUrlSort } from './useUrlSort'
 
 const HOT = 2
 
@@ -27,30 +30,19 @@ const SORTS = [
   { value: 'rate', label: 'Failure rate' },
   { value: 'processed', label: 'Processed' },
   { value: 'failed', label: 'Failed' },
+  { value: 'share', label: 'Share of time' },
   { value: 'name', label: 'Name' },
+  { value: 'queue', label: 'Queue' },
+  { value: 'system', label: 'System' },
 ] as const
 
-type Sort = (typeof SORTS)[number]['value']
-
-const sortOf = (value: unknown): Sort => SORTS.find((one) => one.value === value)?.value ?? 'rate'
-
 const percent = (rate: number | null) => (rate === null ? '—' : `${rate.toFixed(1)} %`)
-
-function sorted(runs: Run[], by: Sort): Run[] {
-  const order: Record<Sort, (a: Run, b: Run) => number> = {
-    rate: (a, b) => (b.failureRate ?? -1) - (a.failureRate ?? -1),
-    processed: (a, b) => b.perSecond - a.perSecond,
-    failed: (a, b) => b.failed - a.failed,
-    name: (a, b) => a.group.localeCompare(b.group),
-  }
-  return [...runs].sort(order[by])
-}
 
 export function JobsPage() {
   const goTo = useRouterNavigate()
   const { ms: windowMs, label } = useWindow()
   const group = groupingOf(useSearchParam('g'))
-  const sort = sortOf(useSearchParam('s'))
+  const { sorting, pick, sortBy, dirOf } = useUrlSort(RUN_KEYS, 'rate', runFirst)
   const environment = useSearchParam('env') ?? ''
   const [typedEnv, setTypedEnv] = useState(environment)
   const settledEnv = useSettled(typedEnv)
@@ -81,9 +73,10 @@ export function JobsPage() {
     () =>
       sorted(
         jobs.filter((row) => `${row.group} ${row.queue} ${row.system}`.toLowerCase().includes(q.trim().toLowerCase())),
-        sort,
+        sorting,
+        runValue,
       ),
-    [jobs, sort, q],
+    [jobs, sorting, q],
   )
   const bars = useMemo<Bar[]>(
     () => (series?.points ?? []).map((point) => ({ at: point.atMs, count: point.processed, errors: point.failed })),
@@ -95,7 +88,7 @@ export function JobsPage() {
   const span = zoom ? `${Math.max(1, Math.round(seconds))} s` : label
   const placing = placedCount(placement)
   const sifting = placing > 0 || settledEnv.trim() !== '' || q.trim() !== ''
-  const paged = usePaged(rows, `${group}|${sort}|${q}|${settledEnv}`)
+  const paged = usePaged(rows, `${group}|${sorting.key}|${sorting.dir}|${q}|${settledEnv}`)
   const hot = series?.failureRate !== null && series?.failureRate !== undefined && series.failureRate > HOT
 
   return (
@@ -157,7 +150,7 @@ export function JobsPage() {
           <InputGroup className="w-[220px] max-w-full max-md:w-full">
             <input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} />
           </InputGroup>
-          <NativeSelect aria-label="Sort by" value={sort} onChange={(e) => show({ s: e.target.value === 'rate' ? undefined : e.target.value })} className="w-auto max-md:flex-1">
+          <NativeSelect aria-label="Sort by" value={sorting.key} onChange={(e) => pick(e.target.value as typeof sorting.key)} className="w-auto max-md:flex-1">
             {SORTS.map((one) => <option key={one.value} value={one.value}>Sort: {one.label}</option>)}
           </NativeSelect>
           <span className="flex-1 max-md:hidden" />
@@ -204,12 +197,12 @@ export function JobsPage() {
             <Table aria-label={`Jobs by ${noun}`}>
               <thead>
                 <tr>
-                  <Th>{noun === 'queue' ? 'Queue' : noun === 'system' ? 'System' : 'Job'}</Th>
-                  {group === 'queue' ? null : <Th className="w-[130px]">Queue</Th>}
-                  {group === 'system' ? null : <Th className="w-[110px]">System</Th>}
-                  <Th numeric className="w-[100px]">Processed</Th>
-                  <Th numeric className="w-[90px]">Failed</Th>
-                  <Th className="w-[160px]">Share of time</Th>
+                  <SortTh label={noun === 'queue' ? 'Queue' : noun === 'system' ? 'System' : 'Job'} dir={dirOf(group === 'queue' ? 'queue' : group === 'system' ? 'system' : 'name')} onSort={() => sortBy(group === 'queue' ? 'queue' : group === 'system' ? 'system' : 'name')} />
+                  {group === 'queue' ? null : <SortTh label="Queue" dir={dirOf('queue')} onSort={() => sortBy('queue')} className="w-[130px]" />}
+                  {group === 'system' ? null : <SortTh label="System" dir={dirOf('system')} onSort={() => sortBy('system')} className="w-[110px]" />}
+                  <SortTh label="Processed" numeric dir={dirOf('processed')} onSort={() => sortBy('processed')} className="w-[100px]" />
+                  <SortTh label="Failed" numeric dir={dirOf('failed')} onSort={() => sortBy('failed')} className="w-[90px]" />
+                  <SortTh label="Share of time" dir={dirOf('share')} onSort={() => sortBy('share')} className="w-[160px]" />
                   <Th numeric className="w-[80px]">p50</Th>
                   <Th numeric className="w-[80px]">p95</Th>
                 </tr>

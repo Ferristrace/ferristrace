@@ -1,4 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { CardHeader, CardKind } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import type { Marker } from './charts'
 import { clamp01, clampInto, fractionOf, headerOf, nearestPoint, placeTooltip, stepIndex, timeAtIndex, timeText, zoomRange } from './chartMath'
 import { MarkerLayer } from './MarkerLayer'
@@ -30,8 +32,9 @@ export function YAxis({ labels, height }: { labels: string[]; height?: number })
 
 export type FrameStatus = { kind: 'loading' | 'empty' | 'error'; text: string }
 
-export function ChartFrame({ title, legend, headline, windowLabel, live, status, count, times, xLabels, markers, aria, height, yLabels, drawn, rows, dots, format, onZoom }: {
+export function ChartFrame({ title, kind = 'Time series', legend, headline, windowLabel, live, status, count, times, xLabels, markers, aria, height, yLabels, drawn, rows, dots, format, onZoom }: {
   title: string
+  kind?: string
   legend?: string
   headline?: (at: number | null) => string
   windowLabel?: string
@@ -146,17 +149,22 @@ export function ChartFrame({ title, legend, headline, windowLabel, live, status,
   const spoken = shown?.by === 'key' && at !== null ? `${header ? `${header}: ` : ''}${tipRows.map((row) => `${row.key} ${row.value === null ? 'no data' : format(row)}`).join(', ')}` : ''
 
   return (
-    <figure className="m-0 flex min-w-0 flex-col gap-2 rounded-lg border bg-card px-3 pb-2 pt-3">
-      <figcaption className="flex flex-col gap-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span className="min-w-0 flex-1 text-control font-semibold">{title}</span>
-          {headline ? <span className="whitespace-nowrap font-mono text-heading font-semibold tabular-nums">{headline(at)}</span> : null}
-          {windowLabel ? <span className="whitespace-nowrap font-mono text-micro tabular-nums text-muted-foreground">{header ?? windowLabel}</span> : null}
-        </div>
-        {legend ? <span className="text-caption text-muted-foreground">{legend}</span> : null}
-        {live ? live(at) : null}
+    <figure className="m-0 flex min-w-0 flex-col rounded-md border bg-card">
+      <figcaption>
+        <CardHeader className="flex-wrap gap-y-0.5">
+          <span className="min-w-0 text-[13px] font-semibold leading-5">{title}</span>
+          <CardKind>{kind}</CardKind>
+          {headline ? <span className="ml-auto whitespace-nowrap font-mono text-heading font-semibold tabular-nums">{headline(at)}</span> : null}
+          {windowLabel ? <span className={cn('whitespace-nowrap font-mono text-micro tabular-nums text-muted-foreground', headline ? null : 'ml-auto')}>{header ?? windowLabel}</span> : null}
+        </CardHeader>
+        {legend || live ? (
+          <div className="flex flex-col gap-1 px-3.5 pt-2">
+            {legend ? <span className="text-caption text-muted-foreground">{legend}</span> : null}
+            {live ? live(at) : null}
+          </div>
+        ) : null}
       </figcaption>
-      <div className="grid gap-x-1.5 pt-2" style={{ gridTemplateColumns: `${gutter}px minmax(0,1fr)` }}>
+      <div className="grid gap-x-1.5 px-3 pt-3" style={{ gridTemplateColumns: `${gutter}px minmax(0,1fr)` }}>
         <YAxis labels={yLabels} height={height} />
         <div
           ref={plot}
@@ -192,7 +200,7 @@ export function ChartFrame({ title, legend, headline, windowLabel, live, status,
           {hover === null && pinned === null ? null : <span className="sr-only" aria-live="polite">{spoken}</span>}
         </div>
       </div>
-      <div className="flex justify-between whitespace-nowrap font-mono text-micro tabular-nums text-chart-axis" style={{ paddingLeft: gutter + GAP }}>{xLabels.map((label, index) => <span key={`${index}-${label}`}>{label}</span>)}</div>
+      <div className="flex justify-between whitespace-nowrap px-3 pb-2.5 pt-1.5 font-mono text-micro tabular-nums text-chart-axis" style={{ paddingLeft: gutter + GAP + 12 }}>{xLabels.map((label, index) => <span key={`${index}-${label}`}>{label}</span>)}</div>
     </figure>
   )
 }

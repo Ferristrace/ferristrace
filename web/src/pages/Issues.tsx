@@ -1,12 +1,12 @@
 import { Bug, CircleCheck, EyeOff, RotateCcw, Search } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from '@/lib/router'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
-import { Avatar, Table, Td, Th } from '@/components/ui/misc'
+import { Avatar, Table, Td, Th, SortTh } from '@/components/ui/misc'
 import { Pager } from '@/components/ui/pager'
 import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { useMembers } from '@/data/members'
@@ -23,7 +23,10 @@ import {
 } from '@/data/issues'
 import { stamp } from '@/lib/format'
 import { pagesOf } from '@/lib/paging'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
+import { FiltersButton } from './alerting/FiltersButton'
+import { issueValue, type IssueKey } from './alerting/sorting'
 
 const TABS: [IssueStatus, string][] = [
   ['unresolved', 'Unresolved'],
@@ -48,16 +51,19 @@ export function Issues() {
   const owner = useOwners()
   const navigate = useNavigate()
   const [tab, setTab] = useState<IssueStatus>('unresolved')
-  const [sort, setSort] = useState<'last' | 'events'>('last')
+  const [sorting, setSorting] = useState<Sorting<IssueKey> | null>(null)
+  const [filtering, setFiltering] = useState(false)
   const [sel, setSel] = useState<string[]>([])
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(25)
 
   const count = (status: IssueStatus) => issues.filter((one) => one.status === status).length
-  const rows = useMemo(() => {
-    const kept = issues.filter((one) => one.status === tab)
-    return sort === 'events' ? [...kept].sort((a, b) => b.events - a.events) : kept
-  }, [issues, tab, sort])
+  const rows = sorted(issues.filter((one) => one.status === tab), sorting, (one, key) => issueValue(one, key, owner(one.owner)))
+  const sortBy = (key: IssueKey, first?: 'asc' | 'desc') => {
+    setSorting((was) => toggled(was, key, first))
+    setPage(1)
+  }
+  const dirOf = (key: IssueKey) => (sorting?.key === key ? sorting.dir : null)
   const services = [...new Set(issues.map((one) => one.service))].sort()
   const current = Math.min(page, pagesOf(rows.length, size))
   const shown = rows.slice((current - 1) * size, current * size)
@@ -82,7 +88,7 @@ export function Issues() {
         }
       />
       <div className="flex flex-wrap items-center gap-2" role="search">
-        <InputGroup className="w-[320px] max-w-full max-md:w-full">
+        <InputGroup className="w-[320px] max-w-full max-md:w-auto max-md:flex-1">
           <Search aria-hidden />
           <input
             aria-label="Search issues"
@@ -94,79 +100,69 @@ export function Issues() {
             }}
           />
         </InputGroup>
-        <NativeSelect
-          aria-label="Status"
-          value={tab}
-          onChange={(event) => {
-            setTab(event.target.value as IssueStatus)
-            setSel([])
-            setPage(1)
-          }}
-          className="w-[230px]"
-        >
-          {TABS.map(([value, label]) => (
-            <option key={value} value={value}>
-              Status: {label.toLowerCase()} ({count(value)})
-            </option>
-          ))}
-        </NativeSelect>
-        <NativeSelect
-          aria-label="Service"
-          value={sift.service}
-          onChange={(event) => {
-            setSift((was) => ({ ...was, service: event.target.value }))
-            setPage(1)
-          }}
-          className="w-[190px]"
-        >
-          <option value="">Service: any</option>
-          {services.map((service) => (
-            <option key={service}>{service}</option>
-          ))}
-        </NativeSelect>
-        <NativeSelect
-          aria-label="Window"
-          value={String(sift.rangeMs)}
-          onChange={(event) => {
-            setSift((was) => ({ ...was, rangeMs: Number(event.target.value) }))
-            setPage(1)
-          }}
-          className="w-[150px]"
-        >
-          {RANGES.map(([label, ms]) => (
-            <option key={label} value={ms}>
-              Last {label}
-            </option>
-          ))}
-        </NativeSelect>
-        <span className="flex-1 max-md:hidden" />
-        <NativeSelect
-          aria-label="Sort"
-          value={sort}
-          onChange={(event) => {
-            setSort(event.target.value as typeof sort)
-            setPage(1)
-          }}
-          className="w-[170px]"
-        >
-          <option value="last">Sort: last seen</option>
-          <option value="events">Sort: events</option>
-        </NativeSelect>
-        <NativeSelect
-          aria-label="Rows"
-          value={String(sift.limit)}
-          onChange={(event) => {
-            setSift((was) => ({ ...was, limit: Number(event.target.value) }))
-            setPage(1)
-          }}
-          className="w-[110px]"
-        >
-          {COUNTS.map((many) => (
-            <option key={many} value={many}>
-              {many} rows
-            </option>
-          ))}
-        </NativeSelect>
+        <FiltersButton open={filtering} count={(tab === 'unresolved' ? 0 : 1) + (sift.service ? 1 : 0) + (sift.rangeMs === ANY.rangeMs ? 0 : 1)} controls="issue-filters" onToggle={() => setFiltering((was) => !was)} />
+        <div id="issue-filters" className={cn('flex flex-wrap items-center gap-2 max-md:w-full max-md:[&>select]:w-full', !filtering && 'max-md:hidden')}>
+          <NativeSelect
+            aria-label="Status"
+            value={tab}
+            onChange={(event) => {
+              setTab(event.target.value as IssueStatus)
+              setSel([])
+              setPage(1)
+            }}
+            className="w-[230px]"
+          >
+            {TABS.map(([value, label]) => (
+              <option key={value} value={value}>
+                Status: {label.toLowerCase()} ({count(value)})
+              </option>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            aria-label="Service"
+            value={sift.service}
+            onChange={(event) => {
+              setSift((was) => ({ ...was, service: event.target.value }))
+              setPage(1)
+            }}
+            className="w-[190px]"
+          >
+            <option value="">Service: any</option>
+            {services.map((service) => (
+              <option key={service}>{service}</option>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            aria-label="Window"
+            value={String(sift.rangeMs)}
+            onChange={(event) => {
+              setSift((was) => ({ ...was, rangeMs: Number(event.target.value) }))
+              setPage(1)
+            }}
+            className="w-[150px]"
+          >
+            {RANGES.map(([label, ms]) => (
+              <option key={label} value={ms}>
+                Last {label}
+              </option>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            aria-label="Rows"
+            value={String(sift.limit)}
+            onChange={(event) => {
+              setSift((was) => ({ ...was, limit: Number(event.target.value) }))
+              setPage(1)
+            }}
+            className="w-[110px]"
+          >
+            {COUNTS.map((many) => (
+              <option key={many} value={many}>
+                {many} rows
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
       </div>
       {sel.length ? (
         <div
@@ -237,13 +233,11 @@ export function Issues() {
                         className="size-4 accent-[var(--primary)]"
                       />
                     </Th>
-                    <Th>Issue</Th>
-                    <Th className="w-[180px]">Service</Th>
-                    <Th numeric className="w-[90px]">
-                      Events
-                    </Th>
-                    <Th className="w-[170px]">Last seen</Th>
-                    <Th className="w-[70px]">Owner</Th>
+                    <SortTh label="Issue" dir={dirOf('issue')} onSort={() => sortBy('issue', 'asc')} />
+                    <SortTh label="Service" dir={dirOf('service')} onSort={() => sortBy('service', 'asc')} className="w-[180px]" />
+                    <SortTh numeric label="Events" dir={dirOf('events')} onSort={() => sortBy('events')} className="w-[90px]" />
+                    <SortTh label="Last seen" dir={dirOf('last')} onSort={() => sortBy('last')} className="w-[170px]" />
+                    <SortTh label="Owner" dir={dirOf('owner')} onSort={() => sortBy('owner', 'asc')} className="w-[90px]" />
                   </tr>
                 </thead>
                 <tbody>

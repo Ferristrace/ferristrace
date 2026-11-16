@@ -147,6 +147,7 @@ export function StackedChart({ title, legend, layers, yLabels, aria, height = 16
   return (
     <ChartFrame
       title={title}
+      kind="Stacked area"
       legend={legend}
       headline={(at) => {
         if (count === 0) return '—'
