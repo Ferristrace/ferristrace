@@ -5,7 +5,7 @@ import { because } from '@/auth/client'
 import { useOrganisations } from '@/auth/session'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardKind } from '@/components/ui/card'
 import { Field, Input } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { Alert } from '@/components/ui/misc'
@@ -27,7 +27,7 @@ function Copyable({ label, value }: { label: string; value: string }) {
     <div className="flex flex-col gap-1.5">
       <span className="text-control font-semibold">{label}</span>
       <div className="flex items-center gap-2">
-        <code className="min-w-0 flex-1 truncate rounded-md border bg-muted px-3 py-2 font-mono text-[12.5px]">{value}</code>
+        <code className="min-w-0 flex-1 truncate rounded-md border bg-background px-3 py-2 font-mono text-[12.5px]">{value}</code>
         <Button size="icon" aria-label={`Copy ${label}`} onClick={() => copy(value, label)} className="max-md:size-11">
           <Copy />
         </Button>
@@ -36,13 +36,13 @@ function Copyable({ label, value }: { label: string; value: string }) {
   )
 }
 
-function Step({ number, title, done, children }: { number: number; title: string; done: boolean; children: React.ReactNode }) {
+function Step({ number, title, done, current, children }: { number: number; title: string; done: boolean; current: boolean; children: React.ReactNode }) {
   return (
     <li className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-3 gap-y-3 border-b px-4 py-5 last:border-b-0 md:px-5">
-      <span aria-hidden className={cn('flex size-7 items-center justify-center rounded-full border font-mono text-caption font-semibold', done ? 'border-success-border bg-success-subtle text-success-text' : 'bg-background text-muted-foreground')}>
+      <span aria-hidden className={cn('flex size-7 items-center justify-center rounded-full border font-mono text-caption font-semibold', done ? 'border-success-border bg-success-subtle text-success-text' : current ? 'border-transparent bg-primary text-primary-foreground' : 'bg-background text-muted-foreground')}>
         {done ? <Check className="size-3.5" /> : number}
       </span>
-      <h2 className="self-center text-heading">{title}{done ? <span className="sr-only"> (done)</span> : null}</h2>
+      <h2 className={cn('self-center text-heading', !done && !current && 'text-muted-foreground')}>{title}{done ? <span className="sr-only"> (done)</span> : null}</h2>
       <div className="col-start-2 flex min-w-0 flex-col gap-3">{children}</div>
     </li>
   )
@@ -63,14 +63,21 @@ function KeyStep({ issued, onIssued }: { issued: IssuedKey | null; onIssued: (ke
       <>
         <Alert variant="warning" icon={<AlertTriangle />}>Copy this key now. It is shown once; after this page only its prefix is kept.</Alert>
         <div className="flex gap-2">
-          <Input readOnly mono value={issued.secret} className="bg-muted text-[12px]" aria-label="Your ingest key" />
+          <Input readOnly mono value={issued.secret} className="bg-background text-[12px]" aria-label="Your ingest key" />
           <Button onClick={() => copy(issued.secret, 'Key')} className="max-md:h-11"><Copy />Copy</Button>
         </div>
         <span className="text-caption text-muted-foreground">It is already filled into the snippet below.</span>
       </>
     )
   }
-  if (!project) return <span className="text-control text-muted-foreground">This organisation holds no project yet. <Link to="/settings/projects">Make one</Link>, then come back.</span>
+  if (!project) {
+    return (
+      <>
+        <span className="text-control text-muted-foreground">This organisation holds no project yet. A key sends to one project.</span>
+        <div><Button asChild variant="primary" className="max-md:h-11"><Link to="/settings/projects">Create a project</Link></Button></div>
+      </>
+    )
+  }
   if (!mayIssue) {
     return <span className="text-control text-muted-foreground">Only an owner or an administrator can create a key. Ask one for an ingest key for <span className="font-semibold text-foreground">{project.name}</span>, then paste it in place of <span className="font-mono">&lt;key&gt;</span> below.</span>
   }
@@ -115,29 +122,35 @@ export function Onboarding() {
     .replaceAll('<key>', issued?.secret ?? '<key>')
   const arrived = SIGNALS.some(({ kind }) => signals[kind] === 'arrived')
   const waiting = SIGNALS.some(({ kind }) => signals[kind] === 'waiting')
+  const unknown = !arrived && !waiting
+  const { projects } = useCatalogue()
+  const { project: chosen } = useScope()
+  const project = (projects ?? []).find((p) => p.id === chosen) ?? projects?.[0]
+  const pieces = issued ? code.split(issued.secret) : [code]
 
   return (
     <>
-      <PageHeader title="Send your first signal" meta="Create a key, point your service at it, and watch it arrive." />
+      <PageHeader title={<span className="inline-flex flex-wrap items-center gap-2.5">Send your first signal{project ? <CardKind className="px-2.5 text-caption">{project.name}</CardKind> : null}</span>} meta="Create a key, point your service at it, and watch it arrive." />
+      {arrived ? <Alert variant="success" icon={<Check />} title="Your first signals have arrived" className="max-w-[880px]">FerrisTrace is receiving your telemetry.</Alert> : null}
       <Card className="max-w-[880px]">
         <ol className="m-0 list-none p-0">
-          <Step number={1} title="Create an ingest key" done={issued !== null}>
+          <Step number={1} title="Create an ingest key" done={issued !== null} current={issued === null}>
             <KeyStep issued={issued} onIssued={setIssued} />
           </Step>
-          <Step number={2} title="Point your service at FerrisTrace" done={arrived}>
+          <Step number={2} title="Point your service at FerrisTrace" done={arrived} current={issued !== null && !arrived}>
             <Copyable label="OTLP endpoint, HTTP" value={otlpBase()} />
             <div className="flex flex-col overflow-hidden rounded-md border">
-              <div className="flex items-center gap-2 border-b bg-muted/50 px-3 py-2">
+              <div className="flex items-center gap-2 border-b bg-panel-head px-3 py-2">
                 <div className="scrollbar-none min-w-0 flex-1 overflow-x-auto">
                   <Segmented label="Language" value={language} onChange={setLanguage} options={SNIPPETS.map((s) => ({ value: s.language, label: s.language }))} />
                 </div>
                 <Button size="sm" aria-label={`Copy the ${snippet.language} snippet`} className="shrink-0 max-md:size-11 max-md:p-0" onClick={() => copy(code, `${snippet.language} snippet`)}><Copy /><span className="max-md:hidden">Copy</span></Button>
               </div>
-              <pre className="m-0 overflow-x-auto px-3 py-3 font-mono text-[12.5px] leading-5">{code}</pre>
+              <pre className="m-0 overflow-x-auto bg-background px-3 py-3 font-mono text-[12.5px] leading-5">{pieces.map((piece, i) => <span key={i}>{i > 0 ? <mark className="rounded-sm bg-warning-subtle px-0.5 text-warning-text">{issued?.secret}</mark> : null}{piece}</span>)}</pre>
             </div>
             <span className="text-caption text-muted-foreground">Logs and metrics take the same endpoint and key. Restart the service once the variables are set.</span>
           </Step>
-          <Step number={3} title="Watch it arrive" done={arrived}>
+          <Step number={3} title="Watch it arrive" done={arrived} current={false}>
             <ul role="status" aria-label="First signals" className="m-0 flex list-none flex-col rounded-md border p-0">
               {SIGNALS.map(({ kind, label }) => {
                 const state = signals[kind]
@@ -150,16 +163,18 @@ export function Onboarding() {
                 )
               })}
             </ul>
-            <span className="text-caption text-muted-foreground">
-              {waiting ? 'Checking every 5 seconds over the last 24 hours. Nothing to do here but wait.' : arrived ? 'FerrisTrace is receiving your telemetry.' : 'The server did not answer. Check that it is running, then reload this page.'}
-            </span>
+            {unknown ? (
+              <Alert variant="destructive">The server did not answer. Check that it is running, then reload this page.</Alert>
+            ) : waiting ? (
+              <span className="text-caption text-muted-foreground">Checking every 5 seconds over the last 24 hours. Nothing to do here but wait.</span>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               {signals.trace ? (
                 <Button asChild variant="primary" className="max-md:h-11"><Link to={`/traces/${signals.trace}`}><Waypoints />Open your first trace</Link></Button>
               ) : arrived ? (
                 <Button asChild variant="primary" className="max-md:h-11"><Link to="/">Open the overview</Link></Button>
               ) : null}
-              <Button asChild variant="ghost" className="max-md:h-11"><Link to="/">{arrived ? 'Back to the overview' : 'Skip for now'}</Link></Button>
+              <Button asChild className="max-md:h-11"><Link to="/">{arrived ? 'Back to the overview' : 'Skip for now'}</Link></Button>
             </div>
           </Step>
         </ol>
