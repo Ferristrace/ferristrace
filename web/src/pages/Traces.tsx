@@ -14,6 +14,8 @@ import { QueryBar } from '@/components/ft/QueryBar'
 import { isChip, itemsText, normalise, parse, queryTextOf, type Node } from '@/lib/queryLang'
 import { withValue, withoutValue, type Chip, type FieldRef } from '@/lib/traceQuery'
 import { Kbd, Table, Td, Th } from '@/components/ui/misc'
+import { Pager } from '@/components/ui/pager'
+import { ResultsCard, TimelineBar } from '@/pages/explore/ResultsCard'
 import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { ANY, COUNTS, useTraces, type Sift } from '@/data/traces'
 import { groupOf, measureOf, orderOf, tabOf, TABS, TAB_LABELS, type Definition, type Measure, type Order, type Tab } from '@/data/views'
@@ -28,6 +30,7 @@ import { isPlaced, NOWHERE, usePlacement } from '@/data/placement'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
 import { because } from '@/auth/client'
 import { shortId } from '@/lib/format'
+import { pagesOf } from '@/lib/paging'
 import { cn } from '@/lib/utils'
 import { useWindow } from '@/lib/window'
 
@@ -45,6 +48,8 @@ export function Traces() {
   const [limit, setLimit] = useState(ANY.limit)
   const [density, setDensity] = useState<'compact' | 'comfy'>('compact')
   const [cursor, setCursor] = useState(0)
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(25)
   const rawQuery = useSearchParam('q')
   const text = useMemo(() => queryTextOf(rawQuery), [rawQuery])
   const parsed = useMemo(() => parse(text), [text])
@@ -62,9 +67,15 @@ export function Traces() {
   const { placement, place } = usePlacement()
   const { rows, loading, failed } = useTraces(sift, placement, items, tab === 'traces')
   const spans = useSpans(windowMs, order, limit, items, tab === 'spans')
+  const total = tab === 'spans' ? spans.rows.length : rows.length
+  const at = Math.min(page, pagesOf(total, size))
+  const offset = (at - 1) * size
+  const slowest = Math.max(1, ...rows.map((row) => row.durationMs))
+  const pager = <Pager total={total} page={at} size={size} onPage={setPage} onSize={(next) => { setSize(next); setPage(1) }} noun={tab === 'spans' ? 'spans' : 'traces'} className="border-t" />
   const current = useMemo<Definition>(() => ({ q: normalise(text), o: order, t: tab, m: measure, g: group }), [text, order, tab, measure, group])
   const [panel, setPanel] = useState<'facets' | 'views'>('facets')
   const [mobileOpen, setMobileOpen] = useState(false)
+  useEffect(() => { setPage(Math.floor(cursor / size) + 1) }, [cursor, size])
   const show = (next: Partial<{ q: string; o: Order; t: Tab; m: Measure; g: string; view: string | undefined }>) => {
     const was = { q: text, o: order, t: tab, m: measure, g: group, view: viewParam }
     const merged = { ...was, ...next }
@@ -131,12 +142,12 @@ export function Traces() {
     <>
       <PageHeader title="Traces" meta={zoom ? `${new Date(zoom.from).toLocaleString()} to ${new Date(zoom.to).toLocaleString()}` : `Last ${windowLabel}`}>
         <ViewsToggle state={viewsState} on={panel === 'views'} onToggle={() => { setPanel((was) => (was === 'views' ? 'facets' : 'views')); setMobileOpen(true) }} />
-        <Button size="sm" variant="ghost" className="md:hidden" aria-expanded={mobileOpen} onClick={() => setMobileOpen((was) => !was)}>
+        <Button size="sm" variant="outline" className="md:hidden" aria-expanded={mobileOpen} onClick={() => setMobileOpen((was) => !was)}>
           <ListFilter />Filters{items.length > 0 ? <span className="rounded-full bg-primary px-1.5 font-mono text-[11px] text-primary-foreground">{items.length}</span> : null}
         </Button>
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" aria-label="Display options"><SlidersHorizontal />Display</Button>
+            <Button variant="outline" size="sm" aria-label="Display options"><SlidersHorizontal />Display</Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="flex w-[280px] flex-col gap-3 p-3">
             <div className="flex items-center justify-between gap-2 text-control">
@@ -162,7 +173,7 @@ export function Traces() {
         </Popover>
       </PageHeader>
       {viewsState.dialog}
-      <div className="grid gap-4 md:grid-cols-[264px_minmax(0,1fr)]">
+      <div className="grid gap-4 md:grid-cols-[248px_minmax(0,1fr)]">
         <aside className={cn('min-w-0 md:sticky md:top-[100px] md:max-h-[calc(100vh-116px)] md:self-start md:overflow-y-auto md:pr-1', !mobileOpen && 'max-md:hidden')}>
           {panel === 'views' ? (
             <ViewsPanel state={viewsState} viewKey={viewKey} onSelect={select} onClose={() => setPanel('facets')} />
@@ -179,7 +190,7 @@ export function Traces() {
                 role="tab"
                 aria-selected={one === tab}
                 onClick={() => show({ t: one })}
-                className={cn('-mb-px cursor-pointer border-b-2 border-transparent bg-transparent px-3 py-2 text-control font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring', one === tab && 'border-primary text-foreground')}
+                className={cn('-mb-px h-10 cursor-pointer border-b-2 border-transparent bg-transparent px-3 text-control font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring', one === tab && 'border-primary text-foreground')}
               >
                 {TAB_LABELS[one]}
               </button>
@@ -215,7 +226,7 @@ export function Traces() {
       ) : tab === 'series' ? (
         <SeriesPanel items={items} rangeMs={windowMs} measure={measure} group={group} onChange={(part) => show(part)} />
       ) : tab === 'spans' ? (
-        <SpansTable rows={spans.rows} loading={spans.loading} failed={spans.failed} sifting={sifting} limit={limit} cursor={cursor} density={density} onOpen={(row) => navigate(`/traces/${row.traceId}`)} onCopy={copy} onClear={clear} onFilter={filterOn} />
+        <SpansTable rows={spans.rows.slice(offset, offset + size)} total={total} offset={offset} pager={pager} loading={spans.loading} failed={spans.failed} sifting={sifting} limit={limit} cursor={cursor} density={density} onOpen={(row) => navigate(`/traces/${row.traceId}`)} onCopy={copy} onClear={clear} onFilter={filterOn} />
       ) : failed ? (
         <EmptyState title="The traces could not be read">{because(failed, 'The span store did not answer')}</EmptyState>
       ) : rows.length === 0 ? (
@@ -223,47 +234,47 @@ export function Traces() {
           {loading ? 'Asking the span store.' : sifting ? 'Try fewer filters, a wider window or no placement.' : 'Nothing arrived in the window you are looking at. Try a wider one.'}
         </EmptyState>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table aria-label="Traces">
-            <thead><tr><Th className="w-[130px] max-md:w-[96px]">Started</Th><Th className="w-[150px] max-md:hidden">Service</Th><Th>Root span</Th><Th numeric className="w-[80px] max-md:w-[64px]">Code</Th><Th numeric className="w-[100px] max-md:w-[80px]">Duration</Th><Th className="w-[170px] max-md:hidden">Trace id</Th></tr></thead>
-            <tbody>
-              {rows.map((t, i) => (
-                <tr key={t.id} onClick={() => navigate(`/traces/${t.id}`)} className={cn('cursor-pointer hover:[&>td]:bg-row-hover', i === cursor && '[&>td]:bg-accent-subtle')}>
-                  <Td className={cn(density === 'comfy' && 'h-10', 'font-mono text-control max-md:h-[52px] max-md:text-caption')}>{t.start.length > 8 && t.start.includes(':') ? <><span className="md:hidden">{t.start.slice(0, 8)}</span><span className="max-md:hidden">{t.start}</span></> : t.start}</Td>
-                  <Td className="max-md:hidden">
-                    <ValueMenu field={{ built: 'service' }} value={t.svc} onFilter={filterOn}>
-                      <span className="inline-flex items-center gap-1.5 truncate text-control"><ServiceDot name={t.svc} />{t.svc}</span>
-                    </ValueMenu>
-                  </Td>
-                  <Td className="max-md:max-w-0">
-                    <span className="flex min-w-0 flex-col">
-                      <Link to={`/traces/${t.id}`} className="truncate font-semibold text-foreground" onClick={(e) => e.stopPropagation()}>{t.root}</Link>
-                      <span className="inline-flex items-center gap-1.5 truncate text-caption text-muted-foreground md:hidden"><ServiceDot name={t.svc} />{t.svc}</span>
-                    </span>
-                  </Td>
-                  <Td numeric>
-                    {t.code === null
-                      ? t.errors
-                        ? <span className="inline-flex text-destructive-text" title={`${t.errors} errors`}><CircleX className="size-3.5" aria-label={`${t.errors} errors`} /></span>
-                        : <span className="text-muted-foreground">—</span>
-                      : (
-                        <ValueMenu field={{ built: 'http_status_code' }} value={String(t.code)} onFilter={filterOn}>
-                          <span className={codeTone(t.code, t.errors)} title={t.errors ? `${t.errors} errors` : undefined}>{t.code}</span>
-                        </ValueMenu>
-                      )}
-                  </Td>
-                  <Td numeric>{t.dur}</Td>
-                  <Td className="max-md:hidden"><button type="button" onClick={(e) => { e.stopPropagation(); copy(t.id) }} className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm font-mono text-caption text-muted-foreground hover:text-foreground" title={t.id} aria-label={`Copy trace id ${t.id}`}>{shortId(t.id)}<Copy className="size-3" aria-hidden /></button></Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-          <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
-            <span className="text-caption text-muted-foreground">
-              {rows.length === sift.limit ? `The newest ${sift.limit} of this window.` : `${rows.length} trace${rows.length === 1 ? '' : 's'} in this window.`}
-            </span>
+        <ResultsCard title={`${rows.length.toLocaleString('en-US')} trace${rows.length === 1 ? '' : 's'}`} note={`${order === 'duration' ? 'Slowest first' : order === 'spans' ? 'Most spans first' : 'Newest first'}${rows.length === sift.limit ? ` · capped at ${sift.limit}` : ''}`}>
+          <div className="overflow-x-auto">
+            <Table aria-label="Traces">
+              <thead><tr><Th className="w-[130px] max-md:w-[96px]">Started</Th><Th className="w-[150px] max-md:hidden">Service</Th><Th>Root span</Th><Th numeric className="w-[80px] max-md:w-[64px]">Code</Th><Th numeric className="w-[100px] max-md:w-[80px]">Duration</Th><Th numeric className="w-[90px] max-md:hidden">Spans</Th><Th className="w-[200px] max-lg:hidden">Timeline</Th><Th className="w-[170px] max-md:hidden">Trace id</Th></tr></thead>
+              <tbody>
+                {rows.slice(offset, offset + size).map((t, i) => (
+                  <tr key={t.id} onClick={() => navigate(`/traces/${t.id}`)} className={cn('cursor-pointer hover:[&>td]:bg-row-hover', offset + i === cursor && '[&>td]:bg-accent-subtle')}>
+                    <Td className={cn(density === 'comfy' && 'h-12', 'font-mono text-control max-md:h-[52px] max-md:text-caption')}>{t.start.length > 8 && t.start.includes(':') ? <><span className="md:hidden">{t.start.slice(0, 8)}</span><span className="max-md:hidden">{t.start}</span></> : t.start}</Td>
+                    <Td className="max-md:hidden">
+                      <ValueMenu field={{ built: 'service' }} value={t.svc} onFilter={filterOn}>
+                        <span className="inline-flex items-center gap-1.5 truncate text-control"><ServiceDot name={t.svc} />{t.svc}</span>
+                      </ValueMenu>
+                    </Td>
+                    <Td className="max-md:max-w-0">
+                      <span className="flex min-w-0 flex-col">
+                        <Link to={`/traces/${t.id}`} className="truncate font-medium text-accent-text" onClick={(e) => e.stopPropagation()}>{t.root}</Link>
+                        <span className="inline-flex items-center gap-1.5 truncate text-caption text-muted-foreground md:hidden"><ServiceDot name={t.svc} />{t.svc}</span>
+                      </span>
+                    </Td>
+                    <Td numeric>
+                      {t.code === null
+                        ? t.errors
+                          ? <span className="inline-flex text-destructive-text" title={`${t.errors} errors`}><CircleX className="size-3.5" aria-label={`${t.errors} errors`} /></span>
+                          : <span className="text-muted-foreground">—</span>
+                        : (
+                          <ValueMenu field={{ built: 'http_status_code' }} value={String(t.code)} onFilter={filterOn}>
+                            <span className={codeTone(t.code, t.errors)} title={t.errors ? `${t.errors} errors` : undefined}>{t.code}</span>
+                          </ValueMenu>
+                        )}
+                    </Td>
+                    <Td numeric className={cn(t.errors > 0 && 'text-destructive-text')}>{t.dur}</Td>
+                    <Td numeric className="text-muted-foreground max-md:hidden">{t.spans}</Td>
+                    <Td className="max-lg:hidden"><TimelineBar share={t.durationMs / slowest} failed={t.errors > 0} /></Td>
+                    <Td className="max-md:hidden"><button type="button" onClick={(e) => { e.stopPropagation(); copy(t.id) }} className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm font-mono text-caption text-muted-foreground hover:text-foreground" title={t.id} aria-label={`Copy trace id ${t.id}`}>{shortId(t.id)}<Copy className="size-3" aria-hidden /></button></Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
           </div>
-        </div>
+          {pager}
+        </ResultsCard>
       )}
         </div>
       </div>

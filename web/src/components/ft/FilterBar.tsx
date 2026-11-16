@@ -32,9 +32,9 @@ export function FilterBar({ items, onChange, rangeMs }: { items: Node[]; onChang
         if (!isChip(item)) {
           const text = nodeText(item)
           return (
-            <span key={`${text}-${index}`} className="inline-flex h-7 items-center rounded-md border bg-muted text-control">
-              <span className="max-w-[360px] truncate px-2 font-mono text-[12px]" title={`${text}. Edit it in the query box.`}>{text}</span>
-              <button type="button" aria-label={`Remove filter: ${text}`} onClick={() => remove(index)} className="inline-flex h-full w-6 cursor-pointer items-center justify-center rounded-r-md text-muted-foreground hover:bg-border-subtle hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+            <span key={`${text}-${index}`} className="inline-flex h-7 items-center rounded-full border border-line-strong bg-card text-control">
+              <span className="max-w-[360px] truncate pl-3 pr-1 font-mono text-[12px]" title={`${text}. Edit it in the query box.`}>{text}</span>
+              <button type="button" aria-label={`Remove filter: ${text}`} onClick={() => remove(index)} className="inline-flex h-full w-6 cursor-pointer items-center justify-center rounded-r-full pr-0.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
                 <X className="size-3.5" aria-hidden />
               </button>
             </span>
@@ -42,18 +42,18 @@ export function FilterBar({ items, onChange, rangeMs }: { items: Node[]; onChang
         }
         const chip = item
         return (
-          <span key={`${sentence(chip)}-${index}`} className="inline-flex h-7 items-center rounded-md border bg-muted text-control">
+          <span key={`${sentence(chip)}-${index}`} className="inline-flex h-7 items-center rounded-full border border-line-strong bg-card text-control">
             <Popover open={editing === index} onOpenChange={(open) => setEditing(open ? index : null)}>
               <PopoverTrigger asChild>
-                <button type="button" className="h-full max-w-[320px] cursor-pointer truncate rounded-l-md px-2 text-left hover:bg-border-subtle focus-visible:outline-2 focus-visible:outline-ring" aria-label={`Edit filter: ${sentence(chip)}`}>
-                  <span className="font-semibold">{labelOf(chip.field)}</span> <span className="text-muted-foreground">{OPS[chip.op].label}</span>{OPS[chip.op].bare ? null : <> <span>{show(chip.value)}</span></>}
+                <button type="button" className="h-full max-w-[320px] cursor-pointer truncate rounded-l-full pl-3 pr-1 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring" aria-label={`Edit filter: ${sentence(chip)}`}>
+                  <span className="text-muted-foreground">{labelOf(chip.field)}</span> <span className="font-medium">{OPS[chip.op].label}{OPS[chip.op].bare ? null : <> {show(chip.value)}</>}</span>
                 </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-[340px] p-3">
                 <ChipEditor start={chip} rangeMs={rangeMs} onApply={(next) => replace(index, next)} onCancel={() => setEditing(null)} />
               </PopoverContent>
             </Popover>
-            <button type="button" aria-label={`Remove filter: ${sentence(chip)}`} onClick={() => remove(index)} className="inline-flex h-full w-6 cursor-pointer items-center justify-center rounded-r-md text-muted-foreground hover:bg-border-subtle hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+            <button type="button" aria-label={`Remove filter: ${sentence(chip)}`} onClick={() => remove(index)} className="inline-flex h-full w-6 cursor-pointer items-center justify-center rounded-r-full pr-0.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
               <X className="size-3.5" aria-hidden />
             </button>
           </span>
