@@ -8,7 +8,7 @@ import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Input, NativeSelect, Textarea } from '@/components/ui/input'
 import { Alert } from '@/components/ui/misc'
 import { Switch } from '@/components/ui/switch'
-import { EmptyState, PageHeader } from '@/components/ft/bits'
+import { EmptyState, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { AlertContext, StateBadge } from './alerts/bits'
 import { SeverityPill, StatusPill } from './Incidents'
 import {
@@ -109,6 +109,14 @@ function Opened({ incident }: { incident: Dossier }) {
               <dt className="text-muted-foreground">Opened</dt><dd className="m-0 text-right font-mono">{stamp(incident.opened_ms)}</dd>
               {incident.resolved_ms !== null ? <><dt className="text-muted-foreground">Resolved</dt><dd className="m-0 text-right font-mono">{stamp(incident.resolved_ms)}</dd></> : null}
               <dt className="text-muted-foreground">Owner</dt><dd className="m-0 text-right">{personOf(incident.owner)}</dd>
+              {incident.services.length ? (
+                <>
+                  <dt className="text-muted-foreground">Services</dt>
+                  <dd className="m-0 flex flex-wrap justify-end gap-x-3 gap-y-1 text-right">
+                    {incident.services.map((name) => <Link key={name} to={`/services/${encodeURIComponent(name)}`} className="inline-flex items-center gap-1.5 font-semibold"><ServiceDot name={name} />{name}</Link>)}
+                  </dd>
+                </>
+              ) : null}
               {incident.alert ? <><dt className="text-muted-foreground">From the alert</dt><dd className="m-0 flex items-center justify-end gap-1 text-right"><BellRing className="size-3.5 shrink-0" aria-hidden /><Link to="/alerts" search={{ rule: incident.alert.id }} className="font-semibold">{incident.alert.name}</Link></dd></> : null}
             </dl>
           </Card>
