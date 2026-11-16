@@ -114,10 +114,10 @@ export function Facets({ chips, query, onChange, rangeMs }: { chips: Chip[]; que
                   const on = chosen.includes(one.value)
                   return (
                     <li key={one.value}>
-                      <label className={cn('flex h-7 cursor-pointer items-center gap-2 rounded-sm px-1 text-control hover:bg-muted', on && 'font-semibold')}>
-                        <input type="checkbox" checked={on} onChange={(event) => onChange(withValue(chips, def.field, one.value, event.target.checked, def.numeric === true))} className="size-3.5 shrink-0 cursor-pointer accent-[var(--color-primary)]" />
+                      <label className={cn('flex h-8 cursor-pointer items-center gap-2.5 rounded-sm px-1 text-control hover:bg-row-hover', on && 'font-semibold')}>
+                        <input type="checkbox" checked={on} onChange={(event) => onChange(withValue(chips, def.field, one.value, event.target.checked, def.numeric === true))} className="size-4 shrink-0 cursor-pointer rounded-sm accent-[var(--color-primary)]" />
                         <span className="min-w-0 flex-1 truncate" title={one.value}>{one.value}</span>
-                        <span className="font-mono text-[11px] text-faint-foreground tabular">{one.spans < 0 ? '—' : compact.format(one.spans)}</span>
+                        <span className="font-mono text-caption text-muted-foreground tabular">{one.spans < 0 ? '—' : compact.format(one.spans)}</span>
                       </label>
                     </li>
                   )
@@ -133,11 +133,11 @@ export function Facets({ chips, query, onChange, rangeMs }: { chips: Chip[]; que
 
 function Section({ id, label, open, chosen, onToggle, children }: { id: string; label: string; open: boolean; chosen: number; onToggle: (id: string) => void; children: React.ReactNode }) {
   return (
-    <section className="border-b border-border-subtle py-1">
-      <button type="button" aria-expanded={open} onClick={() => onToggle(id)} className="flex h-8 w-full cursor-pointer items-center gap-1.5 rounded-sm bg-transparent px-1 text-left text-control font-semibold hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+    <section className="border-b border-border-subtle py-1.5">
+      <button type="button" aria-expanded={open} onClick={() => onToggle(id)} className="flex h-8 w-full cursor-pointer items-center gap-1.5 rounded-sm bg-transparent px-1 text-left text-caption font-semibold text-muted-foreground hover:bg-row-hover hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
         <ChevronDown className={cn('size-3.5 text-muted-foreground transition-transform', !open && '-rotate-90')} aria-hidden />
         <span className="flex-1 truncate">{label}</span>
-        {chosen > 0 ? <span className="rounded-full bg-primary px-1.5 font-mono text-[11px] font-semibold leading-[18px] text-primary-foreground">{chosen}</span> : null}
+        {chosen > 0 ? <span className="rounded-full bg-accent-subtle px-1.5 font-mono text-[11px] font-semibold leading-[18px] text-accent-text">{chosen}</span> : null}
       </button>
       {open ? <div className="px-1 pb-1.5 pt-0.5">{children}</div> : null}
     </section>

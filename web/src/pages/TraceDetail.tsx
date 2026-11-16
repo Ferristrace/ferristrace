@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState, ServiceDot, SeverityBadge, svcBg } from '@/components/ft/bits'
 import { Switch } from '@/components/ui/switch'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { useTrace, type Span } from '@/data/traces'
 import { formatCost, formatTokens, modelTimeMs, useTraceCalls, type LlmCall } from '@/data/llm'
 import { msOf, traceWindow, useTraceLogs, type LogRecord } from '@/data/logs'
@@ -51,57 +52,64 @@ export function TraceDetail() {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-title">{t.root}</h1>
         {t.errors ? <Badge variant="destructive"><CircleX />{t.errors} errors</Badge> : <Badge variant="success">OK</Badge>}
+        <span className="inline-flex flex-wrap items-center gap-1.5 text-caption">
+          <span className="rounded-full bg-muted px-2.5 font-mono leading-[22px]">{t.dur}</span>
+          <span className="rounded-full bg-muted px-2.5 leading-[22px]">{t.spans} span{t.spans === 1 ? '' : 's'}</span>
+          <span className="rounded-full bg-muted px-2.5 leading-[22px]">{services.length} service{services.length === 1 ? '' : 's'}</span>
+        </span>
         <span className="flex-1" />
         <Button size="sm" onClick={() => { void navigator.clipboard?.writeText(t.id); toast.success('Trace id copied') }}><Copy />Copy id</Button>
         <Button asChild size="sm"><Link to="/logs" search={logsFilter}><ScrollText />Logs for this trace</Link></Button>
         <AttachToIncident attachment={{ kind: 'trace', reference: t.id, label: t.root.slice(0, 200) }} />
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-control text-muted-foreground">
-        <span>Duration <span className="font-mono font-semibold text-foreground">{t.dur}</span></span><span>Spans <span className="font-mono text-foreground">{t.spans}</span></span><span>Services <span className="font-mono text-foreground">{services.length}</span></span><span>Started <span className="font-mono text-foreground">{stamp(t.startedAtMs)}</span></span><span className="font-mono max-md:hidden">{t.id}</span>
+        <span>Started <span className="font-mono text-foreground">{stamp(t.startedAtMs)}</span></span><span className="font-mono max-md:hidden">{t.id}</span>
         {llm.calls.length ? (
           <span data-testid="model-time">Model time <span className="font-mono font-semibold text-foreground">{dur(modelMs)}</span>{t.durationMs > 0 ? <span className="font-mono"> ({Math.min(100, Math.round((modelMs / t.durationMs) * 100))} % of the request, {dur(Math.max(t.durationMs - modelMs, 0))} elsewhere)</span> : null} · <span className="font-mono text-foreground">{num(llm.calls.length)}</span> LLM {llm.calls.length === 1 ? 'call' : 'calls'} · cost <span className="font-mono text-foreground">{formatCost(modelCost)}</span>{unpriced ? <span> ({unpriced} unpriced)</span> : null}</span>
         ) : null}
       </div>
       <div className="flex flex-wrap gap-3 text-caption text-muted-foreground">{services.map((x) => <span key={x} className="inline-flex items-center gap-1.5"><ServiceDot name={x} />{x}</span>)}</div>
-      <div className="flex overflow-hidden rounded-lg border lg:min-h-[320px]">
-        <div className="min-w-0 flex-1 overflow-x-auto">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b bg-background text-caption font-semibold text-muted-foreground md:min-w-[720px] md:grid-cols-[minmax(240px,340px)_minmax(0,1fr)_84px]">
-            <span className="px-3 py-2">Span</span>
-            <span className="grid grid-cols-4 border-l border-border-subtle px-0 py-2 font-mono font-normal max-md:hidden">{[0, 1, 2, 3].map((q) => <span key={q} className="pl-1.5">{q === 0 ? 0 : dur((t.durationMs * q) / 4)}</span>)}</span>
-            <span className="px-3 py-2 text-right">Duration</span>
-          </div>
-          <div role="tree" aria-label="Spans" className="md:min-w-[720px]">
-            {spans.map((x) => (
-              <button
-                key={x.id}
-                type="button"
-                role="treeitem"
-                aria-level={x.depth + 1}
-                aria-selected={x.id === s?.id}
-                onClick={() => { setPicked(x.id); if (wide) setPanel(true); else setSheet(true) }}
-                className={cn('grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center border-b border-border-subtle text-left text-control hover:bg-row-hover max-md:min-h-11 max-md:gap-y-1 max-md:py-2 md:h-[30px] md:grid-cols-[minmax(240px,340px)_minmax(0,1fr)_84px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring', x.id === s?.id && 'bg-accent-subtle')}
-              >
-                <span className={cn('flex min-w-0 items-center gap-1.5 pr-2', x.err && 'text-destructive-text')} style={{ paddingLeft: 12 + x.depth * 16 }}>
-                  <ServiceDot name={x.svc} />{x.err ? <CircleX className="size-3 shrink-0" aria-label="Error" /> : null}<span className="truncate">{x.name}</span>{callOf.get(x.id) ? <LlmMark call={callOf.get(x.id) as LlmCall} /> : null}
-                </span>
-                <span className="relative border-border-subtle bg-[linear-gradient(to_right,var(--border-subtle)_1px,transparent_1px)] bg-[length:25%_100%] max-md:order-last max-md:col-span-2 max-md:mx-3 max-md:h-3 md:h-[30px] md:border-l">
-                  <span className={cn('absolute h-3 min-w-[2px] rounded-[2px] md:top-[9px]', svcBg(x.svc), x.err && 'ring-1 ring-destructive ring-offset-2 ring-offset-background')} style={{ left: `${x.offset}%`, width: `${x.width}%` }} />
-                </span>
-                <span className="pr-3 text-right font-mono">{x.dur}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-        {panel && wide ? (
-          <aside className="flex w-[400px] shrink-0 flex-col border-l bg-card" aria-label="Span details">
-            <div className="flex items-center gap-2 border-b px-4 py-3">
-              <ServiceDot name={s.svc} /><span className="flex-1 truncate font-semibold">{s.name}</span>
-              <Button variant="ghost" size="icon-sm" aria-label="Close details" onClick={() => setPanel(false)}><X /></Button>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+        <Card className="min-w-0 flex-1 overflow-hidden lg:min-h-[320px]">
+          <div className="overflow-x-auto">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] border-b bg-panel-head text-caption font-semibold text-muted-foreground md:min-w-[720px] md:grid-cols-[minmax(240px,340px)_minmax(0,1fr)_84px]">
+              <span className="px-3 py-2">Span</span>
+              <span className="grid grid-cols-4 border-l border-border-subtle px-0 py-2 font-mono font-normal max-md:hidden">{[0, 1, 2, 3].map((q) => <span key={q} className="pl-1.5">{q === 0 ? 0 : dur((t.durationMs * q) / 4)}</span>)}</span>
+              <span className="px-3 py-2 text-right">Duration</span>
             </div>
+            <div role="tree" aria-label="Spans" className="md:min-w-[720px]">
+              {spans.map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  role="treeitem"
+                  aria-level={x.depth + 1}
+                  aria-selected={x.id === s?.id}
+                  onClick={() => { setPicked(x.id); if (wide) setPanel(true); else setSheet(true) }}
+                  className={cn('grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center border-b border-border-subtle text-left text-control hover:bg-row-hover max-md:min-h-11 max-md:gap-y-1 max-md:py-2 md:h-8 md:grid-cols-[minmax(240px,340px)_minmax(0,1fr)_84px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring', x.id === s?.id && 'bg-accent-subtle')}
+                >
+                  <span className={cn('flex min-w-0 items-center gap-1.5 pr-2', x.err && 'text-destructive-text')} style={{ paddingLeft: 12 + x.depth * 16 }}>
+                    <ServiceDot name={x.svc} />{x.err ? <CircleX className="size-3 shrink-0" aria-label="Error" /> : null}<span className="truncate">{x.name}</span>{callOf.get(x.id) ? <LlmMark call={callOf.get(x.id) as LlmCall} /> : null}
+                  </span>
+                  <span className="relative border-border-subtle bg-[linear-gradient(to_right,var(--border-subtle)_1px,transparent_1px)] bg-[length:25%_100%] max-md:order-last max-md:col-span-2 max-md:mx-3 max-md:h-3 md:h-8 md:border-l">
+                    <span className={cn('absolute h-3 min-w-[2px] rounded-[2px] md:top-[10px]', svcBg(x.svc), x.err && 'ring-1 ring-destructive ring-offset-2 ring-offset-background')} style={{ left: `${x.offset}%`, width: `${x.width}%` }} />
+                  </span>
+                  <span className="pr-3 text-right font-mono">{x.dur}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </Card>
+        {panel && wide ? (
+          <Card role="complementary" className="flex w-[400px] shrink-0 flex-col overflow-hidden" aria-label="Span details">
+            <CardHeader>
+              <ServiceDot name={s.svc} /><CardTitle className="min-w-0 flex-1 truncate">{s.name}</CardTitle>
+              <Button variant="ghost" size="icon-sm" aria-label="Close details" onClick={() => setPanel(false)}><X /></Button>
+            </CardHeader>
             <div className="flex flex-col gap-3 overflow-y-auto p-4">
               <SpanDetails span={s} call={callOf.get(s.id)} logs={spanLogs} filter={logsFilter} onPick={filterTraces} onOnlySpan={() => setOnlySpan(true)} />
             </div>
-          </aside>
+          </Card>
         ) : null}
       </div>
       {wide ? null : (
@@ -113,18 +121,18 @@ export function TraceDetail() {
           </SheetContent>
         </Sheet>
       )}
-      <section aria-label="Logs of this trace" className="flex flex-col overflow-hidden rounded-lg border">
-        <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5">
-          <h2 className="m-0 text-control font-semibold">Logs of this trace</h2>
+      <Card role="region" aria-label="Logs of this trace" className="flex flex-col overflow-hidden">
+        <CardHeader className="flex-wrap px-4">
+          <CardTitle>Logs of this trace</CardTitle>
           <span className="text-caption text-muted-foreground">{logs.pending ? 'reading…' : `${logs.records.length}${logs.more ? '+' : ''} records, trace ±5 min`}</span>
           <span className="flex-1" />
           {s ? <Switch checked={onlySpan} onCheckedChange={setOnlySpan} label={<>Only span <span className="font-mono">{s.name}</span></>} /> : null}
           <Link to="/logs" search={logsFilter} className="text-control">Open in Logs</Link>
-        </div>
+        </CardHeader>
         {logs.failed ? <p className="m-0 px-4 py-3 text-control text-muted-foreground">{because(logs.failed, 'The logs could not be read.')}</p> : null}
         {!logs.failed && !logs.pending && shownLogs.length === 0 ? <p className="m-0 px-4 py-3 text-control text-muted-foreground">{onlySpan ? 'No log record carries the selected span id.' : 'No log record carries this trace id.'}</p> : null}
         {shownLogs.map((record, at) => <LogLine key={`${record.time_ns}-${at}`} record={record} filter={logsFilter} wide />)}
-      </section>
+      </Card>
     </>
   )
 }

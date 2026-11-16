@@ -8,7 +8,8 @@ import { MetricProvider, SignalProvider } from '@/lib/signal'
 import { useSearchParam } from '@/lib/router'
 import { Button } from '@/components/ui/button'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
-import { EmptyState } from '@/components/ft/bits'
+import { EmptyState, PageHeader } from '@/components/ft/bits'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { AttachToIncident } from '@/components/ft/AttachToIncident'
 import { AddToDashboard } from '@/pages/dashboards/editor/AddToDashboard'
 import { MetricChart, labelOf, type DeployMark } from '@/components/ft/MetricChart'
@@ -75,16 +76,16 @@ function encode(picked: Picked): string | undefined {
 
 function Chip({ children, onRemove, label }: { children: React.ReactNode; onRemove: () => void; label: string }) {
   return (
-    <span className="inline-flex h-6 items-center gap-1 rounded-sm border bg-muted pl-2 pr-1 font-mono text-caption">
+    <span className="inline-flex h-7 items-center gap-1 rounded-full border border-line-strong bg-card pl-3 pr-1 font-mono text-caption">
       {children}
-      <button type="button" aria-label={label} onClick={onRemove} className="inline-flex size-4 cursor-pointer items-center justify-center rounded-sm hover:bg-border-subtle focus-visible:outline-2 focus-visible:outline-ring"><X className="size-3" aria-hidden /></button>
+      <button type="button" aria-label={label} onClick={onRemove} className="inline-flex size-4 cursor-pointer items-center justify-center rounded-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"><X className="size-3" aria-hidden /></button>
     </span>
   )
 }
 
 function Meta({ metric }: { metric: MetricInfo }) {
   return (
-    <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-0.5 text-caption" aria-label="Metric metadata">
+    <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 text-caption" aria-label="Metric metadata">
       <dt className="text-muted-foreground">Kind</dt><dd className="m-0 font-mono">{metric.kind}</dd>
       <dt className="text-muted-foreground">Unit</dt><dd className="m-0 font-mono">{metric.unit || 'none'}</dd>
       <dt className="text-muted-foreground">Description</dt><dd className="m-0">{metric.description || 'No description.'}</dd>
@@ -159,21 +160,28 @@ function MetricsPage() {
   const marks: DeployMark[] = deploys.map((d) => ({ atNs: d.atMs * 1_000_000, label: `${d.service} ${d.version}`, to: releasePath(d.service, d.version) }))
 
   return (
-    <div className="-mx-4 -my-4 flex min-h-[calc(100vh-48px)] md:-mx-5">
-      <section aria-label="Metric names" className="hidden w-[300px] shrink-0 flex-col gap-2 border-r bg-sidebar p-4 md:flex">
-        <h1 className="text-title">Metrics</h1>
-        <InputGroup><Search aria-hidden /><input aria-label="Search metric names" placeholder="Search metric names" value={typed} onChange={(e) => setTyped(e.target.value)} className="font-mono text-[12px]" /></InputGroup>
-        <span className="text-caption text-muted-foreground">{catalogue.pending ? 'Reading the catalogue…' : `${catalogue.metrics.length} name${catalogue.metrics.length === 1 ? '' : 's'} match`}</span>
-        <div role="listbox" aria-label="Matching metrics" className="flex flex-col gap-0.5">
+    <>
+      <PageHeader title="Metrics" meta={catalogue.pending ? 'Reading the catalogue…' : `${catalogue.metrics.length} name${catalogue.metrics.length === 1 ? '' : 's'} match`} />
+      <div className="grid gap-4 md:grid-cols-[300px_minmax(0,1fr)] md:items-start">
+      <Card role="region" aria-label="Metric names" className="hidden flex-col overflow-hidden md:flex">
+        <CardHeader><CardTitle>Metric names</CardTitle></CardHeader>
+        <div className="p-3">
+          <InputGroup><Search aria-hidden /><input aria-label="Search metric names" placeholder="Search metric names" value={typed} onChange={(e) => setTyped(e.target.value)} className="font-mono text-[12px]" /></InputGroup>
+        </div>
+        <div aria-hidden className="grid h-9 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-y bg-panel-head px-3 text-caption font-semibold"><span>Name</span><span>Type</span></div>
+        <div role="listbox" aria-label="Matching metrics" className="flex max-h-[calc(100vh-280px)] flex-col overflow-y-auto">
           {catalogue.metrics.map((m) => (
-            <button key={m.name} type="button" role="option" aria-selected={m.name === picked.name} onClick={() => apply({ name: m.name, agg: null })} className={cn('flex cursor-pointer flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring', m.name === picked.name && 'bg-muted')}>
-              <span className="break-all font-mono text-[12.5px] font-medium">{m.name}</span>
-              <span className="text-caption text-muted-foreground">{m.kind} · {m.unit || 'no unit'}</span>
+            <button key={m.name} type="button" role="option" aria-selected={m.name === picked.name} onClick={() => apply({ name: m.name, agg: null })} className={cn('grid min-h-10 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border px-3 py-2 text-left hover:bg-row-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring', m.name === picked.name && 'bg-accent-subtle')}>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="break-all font-mono text-[12.5px] font-medium text-accent-text">{m.name}</span>
+                <span className="text-caption text-muted-foreground">{m.unit || 'no unit'}</span>
+              </span>
+              <span className="text-caption">{m.kind}</span>
             </button>
           ))}
         </div>
-      </section>
-      <section className="flex min-w-0 flex-1 flex-col gap-3 p-4 md:p-5" aria-label="Selected metric">
+      </Card>
+      <section className="flex min-w-0 flex-col gap-3" aria-label="Selected metric">
         <div className="md:hidden">
           <NativeSelect aria-label="Metric" value={picked.name} onChange={(e) => apply({ name: e.target.value, agg: null })}>
             <option value="">Pick a metric…</option>
@@ -194,29 +202,31 @@ function MetricsPage() {
           <EmptyState title="Unknown metric">No metric named <span className="font-mono">{picked.name}</span> is known to this project.</EmptyState>
         ) : metric && agg ? (
           <>
-            <div className="flex min-w-0 flex-col gap-2">
+            <Card className="flex min-w-0 flex-col gap-2 p-3.5">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 flex-1 break-all font-mono text-[13px] font-semibold">{metric.name}</span>
                 <AddToDashboard metric={metric.name} agg={agg} groupBy={picked.groupBy} unit={metric.unit || undefined} />
                 <AttachToIncident attachment={{ kind: 'metric', reference: encode(isPinned(picked) ? { ...picked, agg } : { ...picked, agg, fromMs: Date.now() - picked.rangeMs, toMs: Date.now() }) ?? '', label: `${agg}(${metric.name})${picked.groupBy.length ? ` by ${picked.groupBy.join(', ')}` : ''}`.slice(0, 200) }} />
               </div>
               <Meta metric={metric} />
-            </div>
-            <div className="flex flex-wrap items-center gap-2" role="search">
-              {isPinned(picked) ? <Button size="sm" onClick={() => apply({ fromMs: null, toMs: null })}><X aria-hidden />Back to the last {span.label}</Button> : null}
-              <NativeSelect aria-label="Aggregation" value={agg} onChange={(e) => apply({ agg: e.target.value as Aggregation })} className="w-[130px]">
-                {valid.map((a) => <option key={a} value={a}>{a}</option>)}
-              </NativeSelect>
-              <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); addKey() }}>
-                <InputGroup className="w-[240px] max-w-full"><input aria-label="Group by attribute key" placeholder="group by attribute key" className="font-mono" value={key} onChange={(e) => setKey(e.target.value)} /></InputGroup>
-                <Button type="submit" variant="outline" size="icon" aria-label="Add group by key" disabled={!key.trim()}><Plus aria-hidden /></Button>
-              </form>
-              {picked.groupBy.map((k) => <Chip key={k} label={`Remove group by ${k}`} onRemove={() => apply({ groupBy: picked.groupBy.filter((x) => x !== k) })}>by {k}</Chip>)}
-            </div>
-            <QueryBar text={picked.w} onCommit={(next) => apply({ w: next.trim() })} rangeMs={picked.rangeMs} />
-            {!parsed.ok ? <p role="alert" className="m-0 text-caption text-destructive-text">The filter in this link is not valid, so nothing is filtered: {parsed.error}.</p> : null}
-            <FilterBar items={items} onChange={(next) => apply({ w: itemsText(next) })} rangeMs={picked.rangeMs} />
-            <PlacementPicker collapsible placement={placement} onChange={place} windowMs={isPinned(picked) ? (picked.toMs as number) - (picked.fromMs as number) : picked.rangeMs} />
+            </Card>
+            <Card className="flex min-w-0 flex-col gap-3 p-3.5">
+              <div className="flex flex-wrap items-center gap-2" role="search">
+                {isPinned(picked) ? <Button size="sm" onClick={() => apply({ fromMs: null, toMs: null })}><X aria-hidden />Back to the last {span.label}</Button> : null}
+                <NativeSelect aria-label="Aggregation" value={agg} onChange={(e) => apply({ agg: e.target.value as Aggregation })} className="w-[130px]">
+                  {valid.map((a) => <option key={a} value={a}>{a}</option>)}
+                </NativeSelect>
+                <form className="flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); addKey() }}>
+                  <InputGroup className="w-[240px] max-w-full"><input aria-label="Group by attribute key" placeholder="group by attribute key" className="font-mono" value={key} onChange={(e) => setKey(e.target.value)} /></InputGroup>
+                  <Button type="submit" variant="outline" size="icon" aria-label="Add group by key" disabled={!key.trim()}><Plus aria-hidden /></Button>
+                </form>
+                {picked.groupBy.map((k) => <Chip key={k} label={`Remove group by ${k}`} onRemove={() => apply({ groupBy: picked.groupBy.filter((x) => x !== k) })}>by {k}</Chip>)}
+              </div>
+              <QueryBar text={picked.w} onCommit={(next) => apply({ w: next.trim() })} rangeMs={picked.rangeMs} />
+              {!parsed.ok ? <p role="alert" className="m-0 text-caption text-destructive-text">The filter in this link is not valid, so nothing is filtered: {parsed.error}.</p> : null}
+              <FilterBar items={items} onChange={(next) => apply({ w: itemsText(next) })} rangeMs={picked.rangeMs} />
+              <PlacementPicker collapsible placement={placement} onChange={place} windowMs={isPinned(picked) ? (picked.toMs as number) - (picked.fromMs as number) : picked.rangeMs} />
+            </Card>
             {series.failed ? (
               status === 404 ? (
                 <EmptyState title="Unknown metric">No metric named <span className="font-mono">{picked.name}</span> is known to this project.</EmptyState>
@@ -230,13 +240,17 @@ function MetricsPage() {
             ) : !hasPoints ? (
               <EmptyState title="No data in this window">Nothing was recorded for this metric in the window. Try a wider one.</EmptyState>
             ) : (
-              <MetricChart series={result.series} exemplars={result.exemplars} deploys={marks} unit={metric.unit} aria={`Line chart of ${metric.name}, ${agg}, ${result.series.map((s) => labelOf(s.labels)).join('; ')}`} />
+              <Card className="overflow-hidden [&>figure]:rounded-none [&>figure]:border-0">
+                <CardHeader><CardTitle className="min-w-0 truncate">{metric.name} {agg}</CardTitle><CardKind>Time series</CardKind></CardHeader>
+                <MetricChart series={result.series} exemplars={result.exemplars} deploys={marks} unit={metric.unit} aria={`Line chart of ${metric.name}, ${agg}, ${result.series.map((s) => labelOf(s.labels)).join('; ')}`} />
+              </Card>
             )}
           </>
         ) : (
           <EmptyState title="Reading the catalogue…">Asking the metric store.</EmptyState>
         )}
       </section>
-    </div>
+      </div>
+    </>
   )
 }
