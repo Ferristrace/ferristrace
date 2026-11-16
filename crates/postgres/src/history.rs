@@ -2,7 +2,7 @@ use ferristrace_application::repository;
 use std::collections::BTreeMap;
 
 use ferristrace_domain::telemetry::{
-    BillingMonth, HourSplit, HourTotal, HourVolume, MonthTotal, ProjectHourSplit, ProjectHours,
+    BillingMonth, HourSplit, HourTotal, HourVolume, MonthTotal, ProjectHourShare, ProjectHours,
     ProjectSplit, Split, UsageLedger,
 };
 use ferristrace_domain::{
@@ -169,22 +169,28 @@ impl UsageLedger for PostgresUsage {
         Ok(filled)
     }
 
-    async fn fill_project_splits(&self, splits: &[ProjectHourSplit]) -> Result<usize, StoreError> {
-        let mut columns = ProjectColumns::with_capacity(splits.len());
-        for found in splits {
-            columns.push(found);
+    async fn fill_project_shares(&self, shares: &[ProjectHourShare]) -> Result<usize, StoreError> {
+        let mut columns = ShareColumns::with_capacity(shares.len());
+        for share in shares {
+            columns.push(share);
         }
         let mut tx = self.tx.lock().await;
         let filled = sqlx::query(
             "INSERT INTO usage_hourly_project \
              (org_id, project_id, hour_start, spans_bytes, logs_bytes, metrics_points) \
-             SELECT f.org_id, f.project_id, f.hour_start, f.spans_bytes, f.logs_bytes, \
-             f.metrics_points \
+             SELECT f.org_id, f.project_id, f.hour_start, \
+             CASE WHEN f.spans_total > 0 THEN div(LEAST(f.spans, f.spans_total)::numeric \
+             * h.spans_bytes, f.spans_total)::bigint ELSE 0 END, \
+             CASE WHEN f.logs_total > 0 THEN div(LEAST(f.logs, f.logs_total)::numeric \
+             * h.logs_bytes, f.logs_total)::bigint ELSE 0 END, \
+             CASE WHEN f.points_total > 0 THEN div(LEAST(f.points, f.points_total)::numeric \
+             * h.metrics_points, f.points_total)::bigint ELSE 0 END \
              FROM UNNEST($1::uuid[], $2::uuid[], $3::bigint[], $4::bigint[], $5::bigint[], \
-             $6::bigint[]) AS f(org_id, project_id, hour_start, spans_bytes, logs_bytes, \
-             metrics_points) \
-             WHERE EXISTS (SELECT 1 FROM usage_hourly h \
-             WHERE h.org_id = f.org_id AND h.hour_start = f.hour_start) \
+             $6::bigint[], $7::bigint[], $8::bigint[], $9::bigint[]) AS f(org_id, project_id, \
+             hour_start, spans, logs, points, spans_total, logs_total, points_total) \
+             JOIN usage_hourly h ON h.org_id = f.org_id AND h.hour_start = f.hour_start \
+             WHERE h.spans_bytes IS NOT NULL AND h.logs_bytes IS NOT NULL \
+             AND h.metrics_points IS NOT NULL \
              AND NOT EXISTS (SELECT 1 FROM usage_hourly_project p \
              WHERE p.org_id = f.org_id AND p.hour_start = f.hour_start) \
              ON CONFLICT DO NOTHING",
@@ -192,9 +198,12 @@ impl UsageLedger for PostgresUsage {
         .bind(columns.orgs)
         .bind(columns.projects)
         .bind(columns.hours)
-        .bind(columns.spans)
-        .bind(columns.logs)
-        .bind(columns.points)
+        .bind(columns.stored.spans)
+        .bind(columns.stored.logs)
+        .bind(columns.stored.points)
+        .bind(columns.totals.spans)
+        .bind(columns.totals.logs)
+        .bind(columns.totals.points)
         .execute(&mut **tx)
         .await
         .map_err(|error| unreachable(&error, "fill the usage of each project"))?;
@@ -260,34 +269,54 @@ async fn record_project(
 }
 
 #[derive(Debug, Default)]
-struct ProjectColumns {
-    orgs: Vec<Uuid>,
-    projects: Vec<Uuid>,
-    hours: Vec<i64>,
+struct SplitColumns {
     spans: Vec<i64>,
     logs: Vec<i64>,
     points: Vec<i64>,
 }
 
-impl ProjectColumns {
+impl SplitColumns {
     fn with_capacity(rows: usize) -> Self {
         Self {
-            orgs: Vec::with_capacity(rows),
-            projects: Vec::with_capacity(rows),
-            hours: Vec::with_capacity(rows),
             spans: Vec::with_capacity(rows),
             logs: Vec::with_capacity(rows),
             points: Vec::with_capacity(rows),
         }
     }
 
-    fn push(&mut self, found: &ProjectHourSplit) {
-        self.orgs.push(found.tenant.as_uuid());
-        self.projects.push(found.project.as_uuid());
-        self.hours.push(found.hour.start_nanos());
-        self.spans.push(as_nanos(found.split.spans_bytes));
-        self.logs.push(as_nanos(found.split.logs_bytes));
-        self.points.push(as_nanos(found.split.metrics_points));
+    fn push(&mut self, split: Split) {
+        self.spans.push(as_nanos(split.spans_bytes));
+        self.logs.push(as_nanos(split.logs_bytes));
+        self.points.push(as_nanos(split.metrics_points));
+    }
+}
+
+#[derive(Debug, Default)]
+struct ShareColumns {
+    orgs: Vec<Uuid>,
+    projects: Vec<Uuid>,
+    hours: Vec<i64>,
+    stored: SplitColumns,
+    totals: SplitColumns,
+}
+
+impl ShareColumns {
+    fn with_capacity(rows: usize) -> Self {
+        Self {
+            orgs: Vec::with_capacity(rows),
+            projects: Vec::with_capacity(rows),
+            hours: Vec::with_capacity(rows),
+            stored: SplitColumns::with_capacity(rows),
+            totals: SplitColumns::with_capacity(rows),
+        }
+    }
+
+    fn push(&mut self, share: &ProjectHourShare) {
+        self.orgs.push(share.tenant.as_uuid());
+        self.projects.push(share.project.as_uuid());
+        self.hours.push(share.hour.start_nanos());
+        self.stored.push(share.stored);
+        self.totals.push(share.stored_total);
     }
 }
 

@@ -5,7 +5,7 @@ use super::entities::{LogRecord, Span};
 use super::errors::{CounterUnreachable, SinkError, UnknownKey};
 use super::value_objects::{
     Admission, Carried, Consumed, DecompressedBytes, HourSplit, HourTotal, IngestKey, MonthTotal,
-    ProjectHourSplit, ProjectHours, Scope, TenantId,
+    ProjectHourShare, ProjectHourSplit, ProjectHours, Scope, TenantId,
 };
 use crate::catalogue::ProjectId;
 use crate::explore::Window;
@@ -322,9 +322,9 @@ pub trait UsageLedger {
         splits: &[HourSplit],
     ) -> impl Future<Output = Result<usize, StoreError>> + Send;
 
-    fn fill_project_splits(
+    fn fill_project_shares(
         &self,
-        splits: &[ProjectHourSplit],
+        shares: &[ProjectHourShare],
     ) -> impl Future<Output = Result<usize, StoreError>> + Send;
 }
 
@@ -358,11 +358,11 @@ impl<T: UsageLedger + Sync> UsageLedger for &T {
         (*self).fill_splits(splits)
     }
 
-    fn fill_project_splits(
+    fn fill_project_shares(
         &self,
-        splits: &[ProjectHourSplit],
+        shares: &[ProjectHourShare],
     ) -> impl Future<Output = Result<usize, StoreError>> + Send {
-        (*self).fill_project_splits(splits)
+        (*self).fill_project_shares(shares)
     }
 }
 
@@ -388,10 +388,10 @@ impl<T: UsageLedger + Send + Sync> UsageLedger for std::sync::Arc<T> {
         self.as_ref().fill_splits(splits)
     }
 
-    fn fill_project_splits(
+    fn fill_project_shares(
         &self,
-        splits: &[ProjectHourSplit],
+        shares: &[ProjectHourShare],
     ) -> impl Future<Output = Result<usize, StoreError>> + Send {
-        self.as_ref().fill_project_splits(splits)
+        self.as_ref().fill_project_shares(shares)
     }
 }

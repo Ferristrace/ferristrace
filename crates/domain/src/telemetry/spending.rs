@@ -1,6 +1,10 @@
 use std::collections::BTreeMap;
 
-use super::value_objects::{Consumed, DayVolume, HourVolume, ProjectHours, ProjectUsage, Split};
+use super::billing::BillingHour;
+use super::value_objects::{
+    Consumed, DayVolume, HourSplit, HourVolume, ProjectHourShare, ProjectHourSplit, ProjectHours,
+    ProjectUsage, Split, TenantId,
+};
 use crate::catalogue::ProjectId;
 
 const A_DAY_NANOS: u64 = 24 * 3600 * 1_000_000_000;
@@ -43,6 +47,38 @@ pub fn by_project(hours: &[Consumed], projects: Vec<ProjectHours>) -> Vec<Projec
         named.push(rest);
     }
     named
+}
+
+pub fn project_shares(
+    totals: &[HourSplit],
+    projects: &[ProjectHourSplit],
+) -> Vec<ProjectHourShare> {
+    let mut stored_totals: BTreeMap<(TenantId, BillingHour), Split> = totals
+        .iter()
+        .map(|total| ((total.tenant, total.hour), total.split))
+        .collect();
+    let mut claimed: BTreeMap<(TenantId, BillingHour), Split> = BTreeMap::new();
+    for project in projects {
+        let slot = claimed.entry((project.tenant, project.hour)).or_default();
+        *slot = slot.plus(project.split);
+    }
+    for (key, sum) in claimed {
+        let slot = stored_totals.entry(key).or_default();
+        *slot = slot.at_least(sum);
+    }
+    projects
+        .iter()
+        .map(|project| ProjectHourShare {
+            tenant: project.tenant,
+            project: project.project,
+            hour: project.hour,
+            stored: project.split,
+            stored_total: stored_totals
+                .get(&(project.tenant, project.hour))
+                .copied()
+                .unwrap_or(project.split),
+        })
+        .collect()
 }
 
 fn usage(project: Option<ProjectId>, name: Option<Box<str>>, hours: &[HourVolume]) -> ProjectUsage {

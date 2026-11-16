@@ -1,7 +1,7 @@
 use ferristrace_domain::ProjectId;
 use ferristrace_domain::telemetry::{
-    BillingHour, BillingMonth, HourSplit, HourTotal, ProjectHourSplit, ProjectSplit, Split,
-    UsageLedger,
+    BillingHour, BillingMonth, HourSplit, HourTotal, ProjectHourShare, ProjectHourSplit,
+    ProjectSplit, ProjectUsage, Split, UsageLedger, by_project, project_shares,
 };
 use ferristrace_domain::{DecompressedBytes, TenantId, UnixSeconds, UsageHistory, Window};
 use ferristrace_infra::FixedClock;
@@ -569,7 +569,7 @@ async fn the_projects_of_another_organisation_or_window_are_not_read() {
 }
 
 #[tokio::test]
-async fn project_rows_are_filled_only_into_rolled_hours_that_have_none() {
+async fn project_rows_are_filled_only_into_split_hours_that_have_none() {
     let Some(pool) = control_plane("usage_projects_fill").await else {
         return;
     };
@@ -583,40 +583,44 @@ async fn project_rows_are_filled_only_into_rolled_hours_that_have_none() {
         project: web,
         split: volumes(500, 0, 0),
     }];
-    let old = an_hour_total(org, 1_699_995_600, 90);
+    let mut old = an_hour_total(org, 1_699_995_600, 130);
+    old.split = Some(volumes(80, 40, 10));
+    let unsplit = an_hour_total(org, 1_699_992_000, 90);
     committed!(pg, |usage: UsageHistory| usage
-        .record_hours(&[counted.clone(), old.clone()])
+        .record_hours(&[counted.clone(), old.clone(), unsplit.clone()])
         .await
         .expect("rolling the hours"));
-    let rebuilt = |project, hour: BillingHour| ProjectHourSplit {
+    let share = |project, hour: BillingHour| ProjectHourShare {
         tenant: org,
         project,
         hour,
-        split: volumes(7, 8, 9),
+        stored: volumes(7, 8, 9),
+        stored_total: volumes(14, 16, 18),
     };
     let found = [
-        rebuilt(web, old.hour),
-        rebuilt(api, old.hour),
-        rebuilt(api, counted.hour),
-        rebuilt(
+        share(web, old.hour),
+        share(api, old.hour),
+        share(api, counted.hour),
+        share(web, unsplit.hour),
+        share(
             web,
             BillingHour::containing(UnixSeconds::new(1_600_000_000)),
         ),
     ];
 
     let first = committed!(pg, |usage: UsageHistory| usage
-        .fill_project_splits(&found)
+        .fill_project_shares(&found)
         .await
         .expect("filling"));
     let second = committed!(pg, |usage: UsageHistory| usage
-        .fill_project_splits(&found)
+        .fill_project_shares(&found)
         .await
         .expect("filling again"));
 
     assert_eq!(
         (first, second),
         (2, 0),
-        "both projects of the hour without rows, and only once"
+        "both projects of the split hour without rows, and only once"
     );
     let read = committed!(pg, |usage: UsageHistory| usage
         .project_hours(org, everything())
@@ -634,8 +638,122 @@ async fn project_rows_are_filled_only_into_rolled_hours_that_have_none() {
             })
             .unwrap_or_default()
     };
-    assert_eq!(of(web), vec![volumes(7, 8, 9), volumes(500, 0, 0)]);
-    assert_eq!(of(api), vec![volumes(7, 8, 9)]);
+    assert_eq!(of(web), vec![volumes(40, 20, 5), volumes(500, 0, 0)]);
+    assert_eq!(of(api), vec![volumes(40, 20, 5)]);
+}
+
+async fn backfilled(
+    pg: &Postgres<FixedClock>,
+    org: TenantId,
+    split: Split,
+    stored: &[HourSplit],
+    projects: &[ProjectHourSplit],
+) -> Vec<ProjectUsage> {
+    let mut hour = an_hour_total(org, 1_794_866_400, 0);
+    hour.split = Some(split);
+    committed!(*pg, |usage: UsageHistory| usage
+        .record_hours(std::slice::from_ref(&hour))
+        .await
+        .expect("rolling the hour"));
+    let shares = project_shares(stored, projects);
+    committed!(*pg, |usage: UsageHistory| usage
+        .fill_project_shares(&shares)
+        .await
+        .expect("filling the projects"));
+    let hours = committed!(*pg, |usage: UsageHistory| usage
+        .hours(org, everything())
+        .await
+        .expect("reading the hours"));
+    let read = committed!(*pg, |usage: UsageHistory| usage
+        .project_hours(org, everything())
+        .await
+        .expect("reading the projects"));
+    by_project(&hours, read)
+}
+
+fn spent_by(spent: &[ProjectUsage], project: Option<ProjectId>) -> Split {
+    spent
+        .iter()
+        .find(|usage| usage.project == project)
+        .map(|usage| usage.total)
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn a_backfilled_project_gets_the_metered_split_not_the_stored_bytes() {
+    let Some(pool) = control_plane("usage_projects_apportioned").await else {
+        return;
+    };
+    let pg = Postgres::new(pool.clone(), FixedClock::at(1_700_000_000));
+    let org = an_org(&pool, "owner@example.com").await;
+    let web = a_project(&pool, org, "web").await;
+    let hour = BillingHour::containing(UnixSeconds::new(1_794_866_400));
+    let metered = volumes(99_342_342, 0, 0);
+    let stored = volumes(424_011_797, 0, 0);
+
+    let spent = backfilled(
+        &pg,
+        org,
+        metered,
+        &[HourSplit {
+            tenant: org,
+            hour,
+            split: stored,
+        }],
+        &[ProjectHourSplit {
+            tenant: org,
+            project: web,
+            hour,
+            split: stored,
+        }],
+    )
+    .await;
+
+    assert_eq!(spent_by(&spent, Some(web)), metered);
+    assert_eq!(spent_by(&spent, None), Split::default());
+}
+
+#[tokio::test]
+async fn backfilled_projects_and_no_project_add_up_to_the_metered_split() {
+    let Some(pool) = control_plane("usage_projects_add_up").await else {
+        return;
+    };
+    let pg = Postgres::new(pool.clone(), FixedClock::at(1_700_000_000));
+    let org = an_org(&pool, "owner@example.com").await;
+    let web = a_project(&pool, org, "web").await;
+    let api = a_project(&pool, org, "api").await;
+    let hour = BillingHour::containing(UnixSeconds::new(1_794_866_400));
+    let metered = volumes(1_000, 300, 7);
+    let stored = |project, split| ProjectHourSplit {
+        tenant: org,
+        project,
+        hour,
+        split,
+    };
+
+    let spent = backfilled(
+        &pg,
+        org,
+        metered,
+        &[HourSplit {
+            tenant: org,
+            hour,
+            split: volumes(3_000, 10, 0),
+        }],
+        &[
+            stored(web, volumes(1_500, 3, 0)),
+            stored(api, volumes(999, 3, 0)),
+        ],
+    )
+    .await;
+
+    assert_eq!(spent_by(&spent, Some(web)), volumes(500, 90, 0));
+    assert_eq!(spent_by(&spent, Some(api)), volumes(333, 90, 0));
+    assert_eq!(spent_by(&spent, None), volumes(167, 120, 7));
+    assert_eq!(
+        spent.iter().map(|usage| usage.total).sum::<Split>(),
+        metered
+    );
 }
 
 #[tokio::test]

@@ -332,6 +332,15 @@ pub struct Split {
 }
 
 impl Split {
+    #[must_use]
+    pub fn at_least(self, other: Self) -> Self {
+        Self {
+            spans_bytes: self.spans_bytes.max(other.spans_bytes),
+            logs_bytes: self.logs_bytes.max(other.logs_bytes),
+            metrics_points: self.metrics_points.max(other.metrics_points),
+        }
+    }
+
     pub fn of(self, signal: SignalKind) -> u64 {
         match signal {
             SignalKind::Spans => self.spans_bytes,
@@ -418,6 +427,15 @@ pub struct ProjectHourSplit {
     pub project: ProjectId,
     pub hour: BillingHour,
     pub split: Split,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectHourShare {
+    pub tenant: TenantId,
+    pub project: ProjectId,
+    pub hour: BillingHour,
+    pub stored: Split,
+    pub stored_total: Split,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

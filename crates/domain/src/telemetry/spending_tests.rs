@@ -1,7 +1,12 @@
 use uuid::Uuid;
 
-use super::spending::by_project;
-use super::value_objects::{Consumed, HourVolume, ProjectHours, Split};
+use super::billing::BillingHour;
+use super::spending::{by_project, project_shares};
+use super::value_objects::{
+    Consumed, HourSplit, HourVolume, ProjectHourShare, ProjectHourSplit, ProjectHours, Split,
+    TenantId,
+};
+use crate::UnixSeconds;
 use crate::catalogue::ProjectId;
 
 const AN_HOUR: u64 = 3_600_000_000_000;
@@ -138,4 +143,87 @@ fn an_organisation_without_project_rows_spends_everything_as_no_project() {
     assert_eq!(spent.len(), 1);
     assert_eq!(spent[0].project, None);
     assert_eq!(spent[0].total, split(5, 6, 7));
+}
+
+fn stored_hour(tenant: u128, at: u64, split: Split) -> HourSplit {
+    HourSplit {
+        tenant: TenantId::new(Uuid::from_u128(tenant)),
+        hour: BillingHour::containing(UnixSeconds::new(at)),
+        split,
+    }
+}
+
+fn stored_project(tenant: u128, seed: u128, at: u64, split: Split) -> ProjectHourSplit {
+    ProjectHourSplit {
+        tenant: TenantId::new(Uuid::from_u128(tenant)),
+        project: ProjectId::new(Uuid::from_u128(seed)),
+        hour: BillingHour::containing(UnixSeconds::new(at)),
+        split,
+    }
+}
+
+fn totals_of(shares: &[ProjectHourShare]) -> Vec<(u128, Split, Split)> {
+    shares
+        .iter()
+        .map(|share| {
+            (
+                share.project.as_uuid().as_u128(),
+                share.stored,
+                share.stored_total,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_project_share_is_paired_with_the_stored_total_of_its_tenant_hour() {
+    let totals = [
+        stored_hour(1, 3_600, split(100, 40, 9)),
+        stored_hour(1, 7_200, split(500, 0, 0)),
+        stored_hour(2, 3_600, split(70, 0, 0)),
+    ];
+    let projects = [
+        stored_project(1, 10, 3_600, split(60, 10, 3)),
+        stored_project(1, 11, 3_600, split(30, 0, 6)),
+        stored_project(1, 10, 7_200, split(500, 0, 0)),
+    ];
+
+    let shares = project_shares(&totals, &projects);
+
+    assert_eq!(
+        totals_of(&shares),
+        vec![
+            (10, split(60, 10, 3), split(100, 40, 9)),
+            (11, split(30, 0, 6), split(100, 40, 9)),
+            (10, split(500, 0, 0), split(500, 0, 0)),
+        ]
+    );
+}
+
+#[test]
+fn a_stored_total_never_falls_below_what_its_projects_hold() {
+    let totals = [stored_hour(1, 3_600, split(50, 5, 0))];
+    let projects = [
+        stored_project(1, 10, 3_600, split(40, 8, 0)),
+        stored_project(1, 11, 3_600, split(30, 0, 2)),
+        stored_project(1, 10, 7_200, split(9, 0, 0)),
+    ];
+
+    let shares = project_shares(&totals, &projects);
+
+    assert_eq!(
+        totals_of(&shares),
+        vec![
+            (10, split(40, 8, 0), split(70, 8, 2)),
+            (11, split(30, 0, 2), split(70, 8, 2)),
+            (10, split(9, 0, 0), split(9, 0, 0)),
+        ]
+    );
+}
+
+#[test]
+fn no_project_means_no_share() {
+    let totals = [stored_hour(1, 3_600, split(50, 5, 0))];
+
+    assert_eq!(project_shares(&totals, &[]), Vec::new());
 }

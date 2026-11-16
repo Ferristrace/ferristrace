@@ -39,10 +39,10 @@ pub use ports::{
 };
 pub use pricing::{BYTES_PER_GB, Bill, Currency, POINTS_PER_MILLION, PriceList, SignalBill};
 pub use quota::{Allowance, StaticQuota};
-pub use spending::by_project;
+pub use spending::{by_project, project_shares};
 pub use value_objects::{
     Admission, Carried, Consumed, Consumption, DayVolume, DecompressedBytes, HourSplit, HourTotal,
     HourVolume, IngestKey, LogPayload, MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, MonthTotal, Payload,
-    ProjectHourSplit, ProjectHours, ProjectSplit, ProjectUsage, RetentionDays, Scope, Severity,
-    SignalKind, SpanEvent, SpanId, SpanKind, SpanStatus, Split, TenantId, TraceId,
+    ProjectHourShare, ProjectHourSplit, ProjectHours, ProjectSplit, ProjectUsage, RetentionDays,
+    Scope, Severity, SignalKind, SpanEvent, SpanId, SpanKind, SpanStatus, Split, TenantId, TraceId,
 };
