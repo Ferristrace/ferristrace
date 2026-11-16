@@ -158,6 +158,8 @@ export function Ai() {
               title={`Spend by ${groupBy}`}
               layers={layers}
               markers={markersOf(spend)}
+              times={spend.groups[0]?.points.map((point) => point[0])}
+              format={formatCost}
               yLabels={(top) => [formatCost(top), formatCost(top / 2), '$0.00']}
               xLabels={timeLabels(spend.fromMs, spend.toMs)}
               aria={`Stacked cost per ${groupBy} over the window`}

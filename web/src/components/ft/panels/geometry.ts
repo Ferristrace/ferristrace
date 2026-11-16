@@ -123,7 +123,12 @@ export function nearestIndex(times: number[], time: number): number {
   return lo
 }
 
-export type TooltipEntry = { key: string; colour: string; value: number | null; anchor?: number }
+export function nearbyBy<T>(items: T[], positionOf: (item: T) => number, centre: number, span: number, share = 0.02): T[] {
+  const reach = span * share
+  return items.filter((item) => Math.abs(positionOf(item) - centre) <= reach).sort((a, b) => positionOf(a) - positionOf(b))
+}
+
+export type TooltipEntry ={ key: string; colour: string; value: number | null; anchor?: number }
 
 export type TooltipRow = TooltipEntry & { at: number; nearest: boolean }
 

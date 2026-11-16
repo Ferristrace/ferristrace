@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 import type { TooltipRow } from './geometry'
 import { SafeLink } from './SafeLink'
 
-export type ReleaseRow = { label: string; when: string; to: string }
+export type ReleaseRow = { label: string; when: string; to?: string }
 
 const SHOWN_ROWS = 12
 const RELEASES_SHOWN = 5
@@ -39,11 +39,11 @@ export function useHoverPin<T>(resetKey?: unknown) {
 
   const leave = useCallback(() => setHover(null), [])
   const unpin = useCallback(() => setPinned(null), [])
-  return { hover, setHover, leave, pinned, unpin, shown: pinned ?? hover }
+  return { hover, setHover, leave, pinned, setPinned, unpin, shown: pinned ?? hover }
 }
 
 export function SeriesTooltip({ header, rows, format, pinned, drillable, onOpen, releases = [], style, className }: {
-  header: string
+  header?: string | null
   rows: TooltipRow[]
   format: (row: TooltipRow) => string
   pinned: boolean
@@ -61,7 +61,7 @@ export function SeriesTooltip({ header, rows, format, pinned, drillable, onOpen,
       className={cn('absolute top-0 z-10 flex min-w-[160px] max-w-[320px] flex-col gap-0.5 rounded-md border bg-popover px-2 py-1.5 text-caption text-popover-foreground shadow-md', pinned ? 'pointer-events-auto' : 'pointer-events-none', className)}
       style={style}
     >
-      <span className="font-mono text-muted-foreground">{header}</span>
+      {header ? <span className="font-mono text-muted-foreground">{header}</span> : null}
       {shown.map((row, index) => {
         const body = (
           <>
@@ -92,7 +92,7 @@ export function SeriesTooltip({ header, rows, format, pinned, drillable, onOpen,
               </>
             )
             const cls = 'flex items-center gap-1.5 rounded-sm px-1 py-px'
-            return pinned ? (
+            return pinned && release.to ? (
               <SafeLink key={`${index}-${release.label}`} to={release.to} className={cn(cls, 'text-popover-foreground no-underline hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring')}>{body}</SafeLink>
             ) : (
               <span key={`${index}-${release.label}`} className={cls}>{body}</span>

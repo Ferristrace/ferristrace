@@ -14,7 +14,7 @@ import { placementSearch, usePlacement } from '@/data/placement'
 import { PlacementPicker } from '@/components/ft/Placement'
 import { RunsOn } from '@/components/ft/RunsOn'
 import { because } from '@/auth/client'
-import { dur, num } from '@/lib/format'
+import { dur, num, percentage } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const axis = (hi: number, shown: (v: number) => string): [string, string, string] => [shown(hi), shown(hi / 2), '0']
@@ -35,6 +35,7 @@ export function ServiceDetail() {
   const lines = charted(series)
   const to = series?.points.length ? series.points[series.points.length - 1].atMs + series.stepMs : Date.now()
   const labels = timeLabels(to - windowMs, to)
+  const times = series?.points.map((point) => point.atMs)
   const rateHi = ceiling(lines.perSecond)
   const errHi = Math.max(ceiling(lines.errorRate), ERROR_THRESHOLD * 2)
   const p95Hi = ceiling(lines.p95)
@@ -68,9 +69,9 @@ export function ServiceDetail() {
         <Kpi label="Requests in range" value={s ? num(s.requests) : '—'} sub={s ? `${num(s.errors)} with errors` : undefined} />
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))] gap-3">
-        <LineChart title="Requests" legend="per second" values={lines.perSecond} hi={rateHi} yLabels={axis(rateHi, (v) => perSecond(v).replace('/s', ''))} xLabels={labels} aria={`Requests per second of ${name} over the last ${label}`} height={120} markers={markers} />
-        <LineChart title="Error rate" legend={`dashed: ${ERROR_THRESHOLD} % status page threshold`} values={lines.errorRate} markers={markers} threshold={ERROR_THRESHOLD} hi={errHi} yLabels={axis(errHi, (v) => `${v.toFixed(v < 10 ? 1 : 0)} %`)} xLabels={labels} aria={`Error rate of ${name} over the last ${label}`} height={120} />
-        <LineChart title="Latency" legend="p95" values={lines.p95} markers={markers} hi={p95Hi} yLabels={axis(p95Hi, dur)} xLabels={labels} aria={`p95 latency of ${name} over the last ${label}`} height={120} />
+        <LineChart title="Requests" legend="per second" values={lines.perSecond} hi={rateHi} yLabels={axis(rateHi, (v) => perSecond(v).replace('/s', ''))} xLabels={labels} aria={`Requests per second of ${name} over the last ${label}`} height={120} markers={markers} times={times} format={perSecond} />
+        <LineChart title="Error rate" legend={`dashed: ${ERROR_THRESHOLD} % status page threshold`} values={lines.errorRate} markers={markers} threshold={ERROR_THRESHOLD} hi={errHi} yLabels={axis(errHi, (v) => `${v.toFixed(v < 10 ? 1 : 0)} %`)} xLabels={labels} aria={`Error rate of ${name} over the last ${label}`} height={120} times={times} format={percentage} />
+        <LineChart title="Latency" legend="p95" values={lines.p95} markers={markers} hi={p95Hi} yLabels={axis(p95Hi, dur)} xLabels={labels} aria={`p95 latency of ${name} over the last ${label}`} height={120} times={times} format={dur} />
       </div>
       <Card className="overflow-hidden">
         <CardHeader><CardTitle>Operations</CardTitle><span className="text-caption text-muted-foreground">by span name, server and consumer spans</span></CardHeader>
