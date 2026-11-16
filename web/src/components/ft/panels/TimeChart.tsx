@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import type { SeriesData } from '@/data/dashboards'
 import { cn } from '@/lib/utils'
 import { gutterOf, YAxis } from '../ChartFrame'
@@ -25,6 +25,14 @@ const clamp = (value: number) => Math.min(1, Math.max(0, value))
 
 const points = (parts: [number, number][]) => parts.map(([x, y]) => `${(x * WIDTH).toFixed(1)},${(y * HEIGHT).toFixed(1)}`).join(' ')
 
+const BAR_RADIUS = 4
+
+const roundedTop = (x: number, y: number, w: number, h: number, rx: number, ry: number) => {
+  const a = Math.min(rx, w / 2)
+  const b = Math.min(ry, h)
+  return `M${x},${y + h}V${y + b}Q${x},${y} ${x + a},${y}H${x + w - a}Q${x + w},${y} ${x + w},${y + b}V${y + h}Z`
+}
+
 const sameSpot = (a: Spot | null, b: Spot): Spot => (a && a.at === b.at && a.focus === b.focus ? a : b)
 
 export function TimeChart({ mode, panel, result, range, markers = [], onZoom, drill }: PanelProps<Of<'series'>> & { mode: Mode }) {
@@ -44,6 +52,14 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
   const plot = useRef<HTMLDivElement>(null)
   const down = useRef<{ x: number; from: number; moved: boolean } | null>(null)
   const [band, setBand] = useState<{ a: number; b: number } | null>(null)
+  const [box, setBox] = useState({ w: WIDTH, h: HEIGHT })
+  useEffect(() => {
+    const node = plot.current
+    if (!node || typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver(([entry]) => setBox({ w: Math.max(1, entry.contentRect.width), h: Math.max(1, entry.contentRect.height) }))
+    watch.observe(node)
+    return () => watch.disconnect()
+  }, [])
 
   const x = (time: number) => xFraction(time, frame)
   const y = (value: number) => yFraction(value, frame)
@@ -77,7 +93,13 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
                 const left = px(time) - (slot * 0.8) / 2 + (stacked ? 0 : order * width)
                 const top = py(Math.max(lower, upper))
                 const bottom = py(Math.min(lower, upper))
-                return <rect key={`${index}-${time}`} x={left * WIDTH} y={top * HEIGHT} width={Math.max(0.5, width * WIDTH - 0.5)} height={Math.max(0.5, (bottom - top) * HEIGHT)} fill={colourOf(index)} fillOpacity={0.9} />
+                const bx = left * WIDTH
+                const by = top * HEIGHT
+                const bw = Math.max(0.5, width * WIDTH - 0.5)
+                const bh = Math.max(0.5, (bottom - top) * HEIGHT)
+                const highest = !stacked || visible.every((other) => other === index || (layers[other].upper[column] ?? 0) <= upper || (table.rows[other][column] ?? 0) <= 0)
+                if (value > 0 && highest) return <path key={`${index}-${time}`} d={roundedTop(bx, by, bw, bh, (BAR_RADIUS * WIDTH) / box.w, (BAR_RADIUS * HEIGHT) / box.h)} fill={colourOf(index)} fillOpacity={0.9} />
+                return <rect key={`${index}-${time}`} x={bx} y={by} width={bw} height={bh} fill={colourOf(index)} fillOpacity={0.9} />
               }),
             )
           : null}
@@ -100,7 +122,7 @@ export function TimeChart({ mode, panel, result, range, markers = [], onZoom, dr
           : null}
       </svg>
     )
-  }, [mode, visible, table, layers, stacked, series, frame, slot, gradient])
+  }, [mode, visible, table, layers, stacked, series, frame, slot, gradient, box])
 
   const at = shown && shown.at >= 0 && shown.at < table.times.length ? shown.at : null
   const when = at === null ? null : table.times[at]

@@ -8,16 +8,23 @@ import { drillTarget } from '@/components/ft/panels/drilldown'
 import { drillRange } from '@/components/ft/panels/geometry'
 import { PanelBody } from '@/components/ft/panels/index'
 import { QUERY_LABEL, describeFailure, droppedQueries, mergeResults } from '@/components/ft/panels/result'
-import { Skeleton } from '@/components/ui/misc'
 import { Button } from '@/components/ui/button'
+import { CardKind, CardTitle } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/misc'
 import type { DrillFn, Mark, Range, ZoomFn } from '@/components/ft/panels/types'
 import { panelQueryOptions, type PanelDoc, type PanelResult, type Source } from '@/data/dashboards'
 import { useScope } from '@/lib/scope'
+import { KIND_INFO } from './editor/kinds'
 import { variablesFor } from './variables'
 
 const MARKED = new Set(['time_series', 'area'])
 
 const SCROLLS = new Set(['table', 'list', 'text'])
+
+const kindName = (kind: PanelDoc['kind']): string => {
+  const name = KIND_INFO[kind].name
+  return name.charAt(0) + name.slice(1).toLowerCase()
+}
 
 const NOTHING: PanelResult = { kind: 'rows', columns: [], rows: [], truncated: false }
 
@@ -61,16 +68,18 @@ function PanelCardView({ panel, range, sent, source, markers, onZoom }: {
   const result = panel.kind === 'text' ? NOTHING : merged
 
   return (
-    <section aria-label={panel.title || 'Untitled panel'} aria-busy={fetching || undefined} tabIndex={SCROLLS.has(panel.kind) ? 0 : undefined} data-panel={panel.kind} className="flex h-full min-h-0 min-w-0 flex-col rounded-lg border bg-card text-card-foreground focus-visible:outline-2 focus-visible:outline-ring">
-      <header className="flex min-h-10 items-center gap-1.5 border-b border-border-subtle px-3 py-1">
-        <h2 className="m-0 min-w-0 flex-1 truncate text-sub">{panel.title || 'Untitled panel'}</h2>
+    <section aria-label={panel.title || 'Untitled panel'} aria-busy={fetching || undefined} tabIndex={SCROLLS.has(panel.kind) ? 0 : undefined} data-panel={panel.kind} className="flex h-full min-h-0 min-w-0 flex-col rounded-md border bg-card text-card-foreground focus-visible:outline-2 focus-visible:outline-ring">
+      <header className="flex min-h-10 shrink-0 items-center gap-2 border-b px-3.5 py-2">
+        <CardTitle className="m-0 min-w-0 truncate">{panel.title || 'Untitled panel'}</CardTitle>
+        <CardKind className="shrink-0">{kindName(panel.kind)}</CardKind>
+        <span className="flex-1" />
         {fetching && result ? <Loader2 className="size-3.5 animate-spin text-faint-foreground" aria-label="Refreshing" /> : null}
         {panel.description ? (
           <span className="group relative">
             <button type="button" aria-label={`About ${panel.title || 'this panel'}`} aria-describedby={hint} className="inline-flex size-6 cursor-help items-center justify-center rounded-sm text-faint-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
               <Info className="size-3.5" aria-hidden />
             </button>
-            <span id={hint} role="tooltip" className="invisible absolute right-0 top-7 z-20 w-[260px] rounded-md border bg-popover px-2.5 py-2 text-caption text-popover-foreground shadow-md group-focus-within:visible group-hover:visible">{panel.description}</span>
+            <span id={hint} role="tooltip" className="invisible absolute right-0 top-7 z-20 w-[260px] rounded-lg border bg-popover px-2.5 py-2 text-caption text-popover-foreground shadow-md group-focus-within:visible group-hover:visible">{panel.description}</span>
           </span>
         ) : null}
       </header>

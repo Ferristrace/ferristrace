@@ -714,6 +714,59 @@ async fn an_override_changes_who_is_on_call_now_and_is_audited() {
 }
 
 #[tokio::test]
+async fn shifts_list_who_holds_the_pager_over_a_window_with_overrides_marked() {
+    let harness = Harness::new();
+    let (created, _) = harness
+        .as_role(
+            OrgRole::Admin,
+            Method::POST,
+            &format!("{}/overrides", schedule(SCHEDULE)),
+            Some(
+                json!({"account": id(BOB), "from_ms": NOW * 1_000, "to_ms": (NOW + 7_200) * 1_000}),
+            ),
+        )
+        .await;
+    let window = format!(
+        "{}/shifts?from_ms={}&to_ms={}",
+        schedule(SCHEDULE),
+        NOW * 1_000,
+        (NOW + 8 * 86_400) * 1_000
+    );
+
+    let (status, body) = harness
+        .as_role(OrgRole::Member, Method::GET, &window, None)
+        .await;
+
+    assert_eq!(created, StatusCode::CREATED);
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let shifts = body["shifts"].as_array().expect("shifts");
+    let holders: Vec<(&str, bool)> = shifts
+        .iter()
+        .map(|one| {
+            (
+                one["account"]["id"].as_str().expect("an id"),
+                one["cover"].as_bool().expect("a flag"),
+            )
+        })
+        .collect();
+    assert_eq!(
+        holders,
+        vec![
+            (id(BOB).as_str(), true),
+            (id(ME).as_str(), false),
+            (id(ADA).as_str(), false)
+        ]
+    );
+    assert_eq!(shifts[0]["from_ms"], json!(NOW * 1_000));
+    assert_eq!(shifts[0]["to_ms"], json!((NOW + 7_200) * 1_000));
+    assert_eq!(
+        shifts[1]["to_ms"],
+        json!((NOW + 7 * 86_400 - 3_600) * 1_000)
+    );
+    assert_eq!(shifts[2]["to_ms"], json!((NOW + 8 * 86_400) * 1_000));
+}
+
+#[tokio::test]
 async fn open_pages_list_with_their_target_and_source() {
     let harness = Harness::new();
     let (incident, page) = harness.page(0).await;

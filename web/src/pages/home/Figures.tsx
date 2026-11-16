@@ -53,17 +53,17 @@ export function figuresOf(now: Stepped | null, before: Stepped | null, windowMs:
 
 export function Figures({ figures, short }: { figures: Figure[]; short: string }) {
   return (
-    <section aria-label="Figures" className="grid min-w-0 grid-cols-1 gap-x-6 sm:grid-cols-3">
+    <section aria-label="Figures" className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
       {figures.map((figure) => {
         const to = linkOf(figure.to)
         return (
-          <SafeLink key={figure.key} to={to.path} search={to.search} className="relative flex flex-col gap-0.5 border-t border-border-subtle px-1 py-3 text-foreground no-underline hover:bg-row-hover max-md:min-h-11 max-md:px-0 focus-visible:outline-2 focus-visible:outline-ring">
+          <SafeLink key={figure.key} to={to.path} search={to.search} className="relative flex min-w-0 flex-col gap-0.5 rounded-md border bg-card px-4 py-3.5 text-foreground no-underline hover:bg-row-hover max-md:min-h-11 focus-visible:outline-2 focus-visible:outline-ring">
             <span className="text-caption text-muted-foreground">{figure.label}</span>
-            <span className="font-mono text-[22px] font-semibold leading-[30px]">{figure.value ?? '—'}</span>
+            <span className="text-[28px] font-semibold leading-9 tabular">{figure.value ?? '—'}</span>
             {figure.delta.text === '' ? (
-              <span className="text-caption text-muted-foreground">{figure.note ?? (figure.value === null ? 'No data.' : 'No previous period to compare.')}</span>
+              <span className="text-caption text-faint-foreground">{figure.note ?? (figure.value === null ? 'No data.' : 'No previous period to compare.')}</span>
             ) : (
-              <span className="text-caption text-muted-foreground">
+              <span className="text-caption text-faint-foreground">
                 <span className={cn('font-mono', TONE[figure.delta.tone])}>{figure.delta.text}</span> vs previous {short}
                 {figure.delta.word ? <span className={TONE[figure.delta.tone]}>, {figure.delta.word}</span> : null}
                 {figure.caveat ? ` ${figure.caveat}` : null}

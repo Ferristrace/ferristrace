@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/input'
 
@@ -29,9 +29,12 @@ export const saved = () => toast.success('Saved')
 
 export function Danger({ title, text, action, onClick }: { title: string; text: string; action: string; onClick: () => void }) {
   return (
-    <Card className="flex flex-wrap items-center gap-4 border-destructive-border p-4">
-      <div className="flex flex-[1_1_320px] flex-col gap-0.5"><span className="font-semibold">{title}</span><span className="text-control text-muted-foreground">{text}</span></div>
-      <Button size="sm" className="text-destructive-text" onClick={onClick}>{action}</Button>
+    <Card className="overflow-hidden border-destructive-border">
+      <CardHeader className="border-destructive-border"><CardTitle className="text-destructive-text">Danger zone</CardTitle></CardHeader>
+      <div className="flex flex-wrap items-center gap-4 px-3.5 py-3">
+        <div className="flex flex-[1_1_320px] flex-col gap-0.5"><span className="text-control font-semibold">{title}</span><span className="text-caption text-muted-foreground">{text}</span></div>
+        <Button size="sm" className="border-destructive-border text-destructive-text" onClick={onClick}>{action}</Button>
+      </div>
     </Card>
   )
 }

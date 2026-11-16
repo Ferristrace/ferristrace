@@ -1,9 +1,9 @@
-import { Bell, Keyboard, LogOut, Moon, Settings2, UserRound } from 'lucide-react'
+import { Bell, Keyboard, LogOut, Moon, Settings, UserRound } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
 import { Kbd, Avatar } from '@/components/ui/misc'
 import { Badge } from '@/components/ui/badge'
-import { AXES } from './nav'
+import { AXES, sectionOf } from './nav'
 import { useNavCounts } from './useNavCounts'
 import { initialsOf, nameOf } from '@/data/profile'
 import { useUnreadCount } from '@/data/notifications'
@@ -13,7 +13,13 @@ import { Link, isActivePath, useLocation, useNavigate } from '@/lib/router'
 import { cn } from '@/lib/utils'
 import { Logo } from '@/components/ft/Logo'
 
-const item = 'relative flex w-14 flex-col items-center justify-center gap-0.5 rounded-lg py-1.5 text-[10.5px] font-semibold text-muted-foreground no-underline hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring'
+const item = 'group relative flex size-10 items-center justify-center rounded-md text-muted-foreground no-underline hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring'
+
+function Tip({ children }: { children: React.ReactNode }) {
+  return <span role="tooltip" className="pointer-events-none absolute left-[calc(100%+8px)] top-1/2 z-40 hidden -translate-y-1/2 whitespace-nowrap rounded-sm border border-line-strong bg-popover px-2 py-1 text-caption font-medium text-foreground shadow-md group-hover:block group-focus-visible:block">{children}</span>
+}
+
+const Marker = () => <span aria-hidden className="absolute -left-[7px] top-2 h-6 w-0.5 rounded-full bg-primary" />
 
 export function Sidebar({ onOpenShortcuts }: { onOpenShortcuts: () => void }) {
   const { pathname } = useLocation()
@@ -27,33 +33,35 @@ export function Sidebar({ onOpenShortcuts }: { onOpenShortcuts: () => void }) {
   const who = account ? nameOf(account) : null
   const initials = who ? initialsOf(who) : '??'
   const onSettings = isActivePath(pathname, '/settings')
+  const section = sectionOf(pathname)
   return (
-    <aside className="sticky top-0 hidden h-screen w-[72px] shrink-0 flex-col items-center border-r bg-sidebar md:flex" aria-label="Primary">
-      <Link to="/" className="flex h-12 w-full shrink-0 items-center justify-center border-b text-foreground no-underline" aria-label="FerrisTrace home">
+    <aside className="sticky top-0 hidden h-screen w-[54px] shrink-0 flex-col items-center border-r bg-sidebar md:flex" aria-label="Primary">
+      <Link to="/" className="flex h-[51px] w-full shrink-0 items-center justify-center border-b text-foreground no-underline" aria-label="FerrisTrace home">
         <Logo className="size-7" />
       </Link>
-      <nav aria-label="Main" className="scrollbar-none flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto py-2">
+      <nav aria-label="Main" className="flex min-h-0 flex-1 flex-col items-center gap-1 py-2">
         {AXES.map((axis) => {
-          const on = axis.tabs.some((t) => isActivePath(pathname, t.to))
+          const on = section?.key === axis.key
           const alert = axis.tabs.reduce((n, t) => n + (t.badge ? (counts[t.to] ?? 0) : 0), 0)
           return (
-            <Link key={axis.key} to={axis.tabs[0].to} aria-current={on ? 'page' : undefined} title={axis.label} className={cn(item, on && 'bg-muted text-foreground')}>
-              {on ? <span aria-hidden className="absolute -left-[9px] top-2 h-[calc(100%-16px)] w-0.5 rounded-full bg-primary" /> : null}
-              <axis.icon className="size-5" aria-hidden />
-              {axis.label}
-              {alert ? <span aria-label={`${alert} need attention`} className="absolute right-1.5 top-1 size-2 rounded-full bg-destructive" /> : null}
+            <Link key={axis.key} to={axis.tabs[0].to} aria-current={on ? 'page' : undefined} aria-label={axis.label} className={cn(item, on && 'bg-muted text-foreground')}>
+              {on ? <Marker /> : null}
+              <axis.icon className="size-[18px]" aria-hidden />
+              <Tip>{axis.label}</Tip>
+              {alert ? <span aria-label={`${alert} need attention`} className="absolute right-1.5 top-1.5 size-2 rounded-full bg-destructive ring-2 ring-sidebar" /> : null}
             </Link>
           )
         })}
       </nav>
-      <div className="flex flex-col items-center gap-1 border-t py-2">
-        <Link to="/settings" title="Settings" aria-current={onSettings ? 'page' : undefined} className={cn(item, onSettings && 'bg-muted text-foreground')}>
-          <Settings2 className="size-5" aria-hidden />
-          Settings
+      <div className="flex flex-col items-center gap-1 py-2">
+        <Link to="/settings" aria-label="Settings" aria-current={onSettings ? 'page' : undefined} className={cn(item, onSettings && 'bg-muted text-foreground')}>
+          {onSettings ? <Marker /> : null}
+          <Settings className="size-[18px]" aria-hidden />
+          <Tip>Settings</Tip>
         </Link>
         <Popover>
           <PopoverTrigger asChild>
-            <button type="button" aria-label="Account menu" className="flex size-10 cursor-pointer items-center justify-center rounded-full bg-transparent hover:bg-muted data-[state=open]:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+            <button type="button" aria-label="Account menu" className="flex size-10 cursor-pointer items-center justify-center rounded-md bg-transparent hover:bg-muted data-[state=open]:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
               <Avatar initials={initials} src={account?.photo} />
             </button>
           </PopoverTrigger>

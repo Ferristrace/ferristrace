@@ -6,12 +6,12 @@ import { roleRank } from '@/auth/api'
 import { useOrganisations } from '@/auth/session'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input, NativeSelect, Textarea } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
 import { Switch } from '@/components/ui/switch'
-import { EmptyState } from '@/components/ft/bits'
+import { EmptyState, PageHeader } from '@/components/ft/bits'
 import { StatusPageView } from '@/components/ft/StatusPageView'
 import { useAlerts } from '@/data/alerts'
 import { useProjects } from '@/data/projects'
@@ -19,12 +19,11 @@ import { useServiceNames } from '@/data/services'
 import {
   ACCENTS, COMPONENT_STATUSES, MODES, STATUS_WORDS, slugProblem, useAddComponent, useChangeComponent, useChangeStatusPage, useCreateStatusPage,
   useDeleteStatusPage, useOrderComponents, useRemoveComponent, useStatusPage, useStatusPages, useStatusPreview,
-  type Accent, type ComponentLink, type ComponentStatus, type Mode, type StatusSheet,
+  type ComponentLink, type ComponentStatus, type Mode, type StatusSheet,
 } from '@/data/status-page'
 import { Link } from '@/lib/router'
 import { cn } from '@/lib/utils'
 
-const ACCENT_HEX: Record<Accent, string> = { indigo: '#4f46e5', teal: '#0f766e', orange: '#c2410c', rose: '#be123c', slate: '#334155' }
 const DAY_MS = 86_400_000
 
 function useIsAdmin() {
@@ -38,18 +37,21 @@ export function StatusPageEditor() {
   const [chosen, setChosen] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const selected = chosen && pages?.some((page) => page.id === chosen) ? chosen : (pages?.[0]?.id ?? null)
+  const current = pages?.find((page) => page.id === selected)
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-title">Status pages</h1>
-        <span className="flex-1" />
+      <PageHeader
+        title="Status page"
+        meta={current ? <Badge variant={current.public ? 'success' : 'outline'}>{current.public ? 'Published' : 'Private'}</Badge> : null}
+      >
         {pages && pages.length > 1 ? (
-          <NativeSelect aria-label="Status page" value={selected ?? ''} onChange={(event) => setChosen(event.target.value)} className="w-[220px]">
+          <NativeSelect aria-label="Status page" value={selected ?? ''} onChange={(event) => setChosen(event.target.value)} className="w-[220px] max-md:w-full">
             {pages.map((page) => <option key={page.id} value={page.id}>{page.name} · /status/{page.slug}</option>)}
           </NativeSelect>
         ) : null}
+        {current?.public ? <Button asChild size="sm"><Link to={`/status/${current.slug}`} target="_blank">View public page<ExternalLink /></Link></Button> : null}
         {admin ? <Button variant="primary" size="sm" onClick={() => setCreating(true)}><Plus />New status page</Button> : null}
-      </div>
+      </PageHeader>
       {failed ? <span className="text-control text-destructive-text">{because(failed, 'The status pages could not be loaded.')}</span> : null}
       {pages && pages.length === 0 ? (
         <EmptyState icon={<RadioTower />} title="No status page yet">
@@ -67,8 +69,8 @@ function Editing({ id, admin }: { id: string; admin: boolean }) {
   if (failed) return <span className="text-control text-destructive-text">{because(failed, 'This status page could not be loaded.')}</span>
   if (!sheet) return null
   return (
-    <div className="flex flex-wrap items-start gap-6">
-      <div className="flex min-w-0 flex-[1_1_480px] flex-col gap-4">
+    <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_560px]">
+      <div className="flex min-w-0 flex-col gap-3">
         <Settings sheet={sheet} admin={admin} />
         <Components sheet={sheet} admin={admin} />
       </div>
@@ -96,14 +98,15 @@ function Settings({ sheet, admin }: { sheet: StatusSheet; admin: boolean }) {
   const problem = slugProblem(slug)
   const edited = name !== sheet.name || slug !== sheet.slug || intro !== (sheet.intro ?? '')
   return (
-    <Card className="flex flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sub">Page</h2>
+    <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle>Page</CardTitle>
         {sheet.public ? <Badge variant="success">Public</Badge> : <Badge variant="outline">Private</Badge>}
         <span className="text-caption text-muted-foreground">{sheet.subscribers} confirmed subscriber{sheet.subscribers === 1 ? '' : 's'}</span>
         <span className="flex-1" />
         {sheet.public ? <Link to={`/status/${sheet.slug}`} target="_blank" className="inline-flex items-center gap-1 font-mono text-control">/status/{sheet.slug}<ExternalLink className="size-3" aria-hidden /></Link> : null}
-      </div>
+      </CardHeader>
+      <div className="flex flex-col gap-4 p-4">
       <form className="flex flex-col gap-4" onSubmit={(event) => {
         event.preventDefault()
         send({ name: name.trim(), slug, intro: intro.trim() ? intro : null }, 'Status page saved')
@@ -120,7 +123,7 @@ function Settings({ sheet, admin }: { sheet: StatusSheet; admin: boolean }) {
       <Field label="Accent colour">
         <div role="radiogroup" aria-label="Accent colour" className="flex items-center gap-2.5">
           {ACCENTS.map((accent) => (
-            <button key={accent} type="button" role="radio" aria-checked={sheet.theme.accent === accent} aria-label={accent} disabled={!admin} onClick={() => send({ theme: { ...sheet.theme, accent } })} className={cn('size-7 cursor-pointer rounded-full border-2 border-background ring-1 ring-border', sheet.theme.accent === accent && 'ring-2 ring-ring')} style={{ background: ACCENT_HEX[accent] }} />
+            <button key={accent} type="button" role="radio" aria-checked={sheet.theme.accent === accent} aria-label={accent} disabled={!admin} onClick={() => send({ theme: { ...sheet.theme, accent } })} className={cn('size-7 cursor-pointer rounded-full border-2 border-background bg-primary ring-1 ring-border', accent !== 'indigo' && `accent-${accent}`, sheet.theme.accent === accent && 'ring-2 ring-ring')} />
           ))}
         </div>
       </Field>
@@ -131,6 +134,7 @@ function Settings({ sheet, admin }: { sheet: StatusSheet; admin: boolean }) {
           remove.mutate(sheet.id, { onSuccess: () => toast.success('Status page deleted'), onError: (error) => toast.error(because(error, 'The status page was not deleted')) })
         }}><Trash2 />Delete this status page</Button>
       ) : null}
+      </div>
     </Card>
   )
 }
@@ -159,11 +163,11 @@ function Components({ sheet, admin }: { sheet: StatusSheet; admin: boolean }) {
   }
   return (
     <Card className="overflow-hidden">
-      <CardHeader><CardTitle>Components</CardTitle><span className="flex-1" />{admin ? <Button size="sm" onClick={() => setAdding(true)}><Plus />Add component</Button> : null}</CardHeader>
-      {sheet.components.length === 0 ? <div className="px-4 pb-4 text-control text-muted-foreground">No component yet. A component follows an alert, a service's error rate, or a status you set.</div> : null}
+      <CardHeader><CardTitle>Components</CardTitle><CardKind>List</CardKind><span className="flex-1" />{admin ? <Button size="sm" onClick={() => setAdding(true)}><Plus />Add component</Button> : null}</CardHeader>
+      {sheet.components.length === 0 ? <div className="px-4 py-3 text-control text-muted-foreground">No component yet. A component follows an alert, a service's error rate, or a status you set.</div> : null}
       {sheet.components.map((component, index) => (
-        <div key={component.id} className={cn('flex items-center gap-2 border-t border-border-subtle px-4 py-2.5', !component.public && 'opacity-60')}>
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div key={component.id} className={cn('flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-2 last:border-b-0', !component.public && 'opacity-60')}>
+          <div className="flex min-w-[160px] flex-1 flex-col gap-0.5">
             <span className="inline-flex items-center gap-1.5 text-control font-semibold">{component.name}{component.public ? null : <Badge variant="outline" size="xs">Hidden</Badge>}</span>
             <span className="truncate font-mono text-[11.5px] text-muted-foreground">{linkWords(component.link, alertNames, projectNames)}</span>
           </div>
@@ -284,14 +288,14 @@ function Preview({ sheet }: { sheet: StatusSheet }) {
   const { preview, failed } = useStatusPreview(sheet.id)
   const [dark, setDark] = useState(sheet.theme.mode === 'dark')
   return (
-    <div className="flex w-[560px] max-w-full shrink-0 flex-col gap-2">
-      <div className="flex items-center gap-2"><span className="flex-1 text-control font-semibold">Preview · what visitors see now</span><Segmented size="sm" label="Preview theme" value={dark ? 'dark' : 'light'} onChange={(v) => setDark(v === 'dark')} options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} /></div>
-      <div className="overflow-hidden rounded-lg border shadow-sm">
+    <Card className="min-w-0 overflow-hidden">
+      <CardHeader><CardTitle>Preview</CardTitle><span className="text-caption text-muted-foreground">what visitors see now</span><span className="flex-1" /><Segmented size="sm" label="Preview theme" value={dark ? 'dark' : 'light'} onChange={(v) => setDark(v === 'dark')} options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} /></CardHeader>
+      <div className="m-3 overflow-hidden rounded-md border">
         <div className="flex h-8 items-center gap-2 border-b bg-sidebar px-2.5"><span className="flex gap-1">{[0, 1, 2].map((i) => <span key={i} className="size-2 rounded-full bg-border" />)}</span><span className="flex h-5 flex-1 items-center rounded bg-muted px-2 font-mono text-[11px] text-muted-foreground">/status/{sheet.slug}</span></div>
         <div className={cn('h-[640px] overflow-y-auto', dark ? 'dark' : 'light')}>
           {preview ? <div className="origin-top-left scale-[0.62]" style={{ width: '161%' }}><StatusPageView view={preview} compact /></div> : <div className="p-4 text-control text-muted-foreground">{failed ? because(failed, 'The preview could not be loaded.') : 'Loading the preview…'}</div>}
         </div>
       </div>
-    </div>
+    </Card>
   )
 }

@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
 import { DailyBars } from '@/components/ft/DailyBars'
 import { Meter } from '@/components/ft/Meter'
-import { Card } from '@/components/ui/card'
+import { PageHeader } from '@/components/ft/bits'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
+import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
 import { Table, Td, Th, Tr } from '@/components/ui/misc'
 import { Button } from '@/components/ui/button'
 import { HOUR, SIGNALS, bytes, count, dailyOf, projected, startOfMonth, startOfNextMonth, useMetered, type Signal } from '@/data/usage'
+import { pagesOf } from '@/lib/paging'
 import { Link } from '@/lib/router'
-import { H, Sub } from './settings/parts'
 
 const DAY = 86_400_000
 
@@ -15,6 +17,7 @@ const month = (at: number) => new Date(at).toLocaleDateString('en-US', { month: 
 const dayLabel = (at: number) => new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
 const hourLabel = (at: number) => `${dayLabel(at)}, ${new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}`
 const HOURLY_UP_TO = 7 * DAY
+const DEFAULT_SIZE = 25
 
 const TOTALS: Record<Signal, 'spans_bytes' | 'logs_bytes' | 'metrics_points'> = {
   spans: 'spans_bytes',
@@ -27,6 +30,8 @@ export function Cost() {
   const now = Date.now()
 
   const [zoom, setZoom] = useState<[number, number] | null>(null)
+  const [size, setSize] = useState(DEFAULT_SIZE)
+  const [page, setPage] = useState(1)
 
   const [from, to] = useMemo(() => {
     if (zoom) return zoom
@@ -42,25 +47,30 @@ export function Cost() {
     [metered, from, until, step],
   )
   const stampOf = step === HOUR ? hourLabel : dayLabel
-  const choose = (from: number, to: number) => setZoom([from, to])
+  const choose = (from: number, to: number) => {
+    setPage(1)
+    setZoom([from, to])
+  }
   const split = metered ? metered.hours.length - metered.by_signal.unsplit_hours : 0
   const show = (unit: 'bytes' | 'points', value: number) => (unit === 'bytes' ? bytes(value) : count(value))
-  const rows = useMemo(() => series[0].days.map((_, at) => ({ at: series[0].days[at].at, cells: series.map((one) => one.days[at].bytes) })), [series])
+  const rows = useMemo(() => series[0].days.map((_, at) => ({ at: series[0].days[at].at, cells: series.map((one) => one.days[at].bytes) })).reverse(), [series])
+  const shown = Math.min(page, pagesOf(rows.length, size))
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <H title="Cost meter" sub={`${zoom ? `${hourLabel(from)} to ${hourLabel(to)} UTC` : month(from)} · what was ingested, by signal, for the whole organisation.`}>
+    <>
+      <PageHeader title="Cost meter" meta={<><CardKind>{zoom ? `${hourLabel(from)} to ${hourLabel(to)} UTC` : month(from)}</CardKind> <span className="max-md:hidden">what was ingested, by signal, for the whole organisation</span></>}>
         {zoom ? <Button size="sm" onClick={() => setZoom(null)}>Reset zoom</Button> : null}
         <Segmented
           label="Period"
           value={zoom ? '' : period}
           onChange={(value) => {
             setZoom(null)
+            setPage(1)
             setPeriod(value)
           }}
           options={[{ value: 'this', label: 'This month' }, { value: 'last', label: 'Last month' }]}
         />
-      </H>
+      </PageHeader>
       {metered ? (
         split === 0 ? (
           <Card className="px-4 py-3 text-control text-muted-foreground">
@@ -108,24 +118,27 @@ export function Cost() {
                 />
               ))}
             </div>
-            <Sub>{step === HOUR ? 'By hour' : 'By day'}</Sub>
-            <Card className="max-h-[320px] overflow-auto">
-              <Table aria-label="Ingested per period and signal">
-                <thead>
-                  <tr>
-                    <Th>{step === HOUR ? 'Hour' : 'Day'}</Th>
-                    {SIGNALS.map((signal) => <Th key={signal.key} numeric className="w-[160px]">{signal.label}</Th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...rows].reverse().map((row) => (
-                    <Tr key={row.at}>
-                      <Td className="font-mono">{stampOf(row.at)}</Td>
-                      {row.cells.map((cell, index) => <Td key={SIGNALS[index].key} numeric className="font-mono">{show(SIGNALS[index].unit, cell)}</Td>)}
-                    </Tr>
-                  ))}
-                </tbody>
-              </Table>
+            <Card className="overflow-hidden">
+              <CardHeader><CardTitle>{step === HOUR ? 'By hour' : 'By day'}</CardTitle><CardKind>Table</CardKind></CardHeader>
+              <div className="overflow-x-auto">
+                <Table aria-label="Ingested per period and signal">
+                  <thead>
+                    <tr>
+                      <Th>{step === HOUR ? 'Hour' : 'Day'}</Th>
+                      {SIGNALS.map((signal) => <Th key={signal.key} numeric className="w-[160px]">{signal.label}</Th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.slice((shown - 1) * size, shown * size).map((row) => (
+                      <Tr key={row.at}>
+                        <Td className="font-mono">{stampOf(row.at)}</Td>
+                        {row.cells.map((cell, index) => <Td key={SIGNALS[index].key} numeric className="font-mono">{show(SIGNALS[index].unit, cell)}</Td>)}
+                      </Tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+              <Pager total={rows.length} page={shown} size={size} onPage={setPage} onSize={(next) => { setSize(next); setPage(1) }} noun={step === HOUR ? 'hours' : 'days'} className="border-t" />
             </Card>
           </>
         )
@@ -135,6 +148,6 @@ export function Cost() {
       <p className="m-0 text-caption text-muted-foreground">
         Logs and spans are counted in decompressed payload bytes, metrics in datapoints, when a payload is accepted. Hours from before that can be rebuilt from what the span store holds with <code>ferristrace backfill-usage</code>; those figures are measured on stored rows and sit a few percent under the payload bytes. A payload refused at the ceiling counts in none of them. The total the <Link to="/settings/billing">plan</Link> is measured against stays on <Link to="/settings/usage">Usage</Link>.
       </p>
-    </div>
+    </>
   )
 }

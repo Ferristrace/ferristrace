@@ -29,15 +29,15 @@ pub use ack::{AckClaim, AckKey};
 pub use desk::PageDesk;
 pub use entities::{
     ClaimedNotice, Escalation, Notice, OnCallNow, OnCallSchedule, OnCallStatus, Origin, Override,
-    Page, PageDispatch, PageSource, PageView, Paged, Rostered, Rotation, Schedule, ScheduleDraft,
-    SchedulePatch, Shift,
+    Page, PageDispatch, PageSource, PageView, Paged, Rostered, RosteredStint, Rotation, Schedule,
+    ScheduleDraft, SchedulePatch, Shift, Stint,
 };
 pub use errors::{AckRefused, BadSchedule, OncallError};
 pub use escalation::{escalated, next};
 pub use paging::{Pager, Paging};
 pub use ports::{Pages, Schedules};
-pub use rota::Rota;
-pub use rotation::{on_call, shift};
+pub use rota::{MAX_STINT_SPAN_MS, Rota};
+pub use rotation::{MAX_STINTS, on_call, shift, stints};
 pub use value_objects::{
     ACK_LIFETIME_SECS, Day, ESCALATE_AFTER_SECS, Handoff, MAX_LENGTH_DAYS, MAX_ROTATION,
     MAX_SCHEDULE_NAME_BYTES, MIN_LENGTH_DAYS, NoticeId, OverrideId, PAGE_TICK_SECS, PageId,

@@ -33,6 +33,8 @@ export type ScheduleDraft = Omit<Schedule, 'id' | 'team' | 'overrides'>
 
 export type OnCallNow = { account: Person | null; until_ms: number | null }
 
+export type Stint = { account: Person; from_ms: number; to_ms: number; cover: boolean }
+
 export type PageState = 'triggered' | 'acknowledged' | 'escalated' | 'resolved'
 
 export type PageSource =
@@ -110,6 +112,18 @@ export function useOnCallNow(schedule: string | undefined) {
     queryFn: async () => json<OnCallNow>(await get(`/api/orgs/${active?.org}/schedules/${schedule}/now`)),
   })
   return { now: data, failed: error }
+}
+
+export function useShifts(schedule: string | undefined, fromMs: number, toMs: number) {
+  const { active } = useOrganisations()
+  const { data, error, isPending } = useQuery({
+    queryKey: [...scheduleKey(active?.org), schedule, 'shifts', fromMs, toMs],
+    enabled: Boolean(active) && Boolean(schedule),
+    staleTime: FRESH_MS,
+    retry: retryable,
+    queryFn: async () => (await json<{ shifts: Stint[] }>(await get(`/api/orgs/${active?.org}/schedules/${schedule}/shifts?from_ms=${fromMs}&to_ms=${toMs}`))).shifts,
+  })
+  return { shifts: data, failed: error, loading: isPending }
 }
 
 function useScheduling<T, R>(send: (org: string, asked: T) => Promise<R>) {

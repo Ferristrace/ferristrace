@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch'
 import { Kbd } from '@/components/ui/misc'
 import { EmptyState, PageHeader, SeverityBadge } from '@/components/ft/bits'
+import { ResultsCard } from '@/pages/explore/ResultsCard'
 import { AttachToIncident } from '@/components/ft/AttachToIncident'
 import { Facets } from '@/components/ft/Facets'
 import { FilterBar } from '@/components/ft/FilterBar'
@@ -48,15 +49,15 @@ function Row({ record, index, open, focused, onToggle, dated, onPlace, onAttr }:
   }
   return (
     <div role="listitem" data-row={index} className="border-b border-border-subtle">
-      <button type="button" aria-expanded={open} onClick={onToggle} className={cn('grid w-full cursor-pointer grid-cols-[16px_128px_70px_140px_minmax(0,1fr)] items-center gap-3 px-3 py-1.5 text-left hover:bg-row-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring max-md:grid-cols-[16px_70px_minmax(0,1fr)]', open && 'bg-accent-subtle', focused && 'outline-2 -outline-offset-2 outline-ring')}>
+      <button type="button" aria-expanded={open} onClick={onToggle} className={cn('grid min-h-10 w-full cursor-pointer grid-cols-[16px_128px_70px_140px_minmax(0,1fr)] items-center gap-3 px-3 py-2 text-left hover:bg-row-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring max-md:grid-cols-[16px_70px_minmax(0,1fr)]', open && 'bg-accent-subtle', focused && 'outline-2 -outline-offset-2 outline-ring')}>
         <ChevronRight className={cn('size-3.5 text-muted-foreground transition-transform', open && 'rotate-90')} aria-hidden />
         <time className="font-mono text-caption text-muted-foreground max-md:hidden" dateTime={new Date(msOf(record.time_ns)).toISOString()}>{clock(record.time_ns, dated)}</time>
         <SeverityBadge level={record.severity} />
-        <span className="truncate text-caption text-muted-foreground max-md:hidden">{record.service}</span>
+        <span className="truncate font-mono text-caption text-accent-text max-md:hidden">{record.service}</span>
         <span className={cn('truncate font-mono text-[12.5px]', hot && 'text-destructive-text')}>{record.body}</span>
       </button>
       {open ? (
-        <div className="flex flex-col gap-2 bg-sidebar px-3 py-3 pl-[40px]">
+        <div className="flex flex-col gap-2 border-t border-border-subtle bg-background px-3 py-3 pl-[40px]">
           <pre className="m-0 whitespace-pre-wrap break-all font-mono text-[12.5px]">{record.body}</pre>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => copy(false)}><Copy aria-hidden />Copy body</Button>
@@ -230,14 +231,14 @@ function LogsPage() {
       <PageHeader title="Logs" meta={`Newest first · ${range}${live ? ' · live' : ''}`}>
         <span className="hidden items-center gap-1 text-caption text-muted-foreground lg:inline-flex"><Kbd>J</Kbd><Kbd>K</Kbd>move<Kbd>↵</Kbd>expand</span>
         <ViewsToggle state={viewsState} on={panel === 'views'} onToggle={() => { setPanel((was) => (was === 'views' ? 'facets' : 'views')); setMobileOpen(true) }} />
-        <Button size="sm" variant="ghost" className="md:hidden" aria-expanded={mobileOpen} onClick={() => setMobileOpen((was) => !was)}>
+        <Button size="sm" variant="outline" className="md:hidden" aria-expanded={mobileOpen} onClick={() => setMobileOpen((was) => !was)}>
           <ListFilter />Filters{items.length > 0 ? <span className="rounded-full bg-primary px-1.5 font-mono text-[11px] text-primary-foreground">{items.length}</span> : null}
         </Button>
         <AttachToIncident attachment={attachment} />
         <Switch checked={live} onCheckedChange={setLive} label={<span className="inline-flex items-center gap-1.5"><Radio className="size-3.5" aria-hidden />Live</span>} />
       </PageHeader>
       {viewsState.dialog}
-      <div className="grid gap-4 md:grid-cols-[264px_minmax(0,1fr)]">
+      <div className="grid gap-4 md:grid-cols-[248px_minmax(0,1fr)]">
         <aside className={cn('min-w-0 md:sticky md:top-[100px] md:max-h-[calc(100vh-116px)] md:self-start md:overflow-y-auto md:pr-1', !mobileOpen && 'max-md:hidden')}>
           {panel === 'views' ? (
             <ViewsPanel state={viewsState} viewKey={viewKey} onSelect={select} onClose={() => setPanel('facets')} />
@@ -278,18 +279,25 @@ function LogsPage() {
               {pending || loading ? 'Asking the log store.' : sifting ? 'Try fewer filters, a shorter search, or a wider window.' : 'Nothing arrived in the window you are looking at. Try a wider one.'}
             </EmptyState>
           ) : (
-            <div className="overflow-hidden rounded-lg border">
+            <ResultsCard title={`${records.length.toLocaleString('en-US')} log${records.length === 1 ? '' : 's'}`} note={`Newest first · Live tail ${live ? 'on' : 'off'}`}>
+              <div aria-hidden className="grid h-9 grid-cols-[16px_128px_70px_140px_minmax(0,1fr)] items-center gap-3 border-b bg-panel-head px-3 text-caption font-semibold max-md:grid-cols-[16px_70px_minmax(0,1fr)]">
+                <span />
+                <span className="max-md:hidden">Timestamp</span>
+                <span>Severity</span>
+                <span className="max-md:hidden">Service</span>
+                <span>Body</span>
+              </div>
               <div role="list" aria-label="Log records" ref={list}>
                 {records.map((record, i) => {
                   const id = ids[i]
                   return <Row key={id} record={record} index={i} dated={dated} open={open === id} focused={i === cursor} onToggle={() => { setOpen(open === id ? null : id); setCursor(i) }} onPlace={placeHere} onAttr={pickAttr} />
                 })}
               </div>
-              <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-3 px-3 py-3">
                 <span className={cn('text-caption', loading ? 'text-sev-info-fg' : 'text-muted-foreground')}>{records.length} record{records.length === 1 ? '' : 's'} loaded{live ? ', refreshing every 5 s' : ''}.</span>
                 {more ? <Button size="sm" onClick={older} disabled={loadingOlder}>{loadingOlder ? 'Loading…' : 'Load older'}</Button> : null}
               </div>
-            </div>
+            </ResultsCard>
           )}
         </div>
       </div>

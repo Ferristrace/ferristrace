@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
 const base =
-  'flex h-8 w-full items-center gap-2 rounded-md border border-input bg-background px-2.5 text-control text-foreground shadow-sm placeholder:text-faint-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 aria-invalid:border-destructive disabled:opacity-55 disabled:bg-muted'
+  'flex h-8 w-full items-center gap-2 rounded-md border border-input bg-card px-2.5 text-control text-foreground placeholder:text-faint-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1 aria-invalid:border-destructive disabled:opacity-55 disabled:bg-muted'
 
 export function Input({ className, mono, ...p }: ComponentProps<'input'> & { mono?: boolean }) {
   return <input className={cn(base, mono && 'font-mono', className)} {...p} />

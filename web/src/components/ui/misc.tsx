@@ -31,10 +31,10 @@ export function Table({ className, ...p }: ComponentProps<'table'>) {
   return <table className={cn('w-full border-separate border-spacing-0 text-control', className)} {...p} />
 }
 export const Th = ({ className, numeric, ...p }: ComponentProps<'th'> & { numeric?: boolean }) => (
-  <th className={cn('sticky top-0 h-8 whitespace-nowrap border-b bg-background px-3 text-left text-caption font-semibold text-muted-foreground', numeric && 'text-right', className)} {...p} />
+  <th className={cn('sticky top-0 h-9 whitespace-nowrap border-b bg-panel-head px-3 text-left text-caption font-semibold text-foreground', numeric && 'text-right', className)} {...p} />
 )
 export const Td = ({ className, numeric, ...p }: ComponentProps<'td'> & { numeric?: boolean }) => (
-  <td className={cn('h-8 whitespace-nowrap border-b border-border-subtle px-3 align-middle', numeric && 'text-right tabular font-mono', className)} {...p} />
+  <td className={cn('h-10 whitespace-nowrap border-b border-border px-3 align-middle', numeric && 'text-right tabular font-mono', className)} {...p} />
 )
 export const Tr = ({ className, ...p }: ComponentProps<'tr'>) => <tr className={cn('hover:[&>td]:bg-row-hover', className)} {...p} />
 

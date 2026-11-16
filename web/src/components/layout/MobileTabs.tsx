@@ -1,24 +1,26 @@
-import { LogOut, Menu, Moon, ScrollText, Settings2, UserRound, Waypoints } from 'lucide-react'
+import { Ellipsis, House, LogOut, Moon, Server, Settings2, Siren, UserRound, Waypoints } from 'lucide-react'
 import { useState } from 'react'
 import { Sheet, SheetContent } from '@/components/ui/sheet'
 import { Segmented } from '@/components/ui/segmented'
 import { Avatar } from '@/components/ui/misc'
-import { ALL_NAV, AXES } from './nav'
+import { AXES, sectionOf } from './nav'
 import { useIncidents } from '@/data/incidents'
 import { useAlerts } from '@/data/alerts'
 import { initialsOf, nameOf } from '@/data/profile'
 import { useAccount, useSignOut } from '@/auth/session'
 import { useTheme, type ThemePref } from '@/lib/theme'
-import { Link, NavLink, isActivePath, useLocation } from '@/lib/router'
+import { Link, NavLink, useLocation } from '@/lib/router'
 import { cn } from '@/lib/utils'
 
-const FIRST = ['reliability', 'infra']
-const ORDERED = [...AXES].sort((a, b) => {
-  const rank = (key: string) => (FIRST.includes(key) ? FIRST.indexOf(key) : FIRST.length)
-  return rank(a.key) - rank(b.key)
-})
+const ORDERED = AXES
+const TABS = [
+  { label: 'Home', to: '/', icon: House, sections: ['home'] },
+  { label: 'Incidents', to: '/incidents', icon: Siren, sections: ['alerts', 'incidents'] },
+  { label: 'Services', to: '/services', icon: Server, sections: ['services'] },
+  { label: 'Traces', to: '/traces', icon: Waypoints, sections: ['traces'] },
+]
 
-const tab = 'relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold text-muted-foreground no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring'
+const tab = 'relative flex min-h-[60px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold text-muted-foreground no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring'
 
 function Count({ value, label }: { value: number; label: string }) {
   if (!value) return null
@@ -33,25 +35,21 @@ export function MobileTabs() {
   const account = useAccount()
   const signingOut = useSignOut()
   const { pref, setPref } = useTheme()
-  const incidents = ALL_NAV.find((i) => i.to === '/incidents')
-  const tabs = [
-    ALL_NAV[0],
-    ...(incidents ? [incidents] : []),
-    { label: 'Traces', to: '/traces', icon: Waypoints },
-    { label: 'Logs', to: '/logs', icon: ScrollText },
-  ]
-  const elsewhere = !tabs.some((t) => isActivePath(pathname, t.to, t.to === '/'))
+  const section = sectionOf(pathname)?.key
+  const tabs = TABS
+  const isOn = (t: (typeof TABS)[number]) => (section ? t.sections.includes(section) : false)
+  const elsewhere = !tabs.some(isOn)
   const who = account ? nameOf(account) : null
   const close = () => setOpen(false)
 
   return (
     <>
-      <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-30 flex border-t bg-sidebar/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-30 flex h-[calc(60px+env(safe-area-inset-bottom))] border-t bg-sidebar pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {tabs.map((t) => {
-          const on = isActivePath(pathname, t.to, t.to === '/')
+          const on = isOn(t)
           return (
             <Link key={t.to} to={t.to} aria-current={on ? 'page' : undefined} className={cn(tab, on && 'text-foreground')}>
-              {on ? <span aria-hidden className="absolute inset-x-5 top-0 h-0.5 rounded-full bg-primary" /> : null}
+              {on ? <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-primary" /> : null}
               <t.icon className="size-5" aria-hidden />
               {t.label}
               {t.to === '/incidents' ? <Count value={ongoing} label={`${ongoing} open incidents`} /> : null}
@@ -59,15 +57,15 @@ export function MobileTabs() {
           )
         })}
         <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog" className={cn(tab, 'cursor-pointer bg-transparent', (open || elsewhere) && 'text-foreground')}>
-          {elsewhere ? <span aria-hidden className="absolute inset-x-5 top-0 h-0.5 rounded-full bg-primary" /> : null}
-          <Menu className="size-5" aria-hidden />
-          Menu
+          {elsewhere ? <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-primary" /> : null}
+          <Ellipsis className="size-5" aria-hidden />
+          More
           <Count value={firing} label={`${firing} alerts firing`} />
         </button>
       </nav>
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent title="Menu">
+        <SheetContent title="More">
           <nav aria-label="All pages" className="flex flex-col pb-2">
             {ORDERED.map((group) => (
               <div key={group.key} className="flex flex-col">

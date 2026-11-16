@@ -2,6 +2,8 @@ import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { ChevronRight, ScrollText, Server, Waypoints } from 'lucide-react'
 import { useMemo } from 'react'
 import { Link, useParams, useSearchParam } from '@/lib/router'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Segmented } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/misc'
 import { EmptyState } from '@/components/ft/bits'
@@ -38,21 +40,24 @@ function NodeChart({ chart, node, cluster, rangeMs }: { chart: Chart; node: stri
   const series = useMemo(() => scaled(result?.series ?? [], chart.scale).sort((a, b) => labelOf(a.labels).localeCompare(labelOf(b.labels))), [result, chart.scale])
   const empty = !pending && !failed && !series.some((line) => line.points.some(([, v]) => v !== null))
   return (
-    <section className="flex min-w-0 flex-col gap-2">
-      <div className="flex items-baseline gap-2">
-        <h3 className="m-0 text-control font-semibold">{chart.title}</h3>
-        <span className="font-mono text-[11px] text-muted-foreground">{chart.metric}</span>
+    <Card className="flex min-w-0 flex-col">
+      <CardHeader>
+        <CardTitle className="m-0">{chart.title}</CardTitle>
+        <CardKind>Time series</CardKind>
+        <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-muted-foreground">{chart.metric}</span>
+      </CardHeader>
+      <div className="p-3">
+        {pending ? (
+          <div className="flex h-[220px] flex-col justify-end gap-2"><Skeleton className="w-full" /><Skeleton className="w-2/3" /></div>
+        ) : failed ? (
+          <p className="m-0 flex h-[120px] items-center text-control text-muted-foreground">{because(failed, 'The series could not be read.')}</p>
+        ) : empty ? (
+          <p className="m-0 flex h-[120px] items-center text-control text-muted-foreground">No {chart.metric} for this node in the window. The kubeletstats receiver sends it.</p>
+        ) : (
+          <MetricChart series={series} exemplars={[]} unit={chart.unit} aria={`${chart.title} of ${node} over the window`} />
+        )}
       </div>
-      {pending ? (
-        <div className="flex h-[220px] flex-col justify-end gap-2"><Skeleton className="w-full" /><Skeleton className="w-2/3" /></div>
-      ) : failed ? (
-        <p className="m-0 flex h-[120px] items-center text-control text-muted-foreground">{because(failed, 'The series could not be read.')}</p>
-      ) : empty ? (
-        <p className="m-0 flex h-[120px] items-center text-control text-muted-foreground">No {chart.metric} for this node in the window. The kubeletstats receiver sends it.</p>
-      ) : (
-        <MetricChart series={series} exemplars={[]} unit={chart.unit} aria={`${chart.title} of ${node} over the window`} />
-      )}
-    </section>
+    </Card>
   )
 }
 
@@ -60,7 +65,7 @@ function Verdict({ node, ill }: { node: ClusterNode; ill: number }) {
   const down = node.ready === false
   const tone = down || ill ? 'border-destructive-border bg-destructive-subtle text-destructive-text' : node.ready ? 'border-success-border bg-success-subtle text-success-text' : 'bg-muted text-muted-foreground'
   const text = down ? 'Not ready' : ill ? `Ready · ${ill} unhealthy pod${ill === 1 ? '' : 's'}` : node.ready ? 'Ready' : 'No condition reported'
-  return <span className={cn('inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-caption font-semibold', tone)}><span aria-hidden className={cn('size-1.5 rounded-full', down || ill ? 'bg-status-out' : node.ready ? 'bg-status-ok' : 'bg-status-none')} />{text}</span>
+  return <span className={cn('inline-flex h-5 items-center gap-1.5 rounded-full border px-2 text-caption font-semibold', tone)}><span aria-hidden className={cn('size-1.5 rounded-full', down || ill ? 'bg-status-out' : node.ready ? 'bg-status-ok' : 'bg-status-none')} />{text}</span>
 }
 
 export function KubernetesNode() {
@@ -128,12 +133,11 @@ export function KubernetesNode() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-title m-0 min-w-0 truncate font-mono">{node}</h1>
           <Verdict node={found} ill={ill} />
-          <span className="text-control text-muted-foreground">
-            {cluster || view.clusters.length === 1 ? `${cluster || view.clusters[0]} · ` : ''}<Seen ms={view.seen_ms} />
-          </span>
+          {cluster || view.clusters.length === 1 ? <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 font-mono text-caption text-muted-foreground">{cluster || view.clusters[0]}</span> : null}
+          {view.seen_ms ? <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-caption text-muted-foreground"><Seen ms={view.seen_ms} /></span> : null}
           <span className="flex-1" />
-          <Link to="/logs" search={where} className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-control font-semibold text-foreground no-underline hover:bg-row-hover"><ScrollText className="size-3.5" aria-hidden />Logs on this node</Link>
-          <Link to="/traces" search={where} className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-control font-semibold text-foreground no-underline hover:bg-row-hover"><Waypoints className="size-3.5" aria-hidden />Traces on this node</Link>
+          <Button asChild><Link to="/logs" search={where} className="no-underline"><ScrollText aria-hidden />Logs on this node</Link></Button>
+          <Button asChild><Link to="/traces" search={where} className="no-underline"><Waypoints aria-hidden />Traces on this node</Link></Button>
         </div>
       </div>
 

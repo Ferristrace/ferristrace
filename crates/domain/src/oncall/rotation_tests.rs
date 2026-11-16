@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
-use super::entities::{Override, Rotation, Schedule, Shift};
-use super::rotation::{on_call, shift};
+use super::entities::{Override, Rotation, Schedule, Shift, Stint};
+use super::rotation::{on_call, shift, stints};
 use super::value_objects::{
     Day, Handoff, OverrideId, RotationLength, ScheduleId, ScheduleName, TimeOfDay, Timezone,
     Weekday,
@@ -240,5 +240,90 @@ fn a_handoff_in_a_skipped_hour_lands_after_the_gap() {
         on_call(&held, &[], at("2026-03-29T01:30:00Z")),
         Some(person(BOB)),
         "02:30 does not exist that night, so the handoff happens at 03:30 summer time"
+    );
+}
+
+#[test]
+fn stints_walk_the_rotation_across_handoffs() {
+    let found = stints(
+        &weekly(),
+        &[],
+        millis("2026-11-05T00:00:00Z"),
+        millis("2026-11-19T00:00:00Z"),
+    );
+    assert_eq!(
+        found,
+        vec![
+            Stint {
+                account: person(ADA),
+                from_ms: millis("2026-11-05T00:00:00Z"),
+                to_ms: millis("2026-11-09T09:00:00Z"),
+                cover: false
+            },
+            Stint {
+                account: person(BOB),
+                from_ms: millis("2026-11-09T09:00:00Z"),
+                to_ms: millis("2026-11-16T09:00:00Z"),
+                cover: false
+            },
+            Stint {
+                account: person(CAT),
+                from_ms: millis("2026-11-16T09:00:00Z"),
+                to_ms: millis("2026-11-19T00:00:00Z"),
+                cover: false
+            },
+        ]
+    );
+}
+
+#[test]
+fn stints_cut_out_an_override_and_resume_the_rotation() {
+    let found = stints(
+        &weekly(),
+        &[cover(DAN, "2026-11-10T18:00:00Z", "2026-11-11T09:00:00Z")],
+        millis("2026-11-09T09:00:00Z"),
+        millis("2026-11-16T09:00:00Z"),
+    );
+    assert_eq!(
+        found,
+        vec![
+            Stint {
+                account: person(BOB),
+                from_ms: millis("2026-11-09T09:00:00Z"),
+                to_ms: millis("2026-11-10T18:00:00Z"),
+                cover: false
+            },
+            Stint {
+                account: person(DAN),
+                from_ms: millis("2026-11-10T18:00:00Z"),
+                to_ms: millis("2026-11-11T09:00:00Z"),
+                cover: true
+            },
+            Stint {
+                account: person(BOB),
+                from_ms: millis("2026-11-11T09:00:00Z"),
+                to_ms: millis("2026-11-16T09:00:00Z"),
+                cover: false
+            },
+        ]
+    );
+}
+
+#[test]
+fn stints_start_at_the_first_handoff_when_the_window_opens_before_it() {
+    let found = stints(
+        &weekly(),
+        &[],
+        millis("2026-11-01T00:00:00Z"),
+        millis("2026-11-03T00:00:00Z"),
+    );
+    assert_eq!(
+        found,
+        vec![Stint {
+            account: person(ADA),
+            from_ms: millis("2026-11-02T09:00:00Z"),
+            to_ms: millis("2026-11-03T00:00:00Z"),
+            cover: false
+        }]
     );
 }

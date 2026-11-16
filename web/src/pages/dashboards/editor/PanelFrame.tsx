@@ -32,7 +32,7 @@ export function PanelFrame({ panel, selected, narrow, canDuplicate, actions }: {
   }
 
   return (
-    <div data-selected={selected || undefined} className={cn('flex h-8 shrink-0 items-center gap-0.5 rounded-t-lg border border-b-0 bg-muted px-1', selected && 'border-ring bg-accent-subtle')}>
+    <div data-selected={selected || undefined} className={cn('flex h-8 shrink-0 items-center gap-0.5 rounded-t-md border border-b-0 bg-panel-head px-1', selected && 'border-ring bg-accent-subtle')}>
       {narrow ? (
         <>
           <Button size="icon-sm" variant="ghost" aria-label={`Move ${label} up`} onClick={() => actions.onReorder(-1)}><ChevronUp aria-hidden /></Button>

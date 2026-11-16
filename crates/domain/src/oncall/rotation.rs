@@ -1,29 +1,90 @@
 use jiff::civil::{Date, Time};
 use jiff::{Span, Timestamp};
 
-use super::entities::{Override, Schedule, Shift};
+use super::entities::{Override, Schedule, Shift, Stint};
 use crate::clock::UnixSeconds;
 use crate::identity::AccountId;
 
 const MILLIS_PER_SECOND: u64 = 1_000;
 const SECONDS_PER_DAY: i64 = 86_400;
 const DAYS_PER_WEEK: i8 = 7;
+pub const MAX_STINTS: usize = 512;
 
 pub fn on_call(schedule: &Schedule, overrides: &[Override], at: UnixSeconds) -> Option<AccountId> {
     shift(schedule, overrides, at).map(|shift| shift.account)
 }
 
 pub fn shift(schedule: &Schedule, overrides: &[Override], at: UnixSeconds) -> Option<Shift> {
-    let at_ms = at.get().saturating_mul(MILLIS_PER_SECOND);
+    held_at(
+        schedule,
+        overrides,
+        at.get().saturating_mul(MILLIS_PER_SECOND),
+    )
+    .map(|(held, _)| held)
+}
+
+pub fn stints(schedule: &Schedule, overrides: &[Override], from_ms: u64, to_ms: u64) -> Vec<Stint> {
+    let mut found: Vec<Stint> = Vec::new();
+    let mut at_ms = from_ms;
+    while at_ms < to_ms && found.len() < MAX_STINTS {
+        let Some((held, cover)) = held_at(schedule, overrides, at_ms) else {
+            match next_change(schedule, overrides, at_ms) {
+                Some(next) if next > at_ms => {
+                    at_ms = next;
+                    continue;
+                }
+                _ => break,
+            }
+        };
+        let end_ms = held.until_ms.unwrap_or(to_ms).min(to_ms).max(at_ms + 1);
+        match found.last_mut() {
+            Some(last)
+                if last.account == held.account && last.cover == cover && last.to_ms == at_ms =>
+            {
+                last.to_ms = end_ms;
+            }
+            _ => found.push(Stint {
+                account: held.account,
+                from_ms: at_ms,
+                to_ms: end_ms,
+                cover,
+            }),
+        }
+        at_ms = end_ms;
+    }
+    found
+}
+
+fn next_change(schedule: &Schedule, overrides: &[Override], at_ms: u64) -> Option<u64> {
+    let cover = overrides
+        .iter()
+        .filter(|cover| cover.schedule == schedule.id && cover.from_ms > at_ms)
+        .map(|cover| cover.from_ms)
+        .min();
+    let first = if schedule.rotation.is_empty() {
+        None
+    } else {
+        handoff_ms(schedule, 0).filter(|first| *first > at_ms)
+    };
+    match (cover, first) {
+        (Some(cover), Some(first)) => Some(cover.min(first)),
+        (cover, first) => cover.or(first),
+    }
+}
+
+fn held_at(schedule: &Schedule, overrides: &[Override], at_ms: u64) -> Option<(Shift, bool)> {
     if let Some(cover) = overrides
         .iter()
         .filter(|cover| cover.schedule == schedule.id && cover.covers(at_ms))
         .max_by_key(|cover| cover.from_ms)
     {
-        return Some(Shift {
-            account: cover.account,
-            until_ms: Some(cover.to_ms),
-        });
+        return Some((
+            Shift {
+                account: cover.account,
+                until_ms: Some(cover.to_ms),
+            },
+            true,
+        ));
     }
     let people = schedule.rotation.people();
     let (slot, next_ms) = slot_at(schedule, at_ms)?;
@@ -38,7 +99,7 @@ pub fn shift(schedule: &Schedule, overrides: &[Override], at: UnixSeconds) -> Op
         (Some(handoff), Some(cover)) => Some(handoff.min(cover)),
         (handoff, cover) => handoff.or(cover),
     };
-    Some(Shift { account, until_ms })
+    Some((Shift { account, until_ms }, false))
 }
 
 pub(super) fn handoff_ms(schedule: &Schedule, slot: i64) -> Option<u64> {

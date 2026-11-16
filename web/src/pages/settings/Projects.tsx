@@ -34,14 +34,14 @@ export function Projects() {
   return (
     <>
       <H title="Projects" sub="A project is a named source of telemetry with its own api keys.">
-        {mayArrange ? <Button size="sm" onClick={() => setAdding(true)}><Plus />New project</Button> : null}
+        {mayArrange ? <Button variant="primary" size="sm" onClick={() => setAdding(true)}><Plus />New project</Button> : null}
       </H>
       <Card className="overflow-x-auto">
         <Table aria-label="Projects">
           <thead><tr><Th>Name</Th><Th className="w-[180px]">Owner team</Th><Th numeric className="w-[110px]">Api keys</Th><Th className="w-[190px]">Created</Th><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
           <tbody>{catalogue.map((p) => (
             <Tr key={p.id}>
-              <Td className="h-11"><Link to="/settings/project/general" className="font-mono font-semibold text-foreground" onClick={() => chooseProject(p.id)}>{p.name}</Link></Td>
+              <Td className="h-11"><Link to="/settings/project/general" className="font-mono font-semibold text-accent-text" onClick={() => chooseProject(p.id)}>{p.name}</Link></Td>
               <Td>{mayArrange ? (
                 <NativeSelect aria-label={`Owner team for ${p.name}`} className="h-7 w-[150px]" value={p.team?.id ?? ''} disabled={assign.isPending} onChange={(e) => hand(p.id, e.target.value)}>
                   <option value="">No team</option>

@@ -2,13 +2,15 @@ import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { ArrowDown, ArrowUp, Boxes, CircleAlert, CircleCheck, Clock, Layers, RotateCcw, Search, ScrollText, Server, Waypoints, X } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParam } from '@/lib/router'
-import { Card } from '@/components/ui/card'
+import { Card, CardKind } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
+import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
 import { Table, Td, Th } from '@/components/ui/misc'
-import { EmptyState, PageHeader } from '@/components/ft/bits'
+import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { bytes, collectorConfig, isReporting, useCluster, type ClusterNode, type ClusterPod, type ClusterWorkload } from '@/data/infra'
 import { placementSearch } from '@/data/placement'
+import { pagesOf } from '@/lib/paging'
 import { ApiError, because } from '@/auth/client'
 import { cn } from '@/lib/utils'
 
@@ -101,23 +103,25 @@ function Restarts({ pod }: { pod: ClusterPod }) {
   )
 }
 
+const PHASE: Record<Health, string> = {
+  bad: 'bg-destructive-subtle text-destructive-text',
+  waiting: 'bg-warning-subtle text-warning-text',
+  ok: 'bg-success-subtle text-success-text',
+  done: 'bg-muted text-faint-foreground',
+}
+
 function StatusCell({ pod }: { pod: ClusterPod }) {
   const state = health(pod)
+  const chip = 'inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[11px] font-medium'
   if (pod.reason && state !== 'ok') {
     return (
-      <span className={cn('inline-flex items-center gap-1.5 font-semibold', state === 'waiting' ? 'text-warning-text' : 'text-destructive-text')}>
-        <CircleAlert className="size-3.5" aria-hidden />
-        {said(pod.reason)}
-        {pod.phase && pod.phase !== said(pod.reason) ? <span className="font-normal text-muted-foreground">· {pod.phase}</span> : null}
+      <span className="inline-flex items-center gap-2">
+        <span className={cn(chip, PHASE[state])}>{said(pod.reason)}</span>
+        {pod.phase && pod.phase !== said(pod.reason) ? <span className="text-muted-foreground">{pod.phase}</span> : null}
       </span>
     )
   }
-  return (
-    <span className={cn('inline-flex items-center gap-1.5', state === 'done' ? 'text-faint-foreground' : 'text-muted-foreground')}>
-      <span aria-hidden className={cn('size-1.5 rounded-full', state === 'done' ? 'bg-status-none' : 'bg-status-ok')} />
-      {pod.phase ?? 'Unknown'}
-    </span>
-  )
+  return <span className={cn(chip, PHASE[state])}>{pod.phase ?? 'Unknown'}</span>
 }
 
 type Problem =
@@ -126,38 +130,26 @@ type Problem =
   | { kind: 'node'; node: ClusterNode }
 
 type Tone = 'ok' | 'warn' | 'bad' | 'plain'
-const DOT: Record<Tone, string> = { ok: 'bg-status-ok', warn: 'bg-status-deg', bad: 'bg-status-out', plain: 'bg-series' }
-const FIGURE: Record<Tone, string> = { ok: 'text-foreground', warn: 'text-warning-text', bad: 'text-destructive-text', plain: 'text-foreground' }
+const KPI_TONE: Record<Tone, 'warn' | 'err' | undefined> = { ok: undefined, warn: 'warn', bad: 'err', plain: undefined }
 
 export function Stat({ label, value, suffix, tone = 'plain' }: { label: string; value: string; suffix?: string; tone?: Tone }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-2 rounded-lg border bg-card px-4 py-3.5">
-      <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-        <span aria-hidden className={cn('size-1.5 rounded-full', DOT[tone])} />
-        {label}
-      </span>
-      <span className="flex items-baseline gap-2">
-        <span className={cn('tabular text-[26px] font-semibold leading-none tracking-[-0.01em]', FIGURE[tone])}>{value}</span>
-        {suffix ? <span className="truncate text-control text-muted-foreground">{suffix}</span> : null}
-      </span>
-    </div>
-  )
+  return <Kpi label={label} value={value} sub={suffix} tone={KPI_TONE[tone]} />
 }
 
 function Attention({ problems, prefix, onPick }: { problems: Problem[]; prefix: string; onPick: (q: string) => void }) {
   return (
-    <section aria-labelledby="attention" className="order-first flex min-w-0 flex-col rounded-lg border bg-card lg:order-none">
-      <div className="flex items-center gap-2 px-4 pt-4 pb-2">
-        <h2 id="attention" className="text-heading flex-1">Needs attention</h2>
-        {problems.length ? <span className="tabular rounded-full bg-destructive-subtle px-2 py-0.5 text-caption font-semibold text-destructive-text">{problems.length}</span> : null}
+    <section aria-labelledby="attention" className="order-first flex min-w-0 flex-col rounded-md border bg-card lg:order-none">
+      <div className="flex min-h-10 items-center gap-2 border-b px-3.5 py-2">
+        <h2 id="attention" className="text-[13px] font-semibold leading-5">Needs attention</h2>
+        {problems.length ? <span className="tabular rounded-full bg-destructive-subtle px-2 text-[11px] font-semibold leading-[18px] text-destructive-text">{problems.length}</span> : null}
       </div>
       {!problems.length ? (
-        <div className="flex items-center gap-3 px-4 pt-2 pb-5">
+        <div className="flex items-center gap-3 px-4 py-5">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-success-subtle text-success-text"><CircleCheck className="size-4" aria-hidden /></span>
           <span className="text-control text-muted-foreground">Every node is ready and every pod is healthy.</span>
         </div>
       ) : (
-        <ul className="m-0 flex list-none flex-col p-2 pt-0">
+        <ul className="m-0 flex list-none flex-col p-2">
           {problems.map((problem) => {
             const row = 'flex items-start gap-3 rounded-md px-2 py-2.5'
             if (problem.kind === 'pod') {
@@ -240,7 +232,7 @@ function NodeCard({ name, label, node, pods, picked, onPick }: { name: string; l
   const total = node && node.memory !== null && node.memory_available !== null ? node.memory + node.memory_available : null
   const share = total && node?.memory !== null && node?.memory !== undefined ? node.memory / total : null
   return (
-    <div className={cn('flex min-w-0 flex-col gap-3.5 rounded-lg border bg-card p-4', (down || ill) && 'border-destructive-border')}>
+    <div className={cn('flex min-w-0 flex-col gap-3.5 rounded-md border bg-background p-3.5', (down || ill) && 'border-destructive-border')}>
       <div className="flex items-baseline gap-2">
         {name ? (
           <Link to={`${HERE}/nodes/${encodeURIComponent(name)}`} title={`Open ${name}`} className="min-w-0 flex-1 truncate text-control font-semibold text-foreground no-underline hover:underline">{label}</Link>
@@ -290,19 +282,20 @@ function NodePool({ nodes, pods, prefix, picked, onPick }: { nodes: ClusterNode[
   const counts = { ok: 0, bad: 0, waiting: 0, done: 0 }
   for (const pod of pods) counts[health(pod)]++
   return (
-    <section aria-labelledby="nodes" className="flex min-w-0 flex-col gap-4 rounded-lg border bg-card p-4">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 id="nodes" className="text-heading">Nodes</h2>
+    <section aria-labelledby="nodes" className="flex min-w-0 flex-col rounded-md border bg-card">
+      <div className="flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 border-b px-3.5 py-2">
+        <h2 id="nodes" className="text-[13px] font-semibold leading-5">Nodes</h2>
+        <CardKind>Pods by node</CardKind>
         {prefix ? <span className="font-mono text-caption text-muted-foreground">{prefix}*</span> : null}
         <span className="flex-1" />
         <span className="text-caption text-muted-foreground">each square is a pod</span>
       </div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3 p-3.5">
         {tiles.map(([name, node, here]) => (
           <NodeCard key={name || 'unscheduled'} name={name} label={name ? name.slice(prefix.length) || name : 'Not scheduled'} node={node} pods={here} picked={picked} onPick={onPick} />
         ))}
       </div>
-      <ul className="m-0 flex list-none flex-wrap gap-x-5 gap-y-1 p-0 text-caption text-muted-foreground">
+      <ul className="m-0 flex list-none flex-wrap gap-x-5 gap-y-1 border-t px-3.5 py-2.5 text-caption text-muted-foreground">
         {([['ok', 'Healthy'], ['bad', 'Unhealthy'], ['waiting', 'Pending'], ['done', 'Completed']] as [Health, string][]).map(([state, text]) => (
           <li key={state} className="inline-flex items-center gap-1.5">
             <span aria-hidden className={cn('size-2.5 rounded-[2px]', CELL[state])} />
@@ -352,11 +345,28 @@ export function PodTable({ pods, workloads, by, sort, desc, prefix, set }: { pod
     const ill = (list: ClusterPod[]) => list.some((pod) => health(pod) === 'bad')
     return [...map.entries()].sort(([a, x], [b, y]) => Number(ill(y)) - Number(ill(x)) || (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
   }, [pods, by, sort, desc])
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(50)
+  const at = Math.min(page, pagesOf(pods.length, size))
+  const windowed = useMemo(() => {
+    const start = (at - 1) * size
+    const end = at * size
+    let seen = 0
+    const out: [string, ClusterPod[], number][] = []
+    for (const [key, list] of groups) {
+      const from = Math.max(0, start - seen)
+      const to = Math.min(list.length, end - seen)
+      if (to > from) out.push([key, list.slice(from, to), list.length])
+      seen += list.length
+    }
+    return out
+  }, [groups, at, size, pods.length])
   const workloadOf = (key: string) => workloads.find((w) => `${w.namespace}/${w.kind}/${w.name}` === key)
   const onSort = (column: SortKey) => set(column === sort ? { dir: desc ? undefined : 'desc' } : { sort: column === 'name' ? undefined : column, dir: column === 'name' ? undefined : 'desc' })
 
   return (
-    <Card className="overflow-x-auto">
+    <Card className="overflow-hidden">
+      <div className="overflow-x-auto">
       <Table aria-label="Pods" className="min-w-[760px]">
         <thead>
           <tr>
@@ -368,7 +378,7 @@ export function PodTable({ pods, workloads, by, sort, desc, prefix, set }: { pod
             <Th className="w-[150px]"><span className="sr-only">Open</span></Th>
           </tr>
         </thead>
-        {groups.map(([key, list]) => {
+        {windowed.map(([key, list, count]) => {
           const workload = by === 'workload' ? workloadOf(key) : undefined
           const title = !key ? (by === 'node' ? 'Not scheduled' : by === 'workload' ? 'No workload' : 'No namespace')
             : by === 'node' ? key.slice(prefix.length) || key
@@ -380,7 +390,7 @@ export function PodTable({ pods, workloads, by, sort, desc, prefix, set }: { pod
                   {by === 'node' && key ? <Link to={`${HERE}/nodes/${encodeURIComponent(key)}`} className="font-mono text-foreground no-underline hover:underline">{title}</Link> : <span className="font-mono">{title}</span>}
                   {workload ? <span className="ml-2 font-normal text-muted-foreground">{workload.kind} in {workload.namespace}</span> : null}
                   <span className={cn('ml-2 font-normal', workload && short(workload) ? 'font-semibold text-warning-text' : 'text-muted-foreground')}>
-                    {workload && workload.desired !== null ? `${workload.ready ?? 0} of ${workload.desired} ready` : `${list.length} pod${list.length === 1 ? '' : 's'}`}
+                    {workload && workload.desired !== null ? `${workload.ready ?? 0} of ${workload.desired} ready` : `${count} pod${count === 1 ? '' : 's'}`}
                   </span>
                 </th>
               </tr>
@@ -410,6 +420,8 @@ export function PodTable({ pods, workloads, by, sort, desc, prefix, set }: { pod
         })}
       </Table>
       {!groups.length ? <p className="m-0 px-3 py-6 text-center text-control text-muted-foreground">No pod matches.</p> : null}
+      </div>
+      {groups.length ? <Pager total={pods.length} page={at} size={size} onPage={setPage} onSize={(next) => { setPage(1); setSize(next) }} noun="pods" className="border-t" /> : null}
     </Card>
   )
 }
@@ -463,19 +475,18 @@ export function Kubernetes() {
     <PageHeader
       title="Kubernetes"
       meta={view.seen_ms ? (
-        <span className="inline-flex flex-wrap items-center gap-x-1.5">
-          <span className={cn(problems.length ? 'font-semibold text-destructive-text' : 'text-success-text')}>{problems.length ? `${problems.length} problem${problems.length === 1 ? '' : 's'}` : 'Healthy'}</span>
-          <span aria-hidden>·</span><span>{view.pods.length} pods</span>
-          <span aria-hidden>·</span><span>{view.nodes.length} nodes</span>
-          <span aria-hidden>·</span><Seen ms={view.seen_ms} />
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span className={cn('inline-flex h-5 items-center rounded-full border px-2 text-caption font-semibold', problems.length ? 'border-destructive-border bg-destructive-subtle text-destructive-text' : 'border-success-border bg-success-subtle text-success-text')}>{problems.length ? `${problems.length} problem${problems.length === 1 ? '' : 's'}` : 'Healthy'}</span>
+          <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-caption text-muted-foreground">{view.pods.length} pods · {view.nodes.length} nodes</span>
+          <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-caption text-muted-foreground"><Seen ms={view.seen_ms} /></span>
         </span>
       ) : undefined}
     >
-      <NativeSelect aria-label="Cluster" value={cluster} onChange={(e) => set({ cluster: e.target.value || undefined, namespace: undefined })} className="w-[170px] font-mono">
+      <NativeSelect aria-label="Cluster" value={cluster} onChange={(e) => set({ cluster: e.target.value || undefined, namespace: undefined })} className="w-[170px] font-mono max-md:flex-1">
         <option value="">All clusters</option>
         {view.clusters.map((name) => <option key={name} value={name}>{name}</option>)}
       </NativeSelect>
-      <NativeSelect aria-label="Namespace" value={namespace} onChange={(e) => set({ namespace: e.target.value || undefined })} className="w-[170px]">
+      <NativeSelect aria-label="Namespace" value={namespace} onChange={(e) => set({ namespace: e.target.value || undefined })} className="w-[170px] max-md:flex-1">
         <option value="">All namespaces</option>
         {view.namespaces.map((name) => <option key={name} value={name}>{name}</option>)}
       </NativeSelect>
@@ -520,8 +531,8 @@ export function Kubernetes() {
 
       <section aria-labelledby="pods" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 id="pods" className="text-heading mr-2">Pods</h2>
-          <InputGroup className="w-[260px]">
+          <h2 id="pods" className="text-heading mr-2">Pods <span className="font-normal text-muted-foreground">{shown.length}</span></h2>
+          <InputGroup className="w-[320px] max-w-full max-md:w-full">
             <Search aria-hidden />
             <input aria-label="Filter pods" placeholder="Filter by pod, workload, node, service" value={typed} onChange={(e) => setTyped(e.target.value)} />
             {typed ? <button type="button" aria-label="Clear the filter" onClick={() => { setTyped(''); set({ q: undefined }) }} className="cursor-pointer bg-transparent p-0 text-muted-foreground hover:text-foreground"><X className="size-3.5" aria-hidden /></button> : null}
@@ -530,7 +541,7 @@ export function Kubernetes() {
             type="button"
             aria-pressed={problemsOnly}
             onClick={() => set({ problems: problemsOnly ? undefined : '1' })}
-            className={cn('inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-control font-semibold focus-visible:outline-2 focus-visible:outline-ring', problemsOnly ? 'border-destructive-border bg-destructive-subtle text-destructive-text' : 'bg-background text-muted-foreground hover:text-foreground')}
+            className={cn('inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-control font-semibold focus-visible:outline-2 focus-visible:outline-ring', problemsOnly ? 'border-destructive-border bg-destructive-subtle text-destructive-text' : 'border-line-strong bg-card text-muted-foreground hover:text-foreground')}
           >
             <CircleAlert className="size-3.5" aria-hidden />
             Unhealthy only{ill ? ` (${ill})` : ''}

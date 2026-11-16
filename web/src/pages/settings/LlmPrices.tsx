@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { because } from '@/auth/client'
 import { useOrganisations } from '@/auth/session'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Field, Input } from '@/components/ui/input'
 import { Table, Td, Th, Tr } from '@/components/ui/misc'
@@ -21,6 +21,7 @@ import {
   type ModelPrice,
 } from '@/data/llm'
 import { num, stamp } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { H } from './parts'
 
 type Form = { provider: string; model: string; input: string; output: string; cached: string; from: string }
@@ -53,7 +54,9 @@ export function LlmPrices() {
         {mayChange ? <Button variant="primary" size="sm" onClick={() => setForm(EMPTY)}><Plus />Add price</Button> : null}
       </H>
       {mayChange ? null : <span className="text-control text-muted-foreground">Only an owner or an administrator can add or delete a price.</span>}
-      <Card className="overflow-x-auto">
+      <Card>
+        <CardHeader><CardTitle>Prices</CardTitle><CardKind>Table</CardKind></CardHeader>
+        <div className="overflow-x-auto">
         {prices ? (
           <Table aria-label="Model prices">
             <thead><tr><Th className="w-[110px]">Provider</Th><Th>Model</Th><Th numeric className="w-[110px]">Input / M</Th><Th numeric className="w-[110px]">Output / M</Th><Th numeric className="w-[120px]">Cached / M</Th><Th className="w-[170px]">Effective from</Th>{mayChange ? <Th className="w-[90px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
@@ -73,9 +76,11 @@ export function LlmPrices() {
             </tbody>
           </Table>
         ) : <div className="px-4 py-3 text-control text-muted-foreground">{nothing}</div>}
+        </div>
       </Card>
-      <H title="Models without a price" sub="Seen on calls in the last 30 days. Their cost is not counted until you price them." />
-      <Card className="overflow-x-auto">
+      <Card className={cn(unpriced.length > 0 && 'border-warning-border')}>
+        <CardHeader className={cn(unpriced.length > 0 && 'border-warning-border bg-warning-subtle')}><CardTitle>Models without a price</CardTitle><CardKind>Last 30 days</CardKind><span className="text-caption text-muted-foreground max-md:hidden">Their cost is not counted until you price them.</span></CardHeader>
+        <div className="overflow-x-auto">
         <Table aria-label="Models without a price">
           <thead><tr><Th className="w-[110px]">Provider</Th><Th>Model</Th><Th numeric className="w-[100px]">Calls</Th><Th className="w-[170px]">Last seen</Th>{mayChange ? <Th className="w-[140px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
           <tbody>
@@ -91,6 +96,7 @@ export function LlmPrices() {
             ))}
           </tbody>
         </Table>
+        </div>
       </Card>
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent size="sm" title="Add a price" description="Dollars per million tokens. The price applies to calls from its effective date on.">

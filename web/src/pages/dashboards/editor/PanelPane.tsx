@@ -53,7 +53,7 @@ export function PanelPane({ initial, fresh, range, sent, source, onApply, onCanc
       <section aria-label="Preview" className="flex flex-col gap-2">
         <div className="h-[340px] min-w-0">
           {previewIssues.length > 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-2 rounded-lg border bg-card p-4 text-center" role="status">
+            <div className="flex h-full flex-col items-center justify-center gap-2 rounded-md border bg-card p-4 text-center" role="status">
               <span className="text-sub">Nothing to preview yet</span>
               <span className="max-w-[460px] text-control text-muted-foreground">{previewIssues[0]}</span>
             </div>
