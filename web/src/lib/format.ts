@@ -1,4 +1,5 @@
 export const pct = (v: number, d = 1) => `${v.toFixed(d)} %`
+export const percentage = (v: number) => `${Number(v.toFixed(v < 10 ? 2 : 1))} %`
 export const num = (v: number) => v.toLocaleString('en-US')
 export function dur(ms: number) {
   if (ms < 1) return `${Math.round(ms * 1000)} µs`

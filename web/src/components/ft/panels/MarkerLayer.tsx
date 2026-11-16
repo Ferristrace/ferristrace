@@ -1,5 +1,5 @@
 import { MarkerLayer as Lanes } from '../MarkerLayer'
-import { axisTime, xFraction, type Frame } from './geometry'
+import { axisTime, nearbyBy, xFraction, type Frame } from './geometry'
 import type { Mark } from './types'
 
 export function MarkerLayer({ marks, frame }: { marks: Mark[]; frame: Frame }) {
@@ -11,6 +11,5 @@ export function MarkerLayer({ marks, frame }: { marks: Mark[]; frame: Frame }) {
 }
 
 export function releasesNear(marks: Mark[], atNs: number, spanNs: number): Mark[] {
-  const reach = spanNs * 0.02
-  return marks.filter((mark) => Math.abs(mark.atNs - atNs) <= reach).sort((a, b) => a.atNs - b.atNs)
+  return nearbyBy(marks, (mark) => mark.atNs, atNs, spanNs)
 }

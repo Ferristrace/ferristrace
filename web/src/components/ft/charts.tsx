@@ -1,41 +1,74 @@
-import { MarkerLayer } from './MarkerLayer'
+import { useMemo } from 'react'
 import { TIME_LABELS } from '@/data/series'
+import { ChartFrame } from './ChartFrame'
+import { clamp01, finite, fractionOf, lineRows, runsOf, stackRows, type Reading } from './chartMath'
 
 export type Marker = { at: number; label: string; to?: string }
 
-const pts = (vals: number[], lo: number, hi: number, h: number) =>
-  vals.map((v, i) => `${((i * 600) / Math.max(1, vals.length - 1)).toFixed(1)},${(h - ((Math.min(Math.max(v, lo), hi) - lo) / (hi - lo || 1)) * h).toFixed(1)}`).join(' ')
+const WIDTH = 600
 
-export function LineChart({ title, legend, values, second, threshold, lo = 0, hi, yLabels, aria, height = 140, markers = [], xLabels = TIME_LABELS }: {
-  title: string; legend?: string; values: number[]; second?: number[]; threshold?: number; lo?: number; hi: number; yLabels: [string, string, string]; aria: string; height?: number; markers?: Marker[]; xLabels?: string[]
+const plainFormat = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(2))
+
+const joined = (run: [number, number][]) => run.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+
+const rowFormat = (format: (value: number) => string) => (row: { value: number | null }) => (row.value === null ? 'no data' : format(row.value))
+
+export function LineChart({ title, legend, values, second, secondLabel, threshold, lo = 0, hi, yLabels, aria, height = 140, markers = [], xLabels = TIME_LABELS, times, format = plainFormat, onZoom }: {
+  title: string; legend?: string; values: Reading[]; second?: Reading[]; secondLabel?: string; threshold?: number; lo?: number; hi: number; yLabels: [string, string, string]; aria: string; height?: number; markers?: Marker[]; xLabels?: string[]
+  times?: number[]; format?: (value: number) => string; onZoom?: (fromMs: number, toMs: number) => void
 }) {
-  const p = pts(values, lo, hi, height)
-  const ty = threshold !== undefined ? height - ((threshold - lo) / (hi - lo)) * height : null
+  const count = values.length
+  const span = hi - lo || 1
+  const rise = (value: number) => clamp01((value - lo) / span)
+  const drawn = useMemo(() => {
+    const x = (at: number) => fractionOf(at, count) * WIDTH
+    const y = (value: number) => height - clamp01((value - lo) / span) * height
+    const main = runsOf(values, x, y)
+    const other = second ? runsOf(second, x, y) : []
+    const ty = threshold !== undefined ? height - clamp01((threshold - lo) / span) * height : null
+    return (
+      <svg viewBox={`0 0 ${WIDTH} ${height}`} preserveAspectRatio="none" width="100%" height={height} aria-hidden className="absolute inset-0 block overflow-visible">
+        <line x1="0" y1="0.5" x2={WIDTH} y2="0.5" stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
+        <line x1="0" y1={height / 2} x2={WIDTH} y2={height / 2} stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
+        <line x1="0" y1={height - 0.5} x2={WIDTH} y2={height - 0.5} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
+        {ty !== null ? <line x1="0" y1={ty} x2={WIDTH} y2={ty} stroke="var(--warning-text)" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" /> : null}
+        {main.map((run, at) => (run.length > 1 ? <polygon key={`fill-${at}`} points={`${run[0][0]},${height} ${joined(run)} ${run[run.length - 1][0]},${height}`} fill="var(--chart-fill)" /> : null))}
+        {other.map((run, at) => (run.length > 1 ? <polyline key={`second-${at}`} points={joined(run)} fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" /> : null))}
+        {main.map((run, at) => (run.length > 1
+          ? <polyline key={`line-${at}`} points={joined(run)} fill="none" stroke="var(--chart-line)" strokeWidth="1.75" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          : <circle key={`dot-${at}`} cx={run[0][0]} cy={run[0][1]} r="2" fill="var(--chart-line)" />))}
+      </svg>
+    )
+  }, [values, second, threshold, lo, span, height, count])
   return (
-    <figure className="m-0 flex min-w-0 flex-col gap-2 rounded-lg border bg-card px-3 pb-2 pt-3">
-      <figcaption className="flex flex-wrap items-baseline gap-2">
-        <span className="flex-1 text-control font-semibold">{title}</span>
-        {legend ? <span className="text-caption text-muted-foreground">{legend}</span> : null}
-      </figcaption>
-      <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-1.5">
-        <div className="flex flex-col justify-between text-right font-mono text-[10px] leading-3 text-faint-foreground" style={{ height }}>
-          {yLabels.map((l, i) => <span key={i}>{l}</span>)}
-        </div>
-        <div className="relative">
-        <svg viewBox={`0 0 600 ${height}`} preserveAspectRatio="none" width="100%" height={height} role="img" aria-label={aria} className="block overflow-visible">
-          <line x1="0" y1="0.5" x2="600" y2="0.5" stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
-          <line x1="0" y1={height / 2} x2="600" y2={height / 2} stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
-          <line x1="0" y1={height - 0.5} x2="600" y2={height - 0.5} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
-          {ty !== null ? <line x1="0" y1={ty} x2="600" y2={ty} stroke="var(--warning-text)" strokeDasharray="4 4" vectorEffect="non-scaling-stroke" /> : null}
-          <polygon points={`0,${height} ${p} 600,${height}`} fill="var(--chart-fill)" />
-          {second ? <polyline points={pts(second, lo, hi, height)} fill="none" stroke="var(--muted-foreground)" strokeWidth="1.5" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" /> : null}
-          <polyline points={p} fill="none" stroke="var(--chart-line)" strokeWidth="1.75" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        </svg>
-        <MarkerLayer pins={markers.map((m) => ({ frac: m.at / Math.max(1, values.length - 1), label: m.label, to: m.to }))} />
-        </div>
-      </div>
-      <div className="flex justify-between pl-[46px] font-mono text-[10px] text-faint-foreground">{xLabels.map((t, at) => <span key={`${at}-${t}`}>{t}</span>)}</div>
-    </figure>
+    <ChartFrame
+      title={title}
+      legend={legend}
+      headline={(at) => {
+        const value = finite(values[at ?? count - 1])
+        return value === null ? '—' : format(value)
+      }}
+      count={count}
+      times={times}
+      xLabels={xLabels}
+      markers={markers}
+      aria={aria}
+      height={height}
+      gutter="narrow"
+      yLabels={yLabels}
+      drawn={drawn}
+      rows={(at) => lineRows({ title, values, second, secondLabel, threshold }, at)}
+      dots={(at) => {
+        const main = finite(values[at])
+        const other = second ? finite(second[at]) : null
+        return [
+          ...(other === null ? [] : [{ frac: 1 - rise(other), colour: 'var(--muted-foreground)' }]),
+          ...(main === null ? [] : [{ frac: 1 - rise(main), colour: 'var(--chart-line)' }]),
+        ]
+      }}
+      format={rowFormat(format)}
+      onZoom={onZoom}
+    />
   )
 }
 
@@ -45,44 +78,55 @@ export const stackColour = (index: number) => STACK_PALETTE[index % STACK_PALETT
 
 export type StackLayer = { key: string; values: number[] }
 
-export function StackedChart({ title, legend, layers, yLabels, aria, height = 160, markers = [], xLabels }: {
+export function StackedChart({ title, legend, layers, yLabels, aria, height = 160, markers = [], xLabels, times, format = plainFormat, onZoom }: {
   title: string; legend?: string; layers: StackLayer[]; yLabels: (top: number) => [string, string, string]; aria: string; height?: number; markers?: Marker[]; xLabels: string[]
+  times?: number[]; format?: (value: number) => string; onZoom?: (fromMs: number, toMs: number) => void
 }) {
   const count = layers[0]?.values.length ?? 0
-  const totals = Array.from({ length: count }, (_, at) => layers.reduce((sum, layer) => sum + layer.values[at], 0))
+  const totals = useMemo(() => Array.from({ length: count }, (_, at) => layers.reduce((sum, layer) => sum + (finite(layer.values[at]) ?? 0), 0)), [layers, count])
   const top = Math.max(...totals, 1e-9)
-  const x = (at: number) => (at * 600) / Math.max(1, count - 1)
-  const y = (value: number) => height - (value / top) * height
-  const below = new Array<number>(count).fill(0)
-  const bands = layers.map((layer, index) => {
-    const lower = [...below]
-    layer.values.forEach((value, at) => { below[at] += value })
-    const upper = [...below]
-    const outline = upper.map((value, at) => `${x(at).toFixed(1)},${y(value).toFixed(1)}`)
-    const back = lower.map((value, at) => `${x(at).toFixed(1)},${y(value).toFixed(1)}`).reverse()
-    return { key: layer.key, colour: stackColour(index), points: [...outline, ...back].join(' ') }
-  })
+  const colours = useMemo(() => layers.map((_, index) => stackColour(index)), [layers])
+  const drawn = useMemo(() => {
+    const x = (at: number) => (fractionOf(at, count) * WIDTH)
+    const y = (value: number) => height - (value / top) * height
+    const below = new Array<number>(count).fill(0)
+    const bands = layers.map((layer, index) => {
+      const lower = [...below]
+      layer.values.forEach((value, at) => { below[at] += finite(value) ?? 0 })
+      const upper = [...below]
+      const outline = upper.map((value, at) => `${x(at).toFixed(1)},${y(value).toFixed(1)}`)
+      const back = lower.map((value, at) => `${x(at).toFixed(1)},${y(value).toFixed(1)}`).reverse()
+      return { key: layer.key, colour: colours[index], points: [...outline, ...back].join(' ') }
+    })
+    return (
+      <svg viewBox={`0 0 ${WIDTH} ${height}`} preserveAspectRatio="none" width="100%" height={height} aria-hidden className="absolute inset-0 block overflow-visible">
+        <line x1="0" y1="0.5" x2={WIDTH} y2="0.5" stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
+        <line x1="0" y1={height / 2} x2={WIDTH} y2={height / 2} stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
+        <line x1="0" y1={height - 0.5} x2={WIDTH} y2={height - 0.5} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
+        {bands.map((band) => <polygon key={band.key} points={band.points} fill={band.colour} fillOpacity="0.55" stroke={band.colour} strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
+      </svg>
+    )
+  }, [layers, colours, count, top, height])
   return (
-    <figure className="m-0 flex min-w-0 flex-col gap-2 rounded-lg border bg-card px-3 pb-2 pt-3">
-      <figcaption className="flex flex-wrap items-baseline gap-2">
-        <span className="flex-1 text-control font-semibold">{title}</span>
-        {legend ? <span className="text-caption text-muted-foreground">{legend}</span> : null}
-      </figcaption>
-      <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-1.5">
-        <div className="flex flex-col justify-between text-right font-mono text-[10px] leading-3 text-faint-foreground" style={{ height }}>
-          {yLabels(top).map((l, i) => <span key={i}>{l}</span>)}
-        </div>
-        <div className="relative">
-          <svg viewBox={`0 0 600 ${height}`} preserveAspectRatio="none" width="100%" height={height} role="img" aria-label={aria} className="block overflow-visible">
-            <line x1="0" y1="0.5" x2="600" y2="0.5" stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
-            <line x1="0" y1={height / 2} x2="600" y2={height / 2} stroke="var(--chart-grid)" vectorEffect="non-scaling-stroke" />
-            <line x1="0" y1={height - 0.5} x2="600" y2={height - 0.5} stroke="var(--border)" vectorEffect="non-scaling-stroke" />
-            {bands.map((band) => <polygon key={band.key} points={band.points} fill={band.colour} fillOpacity="0.55" stroke={band.colour} strokeWidth="1" vectorEffect="non-scaling-stroke"><title>{band.key || '(none)'}</title></polygon>)}
-          </svg>
-          <MarkerLayer pins={markers.map((m) => ({ frac: m.at / Math.max(1, count - 1), label: m.label, to: m.to }))} />
-        </div>
-      </div>
-      <div className="flex justify-between pl-[54px] font-mono text-[10px] text-faint-foreground">{xLabels.map((t, at) => <span key={`${at}-${t}`}>{t}</span>)}</div>
-    </figure>
+    <ChartFrame
+      title={title}
+      legend={legend}
+      headline={(at) => {
+        if (count === 0) return '—'
+        return format(totals[at ?? count - 1])
+      }}
+      count={count}
+      times={times}
+      xLabels={xLabels}
+      markers={markers}
+      aria={aria}
+      height={height}
+      gutter="wide"
+      yLabels={yLabels(top)}
+      drawn={drawn}
+      rows={(at) => stackRows(layers, at, colours)}
+      format={rowFormat(format)}
+      onZoom={onZoom}
+    />
   )
 }
