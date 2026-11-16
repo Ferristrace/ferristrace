@@ -1068,9 +1068,13 @@ pub struct Stepped {
     step_ns: u64,
     requests: u64,
     errors: u64,
+    p50_ns: Option<u64>,
     p95_ns: Option<u64>,
-    points: Vec<(u64, u64, u64, Option<u64>)>,
+    p99_ns: Option<u64>,
+    points: Vec<Tick>,
 }
+
+type Tick = (u64, u64, u64, Option<u64>, Option<u64>, Option<u64>);
 
 impl From<ServiceSeries> for Stepped {
     fn from(series: ServiceSeries) -> Self {
@@ -1078,7 +1082,9 @@ impl From<ServiceSeries> for Stepped {
             step_ns: series.step_nanos,
             requests: series.requests,
             errors: series.errors,
+            p50_ns: series.p50_nanos,
             p95_ns: series.p95_nanos,
+            p99_ns: series.p99_nanos,
             points: series
                 .points
                 .into_iter()
@@ -1088,6 +1094,8 @@ impl From<ServiceSeries> for Stepped {
                         point.requests,
                         point.errors,
                         point.p95_nanos,
+                        point.p50_nanos,
+                        point.p99_nanos,
                     )
                 })
                 .collect(),
