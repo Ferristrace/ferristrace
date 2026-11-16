@@ -125,7 +125,7 @@ export function QueryBar({ text, onCommit, rangeMs }: { text: string; onCommit: 
         </div>
         {error && !error.ok ? <p role="alert" className="m-0 mt-1 text-caption text-destructive-text">{error.error}{error.at < draft.length ? ` (character ${error.at + 1})` : ''}</p> : null}
         {open ? (
-          <div id={list} role="listbox" aria-label="Suggestions" className="absolute left-0 top-[40px] z-30 flex max-h-[260px] w-[min(420px,100%)] flex-col overflow-y-auto rounded-lg border bg-popover p-1 shadow-md">
+          <div id={list} role="listbox" aria-label="Suggestions" className="absolute left-0 top-[40px] z-30 flex max-h-[260px] w-[min(420px,100%)] flex-col overflow-y-auto rounded-md border bg-popover p-1 shadow-md">
             {options.map((option, index) => (
               <button
                 key={`${option.label}-${index}`}
