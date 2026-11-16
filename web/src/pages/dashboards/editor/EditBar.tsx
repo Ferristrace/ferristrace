@@ -1,5 +1,4 @@
 import { Plus, Settings2, Variable } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { LIMITS } from './kinds'
 import { SaveNotice } from './SaveNotice'
@@ -21,8 +20,7 @@ export function EditBar({ dirty, saving, issues, failure, panels, variables, onA
   const full = panels >= LIMITS.panels
   return (
     <div className="flex flex-col gap-2" role="region" aria-label="Editing tools">
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-sidebar px-3 py-2">
-        <Badge variant="accent">Editing</Badge>
+      <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card px-3 py-2">
         <Button size="sm" variant="primary" disabled={full} title={full ? `A dashboard holds at most ${LIMITS.panels} panels.` : undefined} onClick={onAdd}><Plus aria-hidden />Add panel</Button>
         <Button size="sm" onClick={onVariables}><Variable aria-hidden />Variables{variables > 0 ? ` (${variables})` : ''}</Button>
         <Button size="sm" onClick={onSettings}><Settings2 aria-hidden />Settings</Button>

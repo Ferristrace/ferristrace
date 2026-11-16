@@ -252,28 +252,29 @@ function DashboardBody() {
 
   return (
     <EditorEnvProvider value={env}>
-      <div className="flex flex-col gap-3" inert={saving || undefined}>
+      <div className="flex flex-col gap-4" inert={saving || undefined}>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <Link to="/dashboards" aria-label="All dashboards" className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"><ArrowLeft className="size-4" aria-hidden /></Link>
           <h1 className="m-0 min-w-0 truncate text-title">{name || 'Untitled dashboard'}</h1>
-          {tags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}
+          {editing ? <Badge variant="neutral" className="h-5 rounded-full px-2">Editing</Badge> : null}
+          {tags.map((tag) => <Badge key={tag} variant="outline" mono>{tag}</Badge>)}
           <span className="flex-1" />
           {zoom ? (
-            <Button size="sm" onClick={() => patch({ from: undefined, to: undefined })}>
+            <Button onClick={() => patch({ from: undefined, to: undefined })}>
               <X aria-hidden />Reset zoom
             </Button>
           ) : null}
-          <span className="font-mono text-caption text-muted-foreground" aria-label="Time range">
+          <span className="font-mono text-caption text-muted-foreground max-md:w-full" aria-label="Time range">
             {zoom ? `${stamp(zoom.from)} to ${stamp(zoom.to)}` : `Last ${windowKey ? windowOf(windowKey).label : formatDuration(doc.duration)}`}
           </span>
-          <NativeSelect aria-label="Auto-refresh" value={every} onChange={(event) => setEvery(event.target.value)} className="h-7 w-[112px] text-[12.5px]">
+          <NativeSelect aria-label="Auto-refresh" value={every} onChange={(event) => setEvery(event.target.value)} className="w-[128px]">
             {REFRESH.map((option) => <option key={option.value} value={option.value}>{option.value === '0' ? 'No refresh' : `Every ${option.label}`}</option>)}
           </NativeSelect>
-          <Button size="icon-sm" variant="outline" aria-label="Refresh the panels" title="Refresh the panels" onClick={refresh}><RefreshCw aria-hidden /></Button>
+          <Button size="icon" variant="outline" aria-label="Refresh the panels" title="Refresh the panels" onClick={refresh}><RefreshCw aria-hidden /></Button>
           {!editing && id ? (
             <>
-              <Button size="sm" onClick={() => void exportDashboard(id, name).catch((error) => toast.error(because(error, 'The dashboard could not be exported')))}><Download aria-hidden />Export</Button>
-              {!denied ? <Button size="sm" variant="primary" onClick={startEditing}><Pencil aria-hidden />Edit</Button> : null}
+              <Button onClick={() => void exportDashboard(id, name).catch((error) => toast.error(because(error, 'The dashboard could not be exported')))}><Download aria-hidden />Export</Button>
+              {!denied ? <Button variant="primary" onClick={startEditing}><Pencil aria-hidden />Edit</Button> : null}
             </>
           ) : null}
         </div>

@@ -114,7 +114,7 @@ function QueryCard({ panel, query, onChange, onRemove }: { panel: PanelDoc; quer
   }
 
   return (
-    <section aria-label={`Query ${query.name}`} className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+    <section aria-label={`Query ${query.name}`} className="flex flex-col gap-4 rounded-md border bg-card p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="m-0 text-sub">Query</h3>
         <Input mono aria-label="Query name" value={query.name} onChange={(event) => set({ name: event.target.value })} className="w-[90px]" />

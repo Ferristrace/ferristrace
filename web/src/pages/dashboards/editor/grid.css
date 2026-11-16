@@ -1,7 +1,7 @@
 .ft-grid .react-grid-item.react-grid-placeholder {
   background: var(--accent-subtle);
   border: 1px dashed var(--ring);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   opacity: 1;
 }
 
@@ -20,7 +20,7 @@
 .ft-grid .react-grid-item.react-draggable-dragging {
   z-index: 20;
   box-shadow: var(--elevation-lg);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 @media (prefers-reduced-motion: reduce) {

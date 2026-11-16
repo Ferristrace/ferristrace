@@ -47,9 +47,9 @@ function Picker({ variable, choice, rangeMs, onChange }: { variable: VariableDoc
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button size="sm" aria-label={`${label}: ${summary}`} className="max-w-[260px] font-normal">
-          <span className="text-muted-foreground">{label}</span>
-          <span className="truncate font-mono font-semibold">{summary}</span>
+        <Button aria-label={`${label}: ${summary}`} className="max-w-[260px] bg-card font-normal">
+          <span className="text-muted-foreground">{label}:</span>
+          <span className="truncate">{summary}</span>
           <ChevronDown className="text-muted-foreground" aria-hidden />
         </Button>
       </PopoverTrigger>
