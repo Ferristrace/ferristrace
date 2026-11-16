@@ -18,6 +18,10 @@ import { mayChange, mayHandOut, theLastOwner, useGrantRole, useInvite, useMember
 import { initialsOf, nameOf } from '@/data/profile'
 import { stamp } from '@/lib/format'
 import { pagesOf } from '@/lib/paging'
+import { sorted } from '@/lib/sorting'
+import { FiltersBar } from '../FiltersBar'
+import { useSortState } from '../useSortState'
+import { SortHead } from '../SortHead'
 import { H, saved } from './parts'
 
 export function Members() {
@@ -34,11 +38,16 @@ export function Members() {
   const [roleFilter, setRoleFilter] = useState('')
   const [page, setPage] = useState(1)
   const [size, setSize] = useState(10)
+  const { sorting, dir, on } = useSortState<'member' | 'email' | 'role' | 'joined'>()
   const mine = active?.role
   const roll = members ?? []
   const administered = roll.filter((m) => m.role !== 'member').length
   const needle = query.trim().toLowerCase()
-  const matching = roll.filter((m) => (roleFilter === '' || m.role === roleFilter) && (needle === '' || `${nameOf(m)} ${m.email}`.toLowerCase().includes(needle)))
+  const matching = sorted(
+    roll.filter((m) => (roleFilter === '' || m.role === roleFilter) && (needle === '' || `${nameOf(m)} ${m.email}`.toLowerCase().includes(needle))),
+    sorting,
+    (m, key) => (key === 'member' ? nameOf(m) : key === 'email' ? m.email : key === 'role' ? m.role : m.joined_at_ms),
+  )
   const current = Math.min(page, pagesOf(matching.length, size))
   const visible = matching.slice((current - 1) * size, current * size)
   const roles = [...new Set(roll.map((m) => m.role))]
@@ -65,23 +74,24 @@ export function Members() {
       <H title="Members" sub={members ? `${roll.length} ${roll.length === 1 ? 'member' : 'members'} · ${administered} can administer it` : 'Who belongs to the organisation.'}>
         {mine === 'owner' || mine === 'admin' ? <Button variant="primary" onClick={() => setInvite(true)}><Plus />Invite member</Button> : null}
       </H>
-      <div className="flex flex-wrap items-center gap-2">
+      <FiltersBar active={(query.trim() ? 1 : 0) + (roleFilter ? 1 : 0)}>
         <Input aria-label="Search members" placeholder="Search by name or email" value={query} onChange={(e) => { setQuery(e.target.value); setPage(1) }} className="w-[320px] max-md:w-full" />
         <NativeSelect aria-label="Filter by role" value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1) }} className="w-[160px] max-md:flex-1">
           <option value="">All roles</option>
           {roles.map((role) => <option key={role} value={role}>{role}</option>)}
         </NativeSelect>
-      </div>
+      </FiltersBar>
       <Card className="overflow-x-auto">
         <Table aria-label="Members">
-          <thead><tr><Th>Member</Th><Th className="w-[160px]">Role</Th><Th className="w-[190px]">Joined</Th><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
+          <thead><tr><SortHead label="Member" dir={dir('member')} onSort={on('member')} /><SortHead label="Email" dir={dir('email')} onSort={on('email')} className="w-[260px]" /><SortHead label="Role" dir={dir('role')} onSort={on('role')} className="w-[160px]" /><SortHead label="Joined" dir={dir('joined')} onSort={on('joined', 'desc')} className="w-[190px]" /><Th className="w-[110px]"><span className="sr-only">Actions</span></Th></tr></thead>
           <tbody>{visible.map((m) => {
             const you = m.account === me?.account
             const last = theLastOwner(roll, m)
             const editable = mayChange(mine, m.role) && !last
             return (
               <Tr key={m.account}>
-                <Td className="h-11"><span className="inline-flex items-center gap-2.5"><Avatar initials={initialsOf(nameOf(m))} src={m.photo} /><span className="flex min-w-0 flex-col leading-4"><span className="truncate font-semibold">{nameOf(m)}</span>{m.name ? <span className="truncate text-caption text-muted-foreground">{m.email}</span> : null}</span>{you ? <Badge variant="outline">you</Badge> : null}</span></Td>
+                <Td className="h-11"><span className="inline-flex items-center gap-2.5"><Avatar initials={initialsOf(nameOf(m))} src={m.photo} /><span className="flex min-w-0 flex-col leading-4"><span className="truncate font-semibold">{nameOf(m)}</span></span>{you ? <Badge variant="outline">you</Badge> : null}</span></Td>
+                <Td className="font-mono text-control text-muted-foreground">{m.email}</Td>
                 <Td>{editable ? (
                   <NativeSelect aria-label={`Role for ${m.email}`} className="h-7 w-[130px]" value={m.role} disabled={grant.isPending} onChange={(e) => change(m, e.target.value as Role)}>
                     {mayHandOut(mine).map((role) => <option key={role} value={role}>{role}</option>)}

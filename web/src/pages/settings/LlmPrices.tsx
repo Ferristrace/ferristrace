@@ -21,7 +21,10 @@ import {
   type ModelPrice,
 } from '@/data/llm'
 import { num, stamp } from '@/lib/format'
+import { sorted } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
+import { useSortState } from '../useSortState'
+import { SortHead } from '../SortHead'
 import { H } from './parts'
 
 type Form = { provider: string; model: string; input: string; output: string; cached: string; from: string }
@@ -39,6 +42,12 @@ export function LlmPrices() {
   const [form, setForm] = useState<Form | null>(null)
   const [removing, setRemoving] = useState<ModelPrice | null>(null)
   const mayChange = active?.role === 'owner' || active?.role === 'admin'
+  const priced = useSortState<'provider' | 'model' | 'input' | 'output' | 'cached' | 'from'>()
+  const missing = useSortState<'provider' | 'model' | 'calls' | 'seen'>()
+  const priceRows = sorted(prices ?? [], priced.sorting, (p, key) =>
+    key === 'provider' ? p.provider : key === 'model' ? p.model : key === 'input' ? p.input : key === 'output' ? p.output : key === 'cached' ? (p.cachedInput ?? p.input) : p.effectiveFromMs,
+  )
+  const unpricedRows = sorted(unpriced, missing.sorting, (m, key) => (key === 'provider' ? m.provider : key === 'model' ? m.model : key === 'calls' ? m.calls : m.lastSeenMs))
 
   const set = (part: Partial<Form>) => setForm((now) => (now ? { ...now, ...part } : now))
   const problems = form
@@ -59,10 +68,10 @@ export function LlmPrices() {
         <div className="overflow-x-auto">
         {prices ? (
           <Table aria-label="Model prices">
-            <thead><tr><Th className="w-[110px]">Provider</Th><Th>Model</Th><Th numeric className="w-[110px]">Input / M</Th><Th numeric className="w-[110px]">Output / M</Th><Th numeric className="w-[120px]">Cached / M</Th><Th className="w-[170px]">Effective from</Th>{mayChange ? <Th className="w-[90px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
+            <thead><tr><SortHead label="Provider" dir={priced.dir('provider')} onSort={priced.on('provider')} className="w-[110px]" /><SortHead label="Model" dir={priced.dir('model')} onSort={priced.on('model')} /><SortHead numeric label="Input / M" dir={priced.dir('input')} onSort={priced.on('input', 'desc')} className="w-[110px]" /><SortHead numeric label="Output / M" dir={priced.dir('output')} onSort={priced.on('output', 'desc')} className="w-[110px]" /><SortHead numeric label="Cached / M" dir={priced.dir('cached')} onSort={priced.on('cached', 'desc')} className="w-[120px]" /><SortHead label="Effective from" dir={priced.dir('from')} onSort={priced.on('from', 'desc')} className="w-[170px]" />{mayChange ? <Th className="w-[90px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
             <tbody>
               {prices.length === 0 ? <Tr><Td colSpan={mayChange ? 7 : 6} className="text-muted-foreground">No price yet. Add the models you use; a model ending in * prices every model with that prefix.</Td></Tr> : null}
-              {prices.map((p) => (
+              {priceRows.map((p) => (
                 <Tr key={p.id}>
                   <Td className="font-mono">{p.provider}</Td>
                   <Td className="font-mono font-semibold">{p.model}</Td>
@@ -82,10 +91,10 @@ export function LlmPrices() {
         <CardHeader className={cn(unpriced.length > 0 && 'border-warning-border bg-warning-subtle')}><CardTitle>Models without a price</CardTitle><CardKind>Last 30 days</CardKind><span className="text-caption text-muted-foreground max-md:hidden">Their cost is not counted until you price them.</span></CardHeader>
         <div className="overflow-x-auto">
         <Table aria-label="Models without a price">
-          <thead><tr><Th className="w-[110px]">Provider</Th><Th>Model</Th><Th numeric className="w-[100px]">Calls</Th><Th className="w-[170px]">Last seen</Th>{mayChange ? <Th className="w-[140px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
+          <thead><tr><SortHead label="Provider" dir={missing.dir('provider')} onSort={missing.on('provider')} className="w-[110px]" /><SortHead label="Model" dir={missing.dir('model')} onSort={missing.on('model')} /><SortHead numeric label="Calls" dir={missing.dir('calls')} onSort={missing.on('calls', 'desc')} className="w-[100px]" /><SortHead label="Last seen" dir={missing.dir('seen')} onSort={missing.on('seen', 'desc')} className="w-[170px]" />{mayChange ? <Th className="w-[140px]"><span className="sr-only">Actions</span></Th> : null}</tr></thead>
           <tbody>
             {unpriced.length === 0 ? <Tr><Td colSpan={mayChange ? 5 : 4} className="text-muted-foreground">Every model seen on a call has a price.</Td></Tr> : null}
-            {unpriced.map((m) => (
+            {unpricedRows.map((m) => (
               <Tr key={`${m.provider}/${m.model}`}>
                 <Td className="font-mono">{m.provider || '—'}</Td>
                 <Td className="font-mono font-semibold">{m.model}</Td>
