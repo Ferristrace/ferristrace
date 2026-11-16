@@ -34,7 +34,7 @@ export function Table({ className, ...p }: ComponentProps<'table'>) {
 export const Th = ({ className, numeric, ...p }: ComponentProps<'th'> & { numeric?: boolean }) => (
   <th className={cn('sticky top-0 h-9 whitespace-nowrap border-b bg-panel-head px-3 text-left text-caption font-semibold text-foreground', numeric && 'text-right', className)} {...p} />
 )
-export function SortTh({ label, dir, onSort, numeric, className, ...p }: Omit<ComponentProps<'th'>, 'children' | 'onClick'> & { label: ReactNode; dir: 'asc' | 'desc' | null; onSort: () => void; numeric?: boolean }) {
+export function SortTh({ label, dir, onSort, numeric, className, ...p }: Omit<ComponentProps<'th'>, 'children' | 'onClick' | 'dir'> & { label: ReactNode; dir: 'asc' | 'desc' | null; onSort: () => void; numeric?: boolean }) {
   const Icon = dir === 'asc' ? ArrowUp : dir === 'desc' ? ArrowDown : ArrowUpDown
   return (
     <Th numeric={numeric} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'} className={className} {...p}>
