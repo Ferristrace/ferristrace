@@ -1,4 +1,5 @@
-import type { ComponentProps } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { useAuthorisedUrl } from '@/auth/blob'
 import { cn } from '@/lib/utils'
 
@@ -33,6 +34,16 @@ export function Table({ className, ...p }: ComponentProps<'table'>) {
 export const Th = ({ className, numeric, ...p }: ComponentProps<'th'> & { numeric?: boolean }) => (
   <th className={cn('sticky top-0 h-9 whitespace-nowrap border-b bg-panel-head px-3 text-left text-caption font-semibold text-foreground', numeric && 'text-right', className)} {...p} />
 )
+export function SortTh({ label, dir, onSort, numeric, className, ...p }: Omit<ComponentProps<'th'>, 'children' | 'onClick'> & { label: ReactNode; dir: 'asc' | 'desc' | null; onSort: () => void; numeric?: boolean }) {
+  const Icon = dir === 'asc' ? ArrowUp : dir === 'desc' ? ArrowDown : ArrowUpDown
+  return (
+    <Th numeric={numeric} aria-sort={dir === 'asc' ? 'ascending' : dir === 'desc' ? 'descending' : 'none'} className={className} {...p}>
+      <button type="button" onClick={onSort} className={cn('group inline-flex cursor-pointer items-center gap-1 rounded-sm bg-transparent p-0 font-semibold hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring', numeric && 'flex-row-reverse', dir ? 'text-foreground' : 'text-muted-foreground')}>
+        {label}<Icon className={cn('size-3', !dir && 'opacity-0 group-hover:opacity-60 group-focus-visible:opacity-60')} aria-hidden />
+      </button>
+    </Th>
+  )
+}
 export const Td = ({ className, numeric, ...p }: ComponentProps<'td'> & { numeric?: boolean }) => (
   <td className={cn('h-10 whitespace-nowrap border-b border-border px-3 align-middle', numeric && 'text-right tabular font-mono', className)} {...p} />
 )
