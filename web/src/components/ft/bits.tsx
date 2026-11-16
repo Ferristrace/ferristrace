@@ -67,11 +67,11 @@ export function Kpi({ label, value, sub, tone, to }: { label: string; value: str
   const body = (
     <>
       <span className="text-caption text-muted-foreground">{label}</span>
-      <span className={cn('font-mono text-[22px] font-semibold leading-[30px]', t)}>{value}</span>
-      {sub ? <span className={cn('text-caption', tone === 'warn' ? 'text-warning-text' : 'text-muted-foreground')}>{sub}</span> : null}
+      <span className={cn('text-[28px] font-semibold leading-9 tabular', t)}>{value}</span>
+      {sub ? <span className="text-caption text-faint-foreground">{sub}</span> : null}
     </>
   )
-  const cls = 'flex flex-col gap-0.5 rounded-lg border bg-card px-3.5 py-3'
+  const cls = cn('flex min-w-0 flex-col gap-0.5 rounded-md border bg-card px-4 py-3.5', tone === 'err' && 'border-destructive-border bg-destructive-subtle', tone === 'warn' && 'border-warning-border bg-warning-subtle')
   return to ? <Link to={to} className={cn(cls, 'text-inherit no-underline hover:bg-row-hover')}>{body}</Link> : <div className={cls}>{body}</div>
 }
 
@@ -91,7 +91,7 @@ export function PageHeader({ title, meta, children, tabs = true }: { title: Reac
 
 export function EmptyState({ icon, title, children, code, actions }: { icon?: React.ReactNode; title: string; children: React.ReactNode; code?: string; actions?: React.ReactNode }) {
   return (
-    <div className="flex max-w-[680px] flex-col gap-3 rounded-lg border bg-card p-6">
+    <div className="flex max-w-[680px] flex-col gap-3 rounded-md border bg-card p-6">
       {icon ? <span className="text-muted-foreground [&_svg]:size-5">{icon}</span> : null}
       <h2 className="text-heading">{title}</h2>
       <p className="m-0 text-muted-foreground">{children}</p>
