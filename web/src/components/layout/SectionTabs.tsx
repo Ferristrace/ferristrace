@@ -1,3 +1,4 @@
+import { useRouter } from '@tanstack/react-router'
 import { currentTab, sectionOf } from './nav'
 import { useNavCounts } from './useNavCounts'
 import { NavLink, useLocation } from '@/lib/router'
@@ -6,6 +7,11 @@ import { cn } from '@/lib/utils'
 const countLabel = (to: string, count: number) => `${count} ${to === '/issues' ? 'new issues' : to === '/alerts' ? 'alerts firing' : 'open incidents'}`
 
 export function SectionTabs() {
+  const router = useRouter({ warn: false })
+  return router ? <Tabs /> : null
+}
+
+function Tabs() {
   const { pathname } = useLocation()
   const counts = useNavCounts()
   const section = sectionOf(pathname)
