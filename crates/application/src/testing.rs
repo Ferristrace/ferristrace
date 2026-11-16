@@ -224,6 +224,7 @@ impl UsageMeter for Inert {
     async fn record_ingest(
         &self,
         _tenant: TenantId,
+        _project: Option<ProjectId>,
         _decompressed: DecompressedBytes,
         _carried: Carried,
     ) {

@@ -119,6 +119,11 @@ where
         .await
         .context("filling the split of the rolled hours")?;
     eprintln!("{filled} rolled hours now carry what the span store holds, by signal.");
+    let projects = app
+        .backfill_usage_projects(&volumes)
+        .await
+        .context("filling the usage of each project")?;
+    eprintln!("{projects} project hours now carry what the span store holds, by project.");
     Ok(())
 }
 

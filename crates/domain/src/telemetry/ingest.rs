@@ -48,7 +48,7 @@ where
         carried: Carried,
     ) -> TenantId {
         self.meter
-            .record_ingest(scope.tenant, decompressed, carried)
+            .record_ingest(scope.tenant, scope.project, decompressed, carried)
             .await;
         scope.tenant
     }

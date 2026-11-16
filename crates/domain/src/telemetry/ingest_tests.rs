@@ -11,6 +11,7 @@ use super::value_objects::{
     Admission, Carried, DecompressedBytes, IngestKey, LogPayload, Payload, RetentionDays, Scope,
     Severity, SpanId, SpanKind, SpanStatus, TenantId, TraceId,
 };
+use crate::catalogue::ProjectId;
 use crate::metrics::{Metric, MetricData, MetricPayload, MetricPoint, MetricSink};
 use crate::testing;
 
@@ -32,6 +33,15 @@ impl TenantDirectory for FakeDirectory {
             .map(Scope::of)
             .ok_or(UnknownKey);
         async move { found }
+    }
+}
+
+#[derive(Debug)]
+struct ProjectDirectory(Scope);
+
+impl TenantDirectory for ProjectDirectory {
+    async fn resolve(&self, _key: &IngestKey) -> Result<Scope, UnknownKey> {
+        Ok(self.0)
     }
 }
 
@@ -64,8 +74,10 @@ impl SpanSink for UnavailableSink {
     }
 }
 
+type Reading = (TenantId, Option<ProjectId>, DecompressedBytes, Carried);
+
 #[derive(Debug, Default)]
-struct RecordingMeter(Mutex<Vec<(TenantId, DecompressedBytes, Carried)>>);
+struct RecordingMeter(Mutex<Vec<Reading>>);
 
 impl RecordingMeter {
     fn readings(&self) -> Vec<(TenantId, DecompressedBytes)> {
@@ -73,7 +85,7 @@ impl RecordingMeter {
             .lock()
             .expect("meter lock")
             .iter()
-            .map(|(tenant, decompressed, _)| (*tenant, *decompressed))
+            .map(|(tenant, _, decompressed, _)| (*tenant, *decompressed))
             .collect()
     }
 
@@ -82,7 +94,16 @@ impl RecordingMeter {
             .lock()
             .expect("meter lock")
             .iter()
-            .map(|(_, _, carried)| *carried)
+            .map(|(_, _, _, carried)| *carried)
+            .collect()
+    }
+
+    fn projects(&self) -> Vec<Option<ProjectId>> {
+        self.0
+            .lock()
+            .expect("meter lock")
+            .iter()
+            .map(|(_, project, _, _)| *project)
             .collect()
     }
 }
@@ -91,13 +112,14 @@ impl UsageMeter for RecordingMeter {
     fn record_ingest(
         &self,
         tenant: TenantId,
+        project: Option<ProjectId>,
         decompressed: DecompressedBytes,
         carried: Carried,
     ) -> impl Future<Output = ()> + Send {
         self.0
             .lock()
             .expect("meter lock")
-            .push((tenant, decompressed, carried));
+            .push((tenant, project, decompressed, carried));
         async {}
     }
 }
@@ -745,4 +767,43 @@ async fn a_capped_payload_carries_nothing() {
 
     assert!(outcome.is_err());
     assert!(meter.carried().is_empty());
+}
+
+#[tokio::test]
+async fn the_project_of_the_key_is_metered_with_the_payload() {
+    let tenant = TenantId::new(Uuid::from_u128(54));
+    let project = ProjectId::new(Uuid::from_u128(55));
+    let meter = RecordingMeter::default();
+    let ingest = Ingest::new(
+        ProjectDirectory(Scope::of(tenant).in_project(Some(project))),
+        Unmetered,
+        RecordingLogs::default(),
+        &meter,
+    );
+
+    ingest
+        .accept_logs(&IngestKey::from_plaintext("live"), some_logs(64))
+        .await
+        .expect("the key resolves");
+
+    assert_eq!(meter.projects(), vec![Some(project)]);
+}
+
+#[tokio::test]
+async fn a_key_without_a_project_meters_no_project() {
+    let tenant = TenantId::new(Uuid::from_u128(56));
+    let meter = RecordingMeter::default();
+    let ingest = Ingest::new(
+        FakeDirectory::holding("live", tenant),
+        Unmetered,
+        RecordingSink::default(),
+        &meter,
+    );
+
+    ingest
+        .accept(&IngestKey::from_plaintext("live"), a_payload(8))
+        .await
+        .expect("the key resolves");
+
+    assert_eq!(meter.projects(), vec![None]);
 }

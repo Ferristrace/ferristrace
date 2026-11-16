@@ -22,7 +22,7 @@ use ferristrace_clickhouse::{
     ClickhouseIssues, ClickhouseLogReader, ClickhouseMetricReader, ClickhousePanelReader,
     ClickhouseReader, SpanStoreSettings, open_span_store,
 };
-use ferristrace_domain::telemetry::{Allowance, StaticQuota};
+use ferristrace_domain::telemetry::{Allowance, PriceList, StaticQuota};
 use ferristrace_domain::{
     ANNOUNCE_TICK_SECS, AckKey, Clock, DEPLOY_WATCH_TICK_SECS, Drained, Followed, Heralded,
     LinkKey, PAGE_TICK_SECS, Paged, ProvisionPolicy, TenantId, Tick,
@@ -205,7 +205,8 @@ fn control_plane(
         Ferristrace::<Production>::new(repos, adapters)
             .with_ack_key(ack)
             .with_status_key(links)
-            .with_agent_tokens(agents),
+            .with_agent_tokens(agents)
+            .with_prices(config.billing.map(PriceList::from)),
     );
     Ok(AppState::new(app)
         .with_agent_policy(

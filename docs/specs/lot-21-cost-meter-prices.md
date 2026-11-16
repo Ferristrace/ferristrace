@@ -16,6 +16,7 @@ Context
   the quota. Decided with the maintainer on 2026-11-17: prices and
   allowances per signal in the server config, a split per project, no
   budget.
+  Decision: [ADR 0038](../adr/0038-prices-live-in-the-server-config-and-projects-in-the-hourly-hash.md).
 
 Out of scope
   - A budget per organisation and the "budget pace" line.

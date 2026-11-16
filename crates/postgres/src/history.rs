@@ -1,8 +1,13 @@
 use ferristrace_application::repository;
+use std::collections::BTreeMap;
+
 use ferristrace_domain::telemetry::{
-    BillingMonth, HourSplit, HourTotal, MonthTotal, Split, UsageLedger,
+    BillingMonth, HourSplit, HourTotal, HourVolume, MonthTotal, ProjectHourSplit, ProjectHours,
+    ProjectSplit, Split, UsageLedger,
 };
-use ferristrace_domain::{Consumed, DecompressedBytes, StoreError, TenantId, UsageHistory, Window};
+use ferristrace_domain::{
+    Consumed, DecompressedBytes, ProjectId, StoreError, TenantId, UsageHistory, Window,
+};
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -65,25 +70,58 @@ impl UsageHistory for PostgresUsage {
             .and_then(|row| row.get::<Option<i32>, _>("ingest_gb"))
             .and_then(gigabytes_to_bytes))
     }
+
+    async fn project_hours(
+        &self,
+        org: TenantId,
+        window: Window,
+    ) -> Result<Vec<ProjectHours>, StoreError> {
+        let mut tx = self.tx.lock().await;
+        let rows = sqlx::query(
+            "SELECT u.project_id AS project_id, p.name AS name, u.hour_start AS hour_start, \
+             u.spans_bytes AS spans_bytes, u.logs_bytes AS logs_bytes, \
+             u.metrics_points AS metrics_points \
+             FROM usage_hourly_project u \
+             LEFT JOIN projects p ON p.id = u.project_id AND p.org_id = u.org_id \
+             WHERE u.org_id = $1 AND u.hour_start >= $2 AND u.hour_start < $3 \
+             ORDER BY u.project_id, u.hour_start",
+        )
+        .bind(org.as_uuid())
+        .bind(as_nanos(window.from_unix_nanos()))
+        .bind(as_nanos(window.to_unix_nanos()))
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(|error| unreachable(&error, "read the usage of each project"))?;
+
+        let mut projects: BTreeMap<Uuid, ProjectHours> = BTreeMap::new();
+        for row in rows {
+            let id: Uuid = row.get("project_id");
+            let project = projects.entry(id).or_insert_with(|| ProjectHours {
+                project: ProjectId::new(id),
+                name: row.get::<Option<String>, _>("name").map(Into::into),
+                hours: Vec::new(),
+            });
+            project.hours.push(HourVolume {
+                started_at_unix_nanos: unsigned(row.get("hour_start")),
+                split: Split {
+                    spans_bytes: unsigned(row.get("spans_bytes")),
+                    logs_bytes: unsigned(row.get("logs_bytes")),
+                    metrics_points: unsigned(row.get("metrics_points")),
+                },
+            });
+        }
+        Ok(projects.into_values().collect())
+    }
 }
 
 impl UsageLedger for PostgresUsage {
     async fn record_hours(&self, hours: &[HourTotal]) -> Result<usize, StoreError> {
-        let rows: Vec<(Uuid, i64, i64, Option<Split>)> = hours
-            .iter()
-            .map(|total| {
-                (
-                    total.tenant.as_uuid(),
-                    total.hour.start_nanos(),
-                    i64::try_from(total.ingested.get()).unwrap_or(i64::MAX),
-                    total.split,
-                )
-            })
-            .collect();
-
         let mut tx = self.tx.lock().await;
         let mut written = 0;
-        for (org, hour_start, ingested, split) in rows {
+        for total in hours {
+            let org = total.tenant.as_uuid();
+            let hour_start = total.hour.start_nanos();
+            let split = total.split;
             let inserted = sqlx::query(
                 "INSERT INTO usage_hourly \
                  (org_id, hour_start, ingested_bytes, spans_bytes, logs_bytes, metrics_points) \
@@ -92,15 +130,19 @@ impl UsageLedger for PostgresUsage {
             )
             .bind(org)
             .bind(hour_start)
-            .bind(ingested)
+            .bind(as_nanos(total.ingested.get()))
             .bind(split.map(|found| as_nanos(found.spans_bytes)))
             .bind(split.map(|found| as_nanos(found.logs_bytes)))
             .bind(split.map(|found| as_nanos(found.metrics_points)))
             .execute(&mut **tx)
             .await
             .map_err(|error| unreachable(&error, "roll an hour up"))?;
-            if inserted.rows_affected() > 0 {
-                written += 1;
+            if inserted.rows_affected() == 0 {
+                continue;
+            }
+            written += 1;
+            for project in &total.projects {
+                record_project(&mut tx, org, hour_start, project).await?;
             }
         }
         Ok(written)
@@ -125,6 +167,38 @@ impl UsageLedger for PostgresUsage {
             filled += usize::try_from(updated.rows_affected()).unwrap_or_default();
         }
         Ok(filled)
+    }
+
+    async fn fill_project_splits(&self, splits: &[ProjectHourSplit]) -> Result<usize, StoreError> {
+        let mut columns = ProjectColumns::with_capacity(splits.len());
+        for found in splits {
+            columns.push(found);
+        }
+        let mut tx = self.tx.lock().await;
+        let filled = sqlx::query(
+            "INSERT INTO usage_hourly_project \
+             (org_id, project_id, hour_start, spans_bytes, logs_bytes, metrics_points) \
+             SELECT f.org_id, f.project_id, f.hour_start, f.spans_bytes, f.logs_bytes, \
+             f.metrics_points \
+             FROM UNNEST($1::uuid[], $2::uuid[], $3::bigint[], $4::bigint[], $5::bigint[], \
+             $6::bigint[]) AS f(org_id, project_id, hour_start, spans_bytes, logs_bytes, \
+             metrics_points) \
+             WHERE EXISTS (SELECT 1 FROM usage_hourly h \
+             WHERE h.org_id = f.org_id AND h.hour_start = f.hour_start) \
+             AND NOT EXISTS (SELECT 1 FROM usage_hourly_project p \
+             WHERE p.org_id = f.org_id AND p.hour_start = f.hour_start) \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(columns.orgs)
+        .bind(columns.projects)
+        .bind(columns.hours)
+        .bind(columns.spans)
+        .bind(columns.logs)
+        .bind(columns.points)
+        .execute(&mut **tx)
+        .await
+        .map_err(|error| unreachable(&error, "fill the usage of each project"))?;
+        Ok(usize::try_from(filled.rows_affected()).unwrap_or_default())
     }
 
     async fn billed_since(&self, month: BillingMonth) -> Result<Vec<MonthTotal>, StoreError> {
@@ -160,6 +234,65 @@ fn split_of(row: &sqlx::postgres::PgRow) -> Option<Split> {
         logs_bytes: count("logs_bytes")?,
         metrics_points: count("metrics_points")?,
     })
+}
+
+async fn record_project(
+    tx: &mut sqlx::Transaction<'static, sqlx::Postgres>,
+    org: Uuid,
+    hour_start: i64,
+    project: &ProjectSplit,
+) -> Result<(), StoreError> {
+    sqlx::query(
+        "INSERT INTO usage_hourly_project \
+         (org_id, project_id, hour_start, spans_bytes, logs_bytes, metrics_points) \
+         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
+    )
+    .bind(org)
+    .bind(project.project.as_uuid())
+    .bind(hour_start)
+    .bind(as_nanos(project.split.spans_bytes))
+    .bind(as_nanos(project.split.logs_bytes))
+    .bind(as_nanos(project.split.metrics_points))
+    .execute(&mut **tx)
+    .await
+    .map_err(|error| unreachable(&error, "roll a project's hour up"))?;
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+struct ProjectColumns {
+    orgs: Vec<Uuid>,
+    projects: Vec<Uuid>,
+    hours: Vec<i64>,
+    spans: Vec<i64>,
+    logs: Vec<i64>,
+    points: Vec<i64>,
+}
+
+impl ProjectColumns {
+    fn with_capacity(rows: usize) -> Self {
+        Self {
+            orgs: Vec::with_capacity(rows),
+            projects: Vec::with_capacity(rows),
+            hours: Vec::with_capacity(rows),
+            spans: Vec::with_capacity(rows),
+            logs: Vec::with_capacity(rows),
+            points: Vec::with_capacity(rows),
+        }
+    }
+
+    fn push(&mut self, found: &ProjectHourSplit) {
+        self.orgs.push(found.tenant.as_uuid());
+        self.projects.push(found.project.as_uuid());
+        self.hours.push(found.hour.start_nanos());
+        self.spans.push(as_nanos(found.split.spans_bytes));
+        self.logs.push(as_nanos(found.split.logs_bytes));
+        self.points.push(as_nanos(found.split.metrics_points));
+    }
+}
+
+fn unsigned(signed: i64) -> u64 {
+    u64::try_from(signed).unwrap_or_default()
 }
 
 fn as_nanos(unsigned: u64) -> i64 {

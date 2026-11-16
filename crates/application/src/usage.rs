@@ -1,8 +1,8 @@
 use core::future::Future;
 
 use ferristrace_domain::telemetry::{
-    BillingHour, BillingMonth, HourSplit, HourTotal, HourlyCounters, MonthTotal, StoredVolumes,
-    UsageLedger, UsageSyncError,
+    BillingHour, BillingMonth, HourSplit, HourTotal, HourlyCounters, MonthTotal, ProjectHourSplit,
+    StoredVolumes, UsageLedger, UsageSyncError,
 };
 use ferristrace_domain::{
     Clock, Consumption, ExploreError, Metering, SessionToken, StoreError, TenantId, Whoami, Window,
@@ -27,7 +27,8 @@ where
             &self.meter,
             usage_history,
         )
-        .consumption(token, org, window)
+        .priced(self.prices)
+        .consumption(token, org, window, self.clock.now())
         .await
     }
 }
@@ -44,9 +45,25 @@ where
         self.fill_splits(&found).await
     }
 
+    pub async fn backfill_usage_projects<V: StoredVolumes + Sync>(
+        &self,
+        volumes: &V,
+    ) -> Result<usize, UsageSyncError> {
+        let found = volumes.hourly_by_project().await?;
+        self.fill_project_splits(&found).await
+    }
+
     #[transactional(usage_history, unavailable = UsageSyncError::Store(StoreError::Unreachable))]
     async fn fill_splits(&self, splits: &[HourSplit]) -> Result<usize, UsageSyncError> {
         Ok(usage_history.fill_splits(splits).await?)
+    }
+
+    #[transactional(usage_history, unavailable = UsageSyncError::Store(StoreError::Unreachable))]
+    async fn fill_project_splits(
+        &self,
+        splits: &[ProjectHourSplit],
+    ) -> Result<usize, UsageSyncError> {
+        Ok(usage_history.fill_project_splits(splits).await?)
     }
 }
 
