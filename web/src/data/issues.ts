@@ -64,14 +64,15 @@ function asked(sift: Sift, project: string | undefined): string {
 
 const LIST = 'issues'
 
-export function useIssues(sift: Sift = ANY) {
+export function useIssues(sift: Sift = ANY, polling: { refetchInterval?: number | false } = {}) {
   const found = useOrganisations()
   const { active } = found
   const { project } = useScope()
-  const { data, isPending, isFetching, error } = useQuery({
+  const { data, isPending, isFetching, error, dataUpdatedAt } = useQuery({
     queryKey: [LIST, active?.org, project, sift],
     enabled: Boolean(active),
     staleTime: FRESH_MS,
+    refetchInterval: polling.refetchInterval ?? false,
     queryFn: async () =>
       (
         await json<{ issues: Issue[] }>(
@@ -82,6 +83,8 @@ export function useIssues(sift: Sift = ANY) {
   return {
     issues: data ?? [],
     loading: isFetching,
+    pending: isPending,
+    updatedAt: dataUpdatedAt,
     nothing: nothingYet(found, isPending, error, 'issues'),
     failed: error,
   }

@@ -69,7 +69,7 @@ export function useCluster(cluster: string, namespace: string) {
       return json<ClusterView>(await get(`/api/orgs/${active?.org}/cluster?${params.toString()}`))
     },
   })
-  return { view: found.data ?? NOTHING, pending: found.isPending, loading: found.isFetching, failed: found.error }
+  return { view: found.data ?? NOTHING, updatedAt: found.dataUpdatedAt, pending: found.isPending, loading: found.isFetching, failed: found.error }
 }
 
 export const isReporting = (view: ClusterView) => view.clusters.length > 0 || view.nodes.length > 0 || view.pods.length > 0

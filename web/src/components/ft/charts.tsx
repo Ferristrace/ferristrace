@@ -39,16 +39,6 @@ export function LineChart({ title, legend, values, second, threshold, lo = 0, hi
   )
 }
 
-export function Sparkline({ values, warn = false }: { values: number[]; warn?: boolean }) {
-  if (!values.length) return <svg width="100" height="20" aria-hidden><line x1="0" y1="19" x2="100" y2="19" stroke="var(--border)" /></svg>
-  const p = values.map((v, i) => `${((i * 100) / Math.max(1, values.length - 1)).toFixed(1)},${(19 - Math.max(0, Math.min(1, v)) * 18).toFixed(1)}`).join(' ')
-  return (
-    <svg viewBox="0 0 100 20" preserveAspectRatio="none" width="100" height="20" aria-hidden className="block">
-      <polyline points={p} fill="none" stroke={warn ? 'var(--warning-text)' : 'var(--chart-line)'} strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-    </svg>
-  )
-}
-
 const STACK_PALETTE = ['#4f46e5', '#0891b2', '#d97706', '#059669', '#db2777', '#7c3aed', '#65a30d', '#dc2626']
 
 export const stackColour = (index: number) => STACK_PALETTE[index % STACK_PALETTE.length]

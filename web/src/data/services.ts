@@ -17,6 +17,7 @@ export type Service = {
   p95: string
   p99: string
   seen: string
+  lastSeenMs: number
 }
 
 export type Operation = {
@@ -103,6 +104,7 @@ export const serving = (service: Serving): Service => ({
   p95: dur(service.p95_us / 1000),
   p99: dur(service.p99_us / 1000),
   seen: since(service.last_seen_ms),
+  lastSeenMs: service.last_seen_ms,
 })
 
 const edged = (edge: Edged): Edge => ({
@@ -142,8 +144,8 @@ const stepped = (steps: Steps): Stepped => ({
   })),
 })
 
-function spanning(windowMs: number, project: string | undefined, environment: string, placement: Placement): URLSearchParams {
-  const to = Date.now()
+function spanning(windowMs: number, project: string | undefined, environment: string, placement: Placement, shiftMs = 0): URLSearchParams {
+  const to = Date.now() - shiftMs
   const params = new URLSearchParams({ from: String(to - windowMs), to: String(to) })
   if (project) params.set('project', project)
   if (environment.trim()) params.set('environment', environment.trim())
@@ -154,13 +156,16 @@ export function useServices(environment = '', windowMs = WINDOW_MS): Service[] {
   return useServiceTable(environment, windowMs).services
 }
 
-export function useServiceTable(environment = '', windowMs = WINDOW_MS, placement: Placement = NOWHERE) {
+export type Polling = { refetchInterval?: number | false }
+
+export function useServiceTable(environment = '', windowMs = WINDOW_MS, placement: Placement = NOWHERE, polling: Polling = {}) {
   const { active } = useOrganisations()
   const { project } = useScope()
-  const { data, isPending, error } = useQuery({
+  const { data, isPending, error, dataUpdatedAt } = useQuery({
     queryKey: ['services', active?.org, project, environment.trim(), windowMs, placement],
     enabled: Boolean(active),
     staleTime: FRESH_MS,
+    refetchInterval: polling.refetchInterval ?? false,
     queryFn: async () => {
       const params = spanning(windowMs, project, environment, placement)
       const found = await json<{ services: Serving[] }>(
@@ -169,7 +174,7 @@ export function useServiceTable(environment = '', windowMs = WINDOW_MS, placemen
       return found.services.map(serving)
     },
   })
-  return { services: data ?? [], pending: isPending, failed: error }
+  return { services: data ?? [], pending: isPending, failed: error, updatedAt: dataUpdatedAt }
 }
 
 export function useServiceDependencies(environment = '', windowMs = WINDOW_MS, placement: Placement = NOWHERE) {
@@ -208,20 +213,21 @@ export function useOperations(service: string, environment = '', windowMs = WIND
   return { operations: data ?? [], pending: isPending, failed: error }
 }
 
-export function useServiceSeries(service: string | null, environment = '', windowMs = WINDOW_MS, placement: Placement = NOWHERE) {
+export function useServiceSeries(service: string | null, environment = '', windowMs = WINDOW_MS, placement: Placement = NOWHERE, shiftMs = 0, polling: Polling = {}) {
   const { active } = useOrganisations()
   const { project } = useScope()
-  const { data, isPending, error } = useQuery({
-    queryKey: ['services', active?.org, project, 'series', service, environment.trim(), windowMs, placement],
+  const { data, isPending, error, dataUpdatedAt } = useQuery({
+    queryKey: ['services', active?.org, project, 'series', service, environment.trim(), windowMs, placement, shiftMs],
     enabled: Boolean(active),
     staleTime: FRESH_MS,
+    refetchInterval: polling.refetchInterval ?? false,
     queryFn: async () => {
-      const params = spanning(windowMs, project, environment, placement)
+      const params = spanning(windowMs, project, environment, placement, shiftMs)
       const path = service === null ? 'series' : `services/${encodeURIComponent(service)}/series`
       return stepped(await json<Steps>(await get(`/api/orgs/${active?.org}/${path}?${params.toString()}`)))
     },
   })
-  return { series: data ?? null, pending: isPending, failed: error }
+  return { series: data ?? null, pending: isPending, failed: error, updatedAt: dataUpdatedAt }
 }
 
 export function useServiceNames(windowMs: number): { names: string[]; unreachable: unknown } {
@@ -251,9 +257,4 @@ export function charted(series: Stepped | null) {
     errorRate: points.map((point) => (point.requests ? (point.errors / point.requests) * 100 : 0)),
     p95: points.map((point) => point.p95Ms ?? 0),
   }
-}
-
-export const relative = (values: number[]) => {
-  const top = Math.max(0, ...values)
-  return top > 0 ? values.map((value) => value / top) : values.map(() => 0)
 }
