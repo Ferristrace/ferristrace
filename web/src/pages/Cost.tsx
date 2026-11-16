@@ -31,7 +31,7 @@ export function Cost() {
   const view = useMemo(() => (metered ? viewOf({ metered, before, choice, from, to, now }) : null), [metered, before, choice, from, to, now])
   const rows = useMemo(() => (metered ? rowsOf({ metered, before, signal, from, to, now }) : []), [metered, before, signal, from, to, now])
   const split = metered ? metered.hours.length - metered.by_signal.unsplit_hours : 0
-  const noun = view === null ? 'Spend' : view.priced ? (view.single ? 'Value' : 'Spend') : 'Ingested'
+  const noun = view === null ? 'Spend' : view.priced ? 'Usage value' : 'Ingested'
   const when = running ? 'this month' : `in ${new Date(from).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })}`
 
   return (

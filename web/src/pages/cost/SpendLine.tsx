@@ -29,7 +29,7 @@ export function SpendLine({ title, noun, from, last, actual, ahead, format, axis
   const done = run(actual)
   const coming = run(ahead)
   const labelled = [...new Set([0, 1, 2, 3, 4].map((step) => Math.round((step * Math.max(0, slots - 1)) / 4)))].map((index) => dayLabel(from + index * DAY))
-  const yLabels = [axis(top), axis(top / 2), axis(0)]
+  const yLabels = top > 0 ? [axis(top), axis(top / 2), axis(0)] : ['', '', axis(0)]
   const gutter = gutterOf(yLabels)
   const now = last >= 0 ? actual[last] : null
   const end = ahead[slots - 1]

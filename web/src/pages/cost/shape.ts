@@ -183,7 +183,7 @@ export function viewOf({ metered, before, choice, from, to, now }: { metered: Me
   const used = totalsOf(metered, choice)
   const prior = totalsOf(before, choice)
   const shown = shownFor(pricing)
-  const measure = measureFor(pricing, !single)
+  const measure = measureFor(pricing, false)
   const local = pricing ? billOf(pricing, used, from, to, now) : null
   const bill = pricing ? (single ? local : (metered.bill ?? local)) : null
   const currency = pricing?.currency ?? null

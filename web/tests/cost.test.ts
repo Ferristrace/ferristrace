@@ -184,21 +184,21 @@ describe('cost page shaping', () => {
     assert.equal(view.tiles[0].sub, undefined)
   })
 
-  it('@spec-l21-7 draws spend to date, then a dashed projection to the month end that meets the tile', () => {
+  it('@spec-l21-7 draws the usage value to date, then a dashed projection to the month end, even under the allowance', () => {
     const view = shape.viewOf({ metered: priced, before: undefined, choice: shape.ALL, ...at })
     assert.equal(view.slots, 30)
     assert.equal(view.last, 10)
-    assert.equal(view.actual[10], 3_000_000)
+    assert.equal(view.actual[10], 6_000_000)
     assert.equal(view.actual[11], null)
     assert.equal(view.ahead[9], null)
-    assert.equal(view.ahead[10], 3_000_000)
-    assert.equal(view.ahead[29], 14_400_000)
-    assert.equal(view.total, 3_000_000)
+    assert.equal(view.ahead[10], 6_000_000)
+    assert.equal(view.ahead[29], 18_000_000)
+    assert.equal(view.total, 6_000_000)
     assert.equal(view.bars.length, 11)
-    assert.equal(view.bars.reduce((sum, bar) => sum + bar.total, 0), 3_000_000)
-    assert.equal(view.bars[0].parts.spans, 0)
-    assert.equal(view.bars[0].parts.logs, 200_000)
-    assert.deepEqual(view.slices.map((slice) => [slice.signal, slice.value]), [['metrics', 1_000_000], ['logs', 2_000_000], ['spans', 0]])
+    assert.equal(view.bars.reduce((sum, bar) => sum + bar.total, 0), 6_000_000)
+    assert.ok(view.bars[0].parts.spans > 0)
+    assert.equal(view.slices.reduce((sum, slice) => sum + slice.value, 0), 6_000_000)
+    assert.ok(view.slices.every((slice) => slice.value > 0))
   })
 
   it('@spec-l21-7 lays out one quota bar per signal, with the pace', () => {

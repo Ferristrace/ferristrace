@@ -17,7 +17,7 @@ export function SpendBars({ title, bars, shown, format, axis }: {
   const { at, handlers } = useScrub(bars.length, 'band')
   const peak = Math.max(0, ...bars.map((bar) => bar.total))
   const span = peak || 1
-  const yLabels = [axis(peak), axis(peak / 2), axis(0)]
+  const yLabels = peak > 0 ? [axis(peak), axis(peak / 2), axis(0)] : ['', '', axis(0)]
   const gutter = gutterOf(yLabels)
   const bar = at === null ? null : bars[at]
   const centre = at === null ? 0 : ((at + 0.5) / bars.length) * 100
