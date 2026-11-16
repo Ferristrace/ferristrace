@@ -1,0 +1,85 @@
+import { Download, LayoutDashboard, Plus, Search, Upload } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { because } from '@/auth/client'
+import { EmptyState, PageHeader } from '@/components/ft/bits'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { InputGroup } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/misc'
+import { FIXTURE_ID, useDashboards, type DashboardSummary } from '@/data/dashboards'
+import { stamp } from '@/lib/format'
+import { Link, useSearchParam } from '@/lib/router'
+import { cn } from '@/lib/utils'
+
+const LATER = 'Creating, importing and exporting come with the dashboard editor.'
+
+export const matching = (dashboards: DashboardSummary[], text: string, tags: string[]): DashboardSummary[] => {
+  const needle = text.trim().toLowerCase()
+  return dashboards.filter((one) => (needle === '' || one.name.toLowerCase().includes(needle)) && tags.every((tag) => one.tags.includes(tag)))
+}
+
+export function Dashboards() {
+  const { dashboards, project, pending, failed } = useDashboards()
+  const [text, setText] = useState('')
+  const [picked, setPicked] = useState<string[]>([])
+  const sample = useSearchParam('fixture') !== undefined || import.meta.env.DEV
+  const tags = useMemo(() => [...new Set(dashboards.flatMap((one) => one.tags))].sort(), [dashboards])
+  const shown = useMemo(() => matching(dashboards, text, picked), [dashboards, text, picked])
+  const toggle = (tag: string) => setPicked((current) => (current.includes(tag) ? current.filter((one) => one !== tag) : [...current, tag]))
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Dashboards" meta={project ? `${dashboards.length} in this project` : undefined}>
+        <Button size="sm" disabled title={LATER}><Upload aria-hidden />Import</Button>
+        <Button size="sm" variant="primary" disabled title={LATER}><Plus aria-hidden />New dashboard</Button>
+      </PageHeader>
+      {!project ? (
+        <EmptyState icon={<LayoutDashboard />} title="Pick a project">Dashboards belong to a project. Choose one in the top bar to see its dashboards.</EmptyState>
+      ) : failed ? (
+        <EmptyState title="The dashboards could not be listed">{because(failed, 'The server did not answer.')}</EmptyState>
+      ) : pending ? (
+        <div className="flex flex-col gap-2" aria-busy="true" aria-label="Reading the dashboards">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-8 w-full" />
+        </div>
+      ) : (
+        <>
+          {dashboards.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2" role="search">
+              <InputGroup className="w-[280px] max-w-full"><Search aria-hidden /><input aria-label="Search dashboards by name" placeholder="Search by name" value={text} onChange={(event) => setText(event.target.value)} /></InputGroup>
+              {tags.map((tag) => (
+                <button key={tag} type="button" aria-pressed={picked.includes(tag)} onClick={() => toggle(tag)} className={cn('inline-flex h-6 cursor-pointer items-center rounded-sm border px-2 font-mono text-caption hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring', picked.includes(tag) ? 'border-transparent bg-accent-subtle text-accent-text' : 'text-muted-foreground')}>{tag}</button>
+              ))}
+              {picked.length > 0 ? <Button size="sm" variant="ghost" onClick={() => setPicked([])}>Clear tags</Button> : null}
+            </div>
+          ) : null}
+          {dashboards.length === 0 ? (
+            <EmptyState icon={<LayoutDashboard />} title="No dashboards yet">A dashboard puts traces, logs and metrics side by side with a shared time range and variables. {LATER}</EmptyState>
+          ) : shown.length === 0 ? (
+            <EmptyState title="No dashboard matches" actions={<Button size="sm" onClick={() => { setText(''); setPicked([]) }}>Clear filters</Button>}>Try another name or fewer tags.</EmptyState>
+          ) : (
+            <Card className="overflow-hidden">
+              <ul aria-label="Dashboards" className="m-0 flex list-none flex-col p-0">
+                {shown.map((one) => (
+                  <li key={one.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-subtle px-4 py-3 last:border-b-0 hover:bg-row-hover">
+                    <Link to={`/dashboards/${one.id}`} className="min-w-[160px] flex-[1_1_220px] truncate text-control font-semibold text-foreground">{one.name}</Link>
+                    <span className="flex flex-wrap gap-1">{one.tags.map((tag) => <Badge key={tag} variant="outline" mono>{tag}</Badge>)}</span>
+                    <time className="font-mono text-caption text-faint-foreground" dateTime={new Date(one.updated_at_ms).toISOString()}>{stamp(one.updated_at_ms)}</time>
+                    <Button size="icon-sm" variant="ghost" disabled title={LATER} aria-label={`Export ${one.name}`}><Download aria-hidden /></Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </>
+      )}
+      {sample ? (
+        <p className="m-0 text-caption text-muted-foreground">
+          Sample data: <Link to={`/dashboards/${FIXTURE_ID}`}>open the fixture dashboard</Link>, which renders all eleven panel kinds from built-in data, or <Link to={`/dashboards/${FIXTURE_ID}`} search={{ empty: '' }}>the same with every query empty</Link>.
+        </p>
+      ) : null}
+    </div>
+  )
+}

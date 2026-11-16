@@ -7,6 +7,8 @@ import { AppShell } from '@/components/layout/AppShell'
 import { Ai } from '@/pages/Ai'
 import { Alerts } from '@/pages/Alerts'
 import { Cost } from '@/pages/Cost'
+import { DashboardPage } from '@/pages/dashboards/Dashboard'
+import { Dashboards } from '@/pages/dashboards/Dashboards'
 import { CachePage } from '@/pages/backend/CachePage'
 import { JobsPage } from '@/pages/backend/JobsPage'
 import { QueriesPage } from '@/pages/backend/QueriesPage'
@@ -179,6 +181,8 @@ const routeTree = rootRoute.addChildren([
     inShell('/traces/$id', TraceDetail, {}),
     inShell('/logs', Logs, timed),
     inShell('/metrics', Metrics, timed),
+    inShell('/dashboards', Dashboards, real),
+    inShell('/dashboards/$id', DashboardPage, timed),
     inShell('/backend/cache', CachePage, timed),
     inShell('/backend/jobs', JobsPage, timed),
     inShell('/backend/queries', QueriesPage, timed),
