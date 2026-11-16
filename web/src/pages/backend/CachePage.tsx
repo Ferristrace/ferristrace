@@ -3,12 +3,12 @@ import { useMemo, useState } from 'react'
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { useSearchParam } from '@/lib/router'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { InputGroup } from '@/components/ui/input'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
+import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
 import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
-import { EmptyState, Kpi, PageHeader, barBg } from '@/components/ft/bits'
+import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
 import { usePlacement } from '@/data/placement'
@@ -19,6 +19,7 @@ import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
 
 const COLD = 80
 
@@ -95,21 +96,20 @@ export function CachePage() {
   const span = zoom ? `${Math.max(1, Math.round(seconds))} s` : label
   const placing = placedCount(placement)
   const sifting = placing > 0 || settledEnv.trim() !== '' || q.trim() !== ''
+  const paged = usePaged(rows, `${group}|${sort}|${q}|${settledEnv}`)
 
   return (
     <>
       <PageHeader
         title="Cache"
         meta={
-          <>
-            Cache client spans, grouped by <span className="font-mono">{field}</span> · last {span}
-          </>
+          <Pills><Pill>Cache client spans</Pill><Pill>by <span className="font-mono">{field}</span></Pill><Pill>last {span}</Pill></Pills>
         }
       >
         <Segmented label="Group by" value={group} onChange={(next) => show({ g: next === 'operation' ? undefined : next })} options={GROUPINGS.map((one) => ({ value: one.value, label: one.label }))} />
       </PageHeader>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-3">
+      <div className={KPI_GRID}>
         <Kpi
           label="Hit rate"
           value={percent(series?.hitRate ?? null)}
@@ -136,14 +136,27 @@ export function CachePage() {
       </div>
 
       <Card className="overflow-hidden">
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
-          <h2 className="text-[15px] font-bold">{noun === 'store' ? 'Stores' : noun === 'key pattern' ? 'Key patterns' : 'Operations'}</h2>
+        <CardHeader>
+          <CardTitle>{noun === 'store' ? 'Stores' : noun === 'key pattern' ? 'Key patterns' : 'Operations'}</CardTitle>
+          <CardKind>Table</CardKind>
           <span className="text-caption text-muted-foreground">
             {rows.length} {noun}
             {rows.length === 1 ? '' : 's'}
           </span>
-          <span className="flex-1" />
-          <Segmented label="Sort by" value={sort} onChange={(next) => show({ s: next === 'rate' ? undefined : next })} options={SORTS.map((one) => ({ value: one.value, label: one.label }))} />
+        </CardHeader>
+        <PanelToolbar>
+          <InputGroup className={SEARCH}>
+            <Search aria-hidden />
+            <input aria-label="Filter rows" placeholder={`Filter ${noun}s`} value={q} onChange={(e) => setQ(e.target.value)} />
+            <Kbd>/</Kbd>
+          </InputGroup>
+          <InputGroup className="w-[220px] max-w-full max-md:w-full">
+            <input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} />
+          </InputGroup>
+          <NativeSelect aria-label="Sort by" value={sort} onChange={(e) => show({ s: e.target.value === 'rate' ? undefined : e.target.value })} className="w-auto max-md:flex-1">
+            {SORTS.map((one) => <option key={one.value} value={one.value}>Sort: {one.label}</option>)}
+          </NativeSelect>
+          <span className="flex-1 max-md:hidden" />
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" aria-label="Kubernetes placement">
@@ -155,43 +168,33 @@ export function CachePage() {
               <PlacementPicker placement={placement} onChange={place} windowMs={windowMs} />
             </PopoverContent>
           </Popover>
-          <InputGroup className="w-[200px] max-w-full">
-            <input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} />
-          </InputGroup>
-          <InputGroup className="w-[240px] max-w-full">
-            <Search aria-hidden />
-            <input aria-label="Filter rows" placeholder={`Filter ${noun}s`} value={q} onChange={(e) => setQ(e.target.value)} />
-            <Kbd>/</Kbd>
-          </InputGroup>
-        </div>
+        </PanelToolbar>
 
         {failed ? (
-          <div className="p-6">
-            <EmptyState title="The cache could not be read">{because(failed, 'The span store did not answer')}</EmptyState>
-          </div>
+          <PanelEmpty title="The cache could not be read">{because(failed, 'The span store did not answer')}</PanelEmpty>
         ) : null}
+
+        {!failed && pending && operations.length === 0 ? <SkeletonRows label="Reading the cache operations" /> : null}
 
         {!failed && !pending && operations.length === 0 ? (
-          <div className="p-6">
-            <EmptyState
-              title={sifting ? 'No cache operations match' : `No cache operations in the last ${span}`}
-              code={sifting ? undefined : 'npm i @opentelemetry/instrumentation-ioredis'}
-              actions={sifting ? <Button size="sm" onClick={() => { setTypedEnv(''); setQ(''); place({ cluster: '', namespace: '', workload: '', pod: '', node: '' }) }}>Reset filters</Button> : null}
-            >
-              {sifting ? (
-                'Try a wider window, no placement, or no environment.'
-              ) : (
-                <>
-                  Operations appear once your Redis or Memcached client is instrumented. FerrisTrace reads a client span that names{' '}
-                  <span className="font-mono">redis</span>, <span className="font-mono">memcached</span> or <span className="font-mono">valkey</span> in{' '}
-                  <span className="font-mono">db.system.name</span>, or that carries <span className="font-mono">cache.hit</span>.
-                </>
-              )}
-            </EmptyState>
-          </div>
+          <PanelEmpty
+            title={sifting ? 'No cache operations match' : `No cache operations in the last ${span}`}
+            code={sifting ? undefined : 'npm i @opentelemetry/instrumentation-ioredis'}
+            actions={sifting ? <Button size="sm" onClick={() => { setTypedEnv(''); setQ(''); place({ cluster: '', namespace: '', workload: '', pod: '', node: '' }) }}>Reset filters</Button> : null}
+          >
+            {sifting ? (
+              'Try a wider window, no placement, or no environment.'
+            ) : (
+              <>
+                Operations appear once your Redis or Memcached client is instrumented. FerrisTrace reads a client span that names{' '}
+                <span className="font-mono">redis</span>, <span className="font-mono">memcached</span> or <span className="font-mono">valkey</span> in{' '}
+                <span className="font-mono">db.system.name</span>, or that carries <span className="font-mono">cache.hit</span>.
+              </>
+            )}
+          </PanelEmpty>
         ) : null}
 
-        {operations.length > 0 ? (
+        {rows.length > 0 ? (
           <div className="overflow-x-auto">
             <Table aria-label={`Cache ${noun}s`}>
               <thead>
@@ -207,7 +210,7 @@ export function CachePage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
+                {paged.shown.map((row) => {
                   const cold = row.hitRate !== null && row.hitRate < COLD
                   return (
                     <Tr key={`${row.group} ${row.store}`}>
@@ -238,7 +241,15 @@ export function CachePage() {
           </div>
         ) : null}
 
-        <p className="m-0 px-4 py-2.5 text-caption text-muted-foreground">
+        {rows.length === 0 && operations.length > 0 ? (
+          <PanelEmpty title={`No ${noun} matches`} actions={<Button size="sm" onClick={() => setQ('')}>Clear the filter</Button>}>
+            Nothing matches the text typed in the filter.
+          </PanelEmpty>
+        ) : null}
+
+        <PagedFooter paged={paged} noun={`${noun}s`} />
+
+        <Note>
           A hit is <span className="font-mono">cache.hit = true</span> and a miss <span className="font-mono">false</span>; a span carrying neither counts in the calls and in no hit rate, which then reads{' '}
           <span className="font-mono">no verdict</span> rather than nought per cent.{' '}
           {group === 'key' ? (
@@ -253,7 +264,7 @@ export function CachePage() {
             </>
           )}{' '}
           Amber under {COLD} %.
-        </p>
+        </Note>
       </Card>
     </>
   )

@@ -3,12 +3,12 @@ import { useMemo, useState } from 'react'
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { useSearchParam } from '@/lib/router'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { InputGroup } from '@/components/ui/input'
+import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
+import { InputGroup, NativeSelect } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Segmented } from '@/components/ui/segmented'
 import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
-import { EmptyState, Kpi, PageHeader, barBg } from '@/components/ft/bits'
+import { Kpi, PageHeader, barBg } from '@/components/ft/bits'
 import { Bars, type Bar } from '@/components/ft/Histogram'
 import { PlacementPicker, placedCount } from '@/components/ft/Placement'
 import { usePlacement } from '@/data/placement'
@@ -26,6 +26,7 @@ import { because } from '@/auth/client'
 import { useSettled } from '@/lib/settle'
 import { dur } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { KPI_GRID, Note, PagedFooter, PanelEmpty, PanelToolbar, Pill, Pills, SEARCH, SkeletonRows, usePaged } from './kit'
 
 const BROKEN_THRESHOLD = 1
 
@@ -105,21 +106,20 @@ export function RequestsPage() {
   const span = zoom ? `${Math.max(1, Math.round(seconds))} s` : label
   const placing = placedCount(placement)
   const sifting = placing > 0 || settledEnv.trim() !== '' || q.trim() !== ''
+  const paged = usePaged(rows, `${group}|${sort}|${q}|${settledEnv}`)
 
   return (
     <>
       <PageHeader
         title="Requests"
         meta={
-          <>
-            HTTP server spans, grouped by <span className="font-mono">{field}</span> · last {span}
-          </>
+          <Pills><Pill>HTTP server spans</Pill><Pill>by <span className="font-mono">{field}</span></Pill><Pill>last {span}</Pill></Pills>
         }
       >
         <Segmented label="Group by" value={group} onChange={(next) => show({ g: next === 'route' ? undefined : next })} options={GROUPINGS.map((one) => ({ value: one.value, label: one.label }))} />
       </PageHeader>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-3">
+      <div className={KPI_GRID}>
         <Kpi label="Requests" value={requests === 0 ? '—' : `${(requests / seconds).toFixed(1)}/s`} sub={`${requests.toLocaleString()} in the last ${span}`} />
         <Kpi
           label="5xx rate"
@@ -150,14 +150,27 @@ export function RequestsPage() {
       </div>
 
       <Card className="overflow-hidden">
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
-          <h2 className="text-[15px] font-bold">{noun === 'service' ? 'Services' : noun === 'method' ? 'Methods' : 'Routes'}</h2>
+        <CardHeader>
+          <CardTitle>{noun === 'service' ? 'Services' : noun === 'method' ? 'Methods' : 'Routes'}</CardTitle>
+          <CardKind>Table</CardKind>
           <span className="text-caption text-muted-foreground">
             {rows.length} {noun}
             {rows.length === 1 ? '' : 's'}
           </span>
-          <span className="flex-1" />
-          <Segmented label="Sort by" value={sort} onChange={(next) => show({ s: next === 'broken' ? undefined : next })} options={SORTS.map((one) => ({ value: one.value, label: one.label }))} />
+        </CardHeader>
+        <PanelToolbar>
+          <InputGroup className={SEARCH}>
+            <Search aria-hidden />
+            <input aria-label="Filter rows" placeholder={`Filter ${noun}s`} value={q} onChange={(e) => setQ(e.target.value)} />
+            <Kbd>/</Kbd>
+          </InputGroup>
+          <InputGroup className="w-[220px] max-w-full max-md:w-full">
+            <input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} />
+          </InputGroup>
+          <NativeSelect aria-label="Sort by" value={sort} onChange={(e) => show({ s: e.target.value === 'broken' ? undefined : e.target.value })} className="w-auto max-md:flex-1">
+            {SORTS.map((one) => <option key={one.value} value={one.value}>Sort: {one.label}</option>)}
+          </NativeSelect>
+          <span className="flex-1 max-md:hidden" />
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" aria-label="Kubernetes placement">
@@ -169,43 +182,33 @@ export function RequestsPage() {
               <PlacementPicker placement={placement} onChange={place} windowMs={windowMs} />
             </PopoverContent>
           </Popover>
-          <InputGroup className="w-[200px] max-w-full">
-            <input aria-label="Environment" placeholder="Environment, e.g. production" value={typedEnv} onChange={(e) => setTypedEnv(e.target.value)} />
-          </InputGroup>
-          <InputGroup className="w-[240px] max-w-full">
-            <Search aria-hidden />
-            <input aria-label="Filter rows" placeholder={`Filter ${noun}s`} value={q} onChange={(e) => setQ(e.target.value)} />
-            <Kbd>/</Kbd>
-          </InputGroup>
-        </div>
+        </PanelToolbar>
 
         {failed ? (
-          <div className="p-6">
-            <EmptyState title="The requests could not be read">{because(failed, 'The span store did not answer')}</EmptyState>
-          </div>
+          <PanelEmpty title="The requests could not be read">{because(failed, 'The span store did not answer')}</PanelEmpty>
         ) : null}
+
+        {!failed && pending && routes.length === 0 ? <SkeletonRows label="Reading the requests" /> : null}
 
         {!failed && !pending && routes.length === 0 ? (
-          <div className="p-6">
-            <EmptyState
-              title={sifting ? 'No requests match' : `No requests in the last ${span}`}
-              code={sifting ? undefined : 'npm i @opentelemetry/instrumentation-http'}
-              actions={sifting ? <Button size="sm" onClick={() => { setTypedEnv(''); setQ(''); place({ cluster: '', namespace: '', workload: '', pod: '', node: '' }) }}>Reset filters</Button> : null}
-            >
-              {sifting ? (
-                'Try a wider window, no placement, or no environment.'
-              ) : (
-                <>
-                  Requests appear once your HTTP server is instrumented. FerrisTrace reads a server span that carries{' '}
-                  <span className="font-mono">http.request.method</span> (or the older <span className="font-mono">http.method</span>) or a status
-                  code, as OpenTelemetry's HTTP auto-instrumentation records it.
-                </>
-              )}
-            </EmptyState>
-          </div>
+          <PanelEmpty
+            title={sifting ? 'No requests match' : `No requests in the last ${span}`}
+            code={sifting ? undefined : 'npm i @opentelemetry/instrumentation-http'}
+            actions={sifting ? <Button size="sm" onClick={() => { setTypedEnv(''); setQ(''); place({ cluster: '', namespace: '', workload: '', pod: '', node: '' }) }}>Reset filters</Button> : null}
+          >
+            {sifting ? (
+              'Try a wider window, no placement, or no environment.'
+            ) : (
+              <>
+                Requests appear once your HTTP server is instrumented. FerrisTrace reads a server span that carries{' '}
+                <span className="font-mono">http.request.method</span> (or the older <span className="font-mono">http.method</span>) or a status
+                code, as OpenTelemetry's HTTP auto-instrumentation records it.
+              </>
+            )}
+          </PanelEmpty>
         ) : null}
 
-        {routes.length > 0 ? (
+        {rows.length > 0 ? (
           <div className="overflow-x-auto">
             <Table aria-label={`Requests by ${noun}`}>
               <thead>
@@ -222,7 +225,7 @@ export function RequestsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
+                {paged.shown.map((row) => {
                   const broken = row.brokenRate !== null && row.brokenRate > BROKEN_THRESHOLD
                   const share = totalUs === 0 ? 0 : (row.totalUs / totalUs) * 100
                   return (
@@ -251,7 +254,15 @@ export function RequestsPage() {
           </div>
         ) : null}
 
-        <p className="m-0 px-4 py-2.5 text-caption text-muted-foreground">
+        {rows.length === 0 && routes.length > 0 ? (
+          <PanelEmpty title={`No ${noun} matches`} actions={<Button size="sm" onClick={() => setQ('')}>Clear the filter</Button>}>
+            Nothing matches the text typed in the filter.
+          </PanelEmpty>
+        ) : null}
+
+        <PagedFooter paged={paged} noun={`${noun}s`} />
+
+        <Note>
           A request is an HTTP server span: <span className="font-mono">http.request.method</span>, the older{' '}
           <span className="font-mono">http.method</span>, or a recorded status code. 4xx and 5xx read that status code; a span carrying none counts as
           5xx only when its span status is an error, so a span with neither is in the total and in no class.{' '}
@@ -265,7 +276,7 @@ export function RequestsPage() {
             'Every route and service of a method is folded into one row.'
           )}{' '}
           Share of time is this {noun}'s share of the total time spent across the {noun}s shown. Amber above {BROKEN_THRESHOLD} % 5xx.
-        </p>
+        </Note>
       </Card>
     </>
   )
