@@ -102,7 +102,7 @@ export function Issues() {
             setSel([])
             setPage(1)
           }}
-          className="w-[170px]"
+          className="w-[230px]"
         >
           {TABS.map(([value, label]) => (
             <option key={value} value={value}>
