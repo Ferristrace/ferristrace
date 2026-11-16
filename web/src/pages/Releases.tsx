@@ -5,14 +5,17 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
 import { InputGroup, NativeSelect } from '@/components/ui/input'
-import { Kbd, Table, Td, Th, Tr } from '@/components/ui/misc'
+import { Kbd, Table, Td, Tr } from '@/components/ui/misc'
 import { EmptyState, Kpi, PageHeader, ServiceDot } from '@/components/ft/bits'
 import { RELEASE_WINDOWS, errorRateOf, releasePath, useRelease, useReleases, type Release, type Traffic } from '@/data/releases'
 import { ApiError, because } from '@/auth/client'
 import { num, pct, stamp } from '@/lib/format'
+import { sorted, toggled, type Sorting } from '@/lib/sorting'
 import { cn } from '@/lib/utils'
 import { NotFound } from './NotFound'
-import { Note, PagedFooter, PanelEmpty, Pill, Pills, SEARCH, SkeletonRows, Toolbar, usePaged } from './backend/kit'
+import { Note, PagedFooter, PanelEmpty, Pill, Pills, SEARCH, SkeletonRows, SortHead, Toolbar, usePaged } from './backend/kit'
+import { releaseFirst, releaseValue, type ReleaseKey } from './backend/sortKeys'
+import { ReleaseAround } from './services/ReleaseAround'
 
 const HOT_RATE_POINTS = 1
 
@@ -30,11 +33,14 @@ export function Releases() {
   const windowLabel = RELEASE_WINDOWS.find((w) => w.value === range)?.label ?? RELEASE_WINDOWS[1].label
   const { releases, pending, failed } = useReleases(windowMs)
   const unconfigured = failed instanceof ApiError && failed.status === 503
+  const [sorting, setSorting] = useState<Sorting<ReleaseKey> | null>(null)
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    return releases.filter((r) => `${r.service} ${r.version} ${r.environments.join(' ')}`.toLowerCase().includes(needle))
-  }, [releases, q])
-  const paged = usePaged(rows, `${q}|${range}`)
+    return sorted(releases.filter((r) => `${r.service} ${r.version} ${r.environments.join(' ')}`.toLowerCase().includes(needle)), sorting, releaseValue)
+  }, [releases, q, sorting])
+  const dirOf = (key: ReleaseKey) => (sorting?.key === key ? sorting.dir : null)
+  const sortBy = (key: ReleaseKey) => setSorting(toggled(sorting, key, releaseFirst(key)))
+  const paged = usePaged(rows, `${q}|${range}|${sorting?.key}|${sorting?.dir}`)
   return (
     <>
       <PageHeader title="Releases" meta={<Pills><Pill>{releases.length} {releases.length === 1 ? 'release' : 'releases'}</Pill><Pill>last {windowLabel}</Pill></Pills>} />
@@ -66,7 +72,7 @@ export function Releases() {
           ) : (
             <div className="overflow-x-auto">
               <Table aria-label="Releases">
-                <thead><tr><Th>Release</Th><Th className="w-[160px]">Environments</Th><Th className="w-[170px]">First seen</Th><Th className="w-[170px]">Last seen</Th><Th numeric className="w-[100px]">Requests</Th><Th numeric className="w-[100px]">Error rate</Th><Th numeric className="w-[100px]">New issues</Th></tr></thead>
+                <thead><tr><SortHead label="Release" dir={dirOf('release')} onSort={() => sortBy('release')} /><SortHead label="Environments" dir={dirOf('environments')} onSort={() => sortBy('environments')} className="w-[160px]" /><SortHead label="First seen" dir={dirOf('first')} onSort={() => sortBy('first')} className="w-[170px]" /><SortHead label="Last seen" dir={dirOf('last')} onSort={() => sortBy('last')} className="w-[170px]" /><SortHead label="Requests" numeric dir={dirOf('requests')} onSort={() => sortBy('requests')} className="w-[100px]" /><SortHead label="Error rate" numeric dir={dirOf('err')} onSort={() => sortBy('err')} className="w-[100px]" /><SortHead label="New issues" numeric dir={dirOf('issues')} onSort={() => sortBy('issues')} className="w-[100px]" /></tr></thead>
                 <tbody>
                   {paged.shown.map((r) => {
                     const to = releasePath(r.service, r.version)
@@ -138,6 +144,7 @@ export function ReleaseDetail() {
         <Kpi label="New issues" value={String(r.issues.length)} sub="first seen with this release" tone={r.issues.length ? 'err' : undefined} />
         <Kpi label="Requests" value={num(r.requests)} sub={`${num(r.errors)} with errors`} />
       </div>
+      <ReleaseAround release={r} />
       <Card className="overflow-hidden">
         <CardHeader><CardTitle>Issues introduced</CardTitle><CardKind>List</CardKind><span className="text-caption text-muted-foreground">{r.issues.length} {r.issues.length === 1 ? 'issue' : 'issues'}</span></CardHeader>
         {r.issues.length === 0 ? <p className="m-0 px-4 py-3 text-control text-muted-foreground">No exception was first seen while this release was the newest of {r.service}.</p> : null}
