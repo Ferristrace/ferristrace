@@ -6,6 +6,7 @@ mod alert_codec;
 mod alerts;
 mod api_keys;
 mod audit;
+mod dashboards;
 mod decisions;
 mod deploys;
 mod design_codec;
@@ -39,6 +40,7 @@ pub use alerts::{
 };
 pub use api_keys::PostgresApiKeys;
 pub use audit::PostgresAuditTrail;
+pub use dashboards::PostgresDashboards;
 pub use decisions::PostgresDecisions;
 pub use deploys::PostgresDeployMarks;
 pub use export::PostgresExport;

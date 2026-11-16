@@ -2,11 +2,11 @@ use core::future::Future;
 
 use ferristrace_domain::{
     AccountDirectory, Accounts, Agents as AgentBook, AlertChannels, AlertDuty, AlertEvents,
-    AlertOutbox, AlertRules, AlertStates, ApiKeys, AuditTrail, ControlPlane, DeployMarks,
-    ExplorerViews, ExportSource, InboxStore, IncidentAttachments, IncidentOutbox, IncidentTimeline,
-    Incidents, IssueDecisions, Memberships, ModelPrices as ModelPriceBook, NotificationSettings,
-    Orgs, Pages, Postmortems, Projects, Roll, Schedules, SessionStore, SessionSwitch, Squads,
-    StatusOutbox, StatusPages, StatusSubscribers, UsageHistory,
+    AlertOutbox, AlertRules, AlertStates, ApiKeys, AuditTrail, ControlPlane, DashboardStore,
+    DeployMarks, ExplorerViews, ExportSource, InboxStore, IncidentAttachments, IncidentOutbox,
+    IncidentTimeline, Incidents, IssueDecisions, Memberships, ModelPrices as ModelPriceBook,
+    NotificationSettings, Orgs, Pages, Postmortems, Projects, Roll, Schedules, SessionStore,
+    SessionSwitch, Squads, StatusOutbox, StatusPages, StatusSubscribers, UsageHistory,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +60,8 @@ pub mod domain {
     pub struct Audit;
     #[derive(Debug)]
     pub struct ControlPlane;
+    #[derive(Debug)]
+    pub struct Dashboards;
     #[derive(Debug)]
     pub struct Decisions;
     #[derive(Debug)]
@@ -214,6 +216,16 @@ impl<R> TeamRepos for R where
 pub trait ViewRepos: StandingRepos + RepoFor<domain::Views, Repo: ExplorerViews> {}
 
 impl<R> ViewRepos for R where R: StandingRepos + RepoFor<domain::Views, Repo: ExplorerViews> {}
+
+pub trait DashboardRepos:
+    ReadRepos + RecordingRepos + RepoFor<domain::Dashboards, Repo: DashboardStore>
+{
+}
+
+impl<R> DashboardRepos for R where
+    R: ReadRepos + RecordingRepos + RepoFor<domain::Dashboards, Repo: DashboardStore>
+{
+}
 
 pub trait UsageRepos: StandingRepos + RepoFor<domain::UsageHistory, Repo: UsageHistory> {}
 
@@ -405,6 +417,7 @@ pub trait Repositories:
     + RosterRepos
     + TeamRepos
     + ViewRepos
+    + DashboardRepos
     + UsageRepos
     + IssueRepos
     + ProvisioningRepos
@@ -431,6 +444,7 @@ impl<R> Repositories for R where
         + RosterRepos
         + TeamRepos
         + ViewRepos
+        + DashboardRepos
         + UsageRepos
         + IssueRepos
         + ProvisioningRepos
