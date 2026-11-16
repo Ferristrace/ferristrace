@@ -37,7 +37,7 @@ function Item({ panel, props, narrow }: { panel: PanelDoc; props: Props; narrow:
     <div className="flex h-full min-h-0 flex-col" data-item={panel.id}>
       <PanelFrame panel={panel} selected={selected} narrow={narrow} canDuplicate={props.canDuplicate} actions={props.actionsFor(panel.id)} />
       <div
-        className={cn('min-h-0 flex-1 rounded-b-lg [&>section]:rounded-t-none', selected && '[&>section]:border-ring')}
+        className={cn('min-h-0 flex-1 rounded-b-md [&>section]:rounded-t-none', selected && '[&>section]:border-ring')}
         onClick={() => props.onSelect(panel.id)}
         onDoubleClick={() => props.actionsFor(panel.id).onEdit()}
       >

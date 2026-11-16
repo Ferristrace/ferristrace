@@ -1,15 +1,17 @@
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
 import { Boxes, Container, Cloud, CircleAlert, Server } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParam } from '@/lib/router'
-import { Card } from '@/components/ui/card'
+import { Card, CardKind } from '@/components/ui/card'
 import { NativeSelect } from '@/components/ui/input'
+import { Pager } from '@/components/ui/pager'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td, Th } from '@/components/ui/misc'
-import { EmptyState, PageHeader } from '@/components/ft/bits'
+import { Table, Td, Th, Tr } from '@/components/ui/misc'
+import { EmptyState, Kpi, PageHeader } from '@/components/ft/bits'
 import { Seen } from '@/pages/Infra'
 import { bytes, collectorConfig, KIND_LABEL, RECEIVER, useCluster, useInfrastructure, type ClusterPod, type InfraResource, type ResourceKind } from '@/data/infra'
 import { ApiError, because } from '@/auth/client'
+import { pagesOf } from '@/lib/paging'
 import { cn } from '@/lib/utils'
 
 const HERE = '/infra'
@@ -77,7 +79,7 @@ function ClusterCard({ resource, pods }: { resource: InfraResource; pods: Cluste
       to="/infra/kubernetes"
       search={{ cluster: resource.name }}
       aria-label={`Open cluster ${resource.name}`}
-      className="flex min-w-0 flex-col gap-3 rounded-lg border bg-card px-4 py-3.5 text-foreground no-underline hover:border-foreground/30 focus-visible:outline-2 focus-visible:outline-ring"
+      className="flex min-w-0 flex-col gap-3 rounded-md border bg-card px-4 py-3.5 text-foreground no-underline hover:border-line-strong hover:bg-row-hover focus-visible:outline-2 focus-visible:outline-ring"
     >
       <span className="flex items-center gap-2">
         <Boxes className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -113,73 +115,91 @@ function Section({ id, title, icon, count, children }: { id: string; title: stri
       <h2 id={id} className="text-heading flex items-center gap-2 [&_svg]:size-4 [&_svg]:text-muted-foreground">
         {icon}
         {title}
-        <span className="font-normal text-muted-foreground">{count}</span>
+        <CardKind className="tabular">{count}</CardKind>
       </h2>
       {children}
     </section>
   )
 }
 
+function usePaged<T>(items: T[]) {
+  const [page, setPage] = useState(1)
+  const [size, setSize] = useState(25)
+  const at = Math.min(page, pagesOf(items.length, size))
+  const visible = useMemo(() => items.slice((at - 1) * size, at * size), [items, at, size])
+  return { visible, at, size, setPage, setSize: (next: number) => { setPage(1); setSize(next) } }
+}
+
+const dot = (resource: InfraResource) => <span aria-hidden className={cn('mr-2 inline-block size-1.5 rounded-full align-middle', resource.silent ? 'bg-status-deg' : 'bg-status-ok')} />
+
 function HostTable({ hosts }: { hosts: InfraResource[] }) {
+  const paged = usePaged(hosts)
   return (
-    <Card className="overflow-x-auto">
-      <Table aria-label="Hosts" className="min-w-[640px]">
-        <thead>
-          <tr>
-            <Th className="min-w-[200px]">Host</Th>
-            <Th>Where</Th>
-            <Th className="w-[130px]">Environment</Th>
-            <Th className="min-w-[160px]">Services</Th>
-            <Th className="w-[200px]">Status</Th>
-            <Th className="w-[130px]"><span className="sr-only">Open</span></Th>
-          </tr>
-        </thead>
-        <tbody>
-          {hosts.map((host) => (
-            <tr key={host.id}>
-              <Td className="font-mono">{host.name}</Td>
-              <Td><Where resource={host} /></Td>
-              <Td><Muted>{host.environment}</Muted></Td>
-              <Td><Services names={host.services} /></Td>
-              <Td><Status resource={host} /></Td>
-              <Td><Link to="/backend/system" className="text-control text-accent-text no-underline hover:underline" aria-label={`System metrics for ${host.name}`}>System metrics</Link></Td>
+    <Card className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <Table aria-label="Hosts" className="min-w-[640px]">
+          <thead>
+            <tr>
+              <Th className="min-w-[200px] pl-4">Host</Th>
+              <Th>Where</Th>
+              <Th className="w-[130px]">Environment</Th>
+              <Th className="min-w-[160px]">Services</Th>
+              <Th className="w-[200px]">Status</Th>
+              <Th className="w-[130px] pr-4"><span className="sr-only">Open</span></Th>
             </tr>
-          ))}
-        </tbody>
-      </Table>
+          </thead>
+          <tbody>
+            {paged.visible.map((host) => (
+              <Tr key={host.id}>
+                <Td className="pl-4 font-mono">{dot(host)}{host.name}</Td>
+                <Td><Where resource={host} /></Td>
+                <Td><Muted>{host.environment}</Muted></Td>
+                <Td><Services names={host.services} /></Td>
+                <Td><Status resource={host} /></Td>
+                <Td className="pr-4"><Link to="/backend/system" className="text-control text-accent-text no-underline hover:underline" aria-label={`System metrics for ${host.name}`}>System metrics</Link></Td>
+              </Tr>
+            ))}
+          </tbody>
+        </Table>
+      </div>
+      <Pager total={hosts.length} page={paged.at} size={paged.size} onPage={paged.setPage} onSize={paged.setSize} noun="hosts" className="border-t" />
     </Card>
   )
 }
 
 function ContainerTable({ containers }: { containers: InfraResource[] }) {
+  const paged = usePaged(containers)
   return (
-    <Card className="overflow-x-auto">
-      <Table aria-label="Containers" className="min-w-[700px]">
-        <thead>
-          <tr>
-            <Th className="min-w-[200px]">Container</Th>
-            <Th>Where</Th>
-            <Th className="w-[130px]">Environment</Th>
-            <Th className="min-w-[160px]">Services</Th>
-            <Th className="w-[80px]">CPU</Th>
-            <Th className="w-[90px]">Memory</Th>
-            <Th className="w-[200px]">Status</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {containers.map((container) => (
-            <tr key={container.id}>
-              <Td className="font-mono">{container.name}</Td>
-              <Td><Where resource={container} /></Td>
-              <Td><Muted>{container.environment}</Muted></Td>
-              <Td><Services names={container.services} /></Td>
-              <Td className="tabular">{container.cpu_percent === null ? '—' : `${container.cpu_percent.toFixed(1)} %`}</Td>
-              <Td className="tabular">{bytes(container.memory_bytes)}</Td>
-              <Td><Status resource={container} /></Td>
+    <Card className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <Table aria-label="Containers" className="min-w-[700px]">
+          <thead>
+            <tr>
+              <Th className="min-w-[200px] pl-4">Container</Th>
+              <Th>Where</Th>
+              <Th className="w-[130px]">Environment</Th>
+              <Th className="min-w-[160px]">Services</Th>
+              <Th numeric className="w-[80px]">CPU</Th>
+              <Th numeric className="w-[90px]">Memory</Th>
+              <Th className="w-[200px] pl-6 pr-4">Status</Th>
             </tr>
-          ))}
-        </tbody>
-      </Table>
+          </thead>
+          <tbody>
+            {paged.visible.map((container) => (
+              <Tr key={container.id}>
+                <Td className="pl-4 font-mono">{dot(container)}{container.name}</Td>
+                <Td><Where resource={container} /></Td>
+                <Td><Muted>{container.environment}</Muted></Td>
+                <Td><Services names={container.services} /></Td>
+                <Td numeric>{container.cpu_percent === null ? '—' : `${container.cpu_percent.toFixed(1)} %`}</Td>
+                <Td numeric>{bytes(container.memory_bytes)}</Td>
+                <Td className="pl-6 pr-4"><Status resource={container} /></Td>
+              </Tr>
+            ))}
+          </tbody>
+        </Table>
+      </div>
+      <Pager total={containers.length} page={paged.at} size={paged.size} onPage={paged.setPage} onSize={paged.setSize} noun="containers" className="border-t" />
     </Card>
   )
 }
@@ -212,14 +232,17 @@ export function InfraOverview() {
   const silent = resources.filter((r) => r.silent).length
   const of = (wanted: ResourceKind) => shown.filter((r) => r.kind === wanted)
   const count = (wanted: ResourceKind) => resources.filter((r) => r.kind === wanted).length
+  const silentOf = (wanted: ResourceKind) => resources.filter((r) => r.kind === wanted && r.silent).length
+  const reporting = (wanted: ResourceKind) => (silentOf(wanted) ? `${silentOf(wanted)} silent` : 'all reporting')
+  const hostRegions = new Set(resources.filter((r) => r.kind === 'host' && r.region).map((r) => r.region)).size
 
   const header = (
     <PageHeader
       title="Infrastructure"
       meta={resources.length ? (
-        <span className="inline-flex flex-wrap items-center gap-x-1.5">
-          <span className={cn(silent ? 'font-semibold text-warning-text' : 'text-success-text')}>{silent ? `${silent} silent` : 'All reporting'}</span>
-          <span aria-hidden>·</span><span>{resources.length} resource{resources.length === 1 ? '' : 's'}</span>
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span className={cn('inline-flex h-5 items-center rounded-full border px-2 text-caption font-semibold', silent ? 'border-warning-border bg-warning-subtle text-warning-text' : 'border-success-border bg-success-subtle text-success-text')}>{silent ? `${silent} silent` : 'All reporting'}</span>
+          <span className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-caption text-muted-foreground">{resources.length} resource{resources.length === 1 ? '' : 's'}</span>
         </span>
       ) : undefined}
     />
@@ -247,6 +270,12 @@ export function InfraOverview() {
   return (
     <>
       {header}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Kpi label="Clusters" value={String(count('cluster'))} sub={count('cluster') ? `${view.pods.length} pods · ${reporting('cluster')}` : 'none reporting'} />
+        <Kpi label="Hosts" value={String(count('host'))} sub={count('host') ? `${hostRegions ? `${hostRegions} region${hostRegions === 1 ? '' : 's'} · ` : ''}${reporting('host')}` : 'none reporting'} />
+        <Kpi label="Containers" value={String(count('container'))} sub={count('container') ? reporting('container') : 'none reporting'} />
+        <Kpi label="Silent" value={String(silent)} sub={silent ? 'quiet for over five minutes' : 'everything is reporting'} tone={silent ? 'warn' : undefined} />
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <Segmented
           label="Kind"
@@ -262,19 +291,19 @@ export function InfraOverview() {
         />
         <span className="flex-1" />
         {providers.length ? (
-          <NativeSelect aria-label="Provider" value={provider} onChange={(e) => set({ provider: e.target.value || undefined })} className="w-[140px]">
+          <NativeSelect aria-label="Provider" value={provider} onChange={(e) => set({ provider: e.target.value || undefined })} className="w-[140px] max-md:flex-1">
             <option value="">All providers</option>
             {providers.map((name) => <option key={name} value={name}>{name}</option>)}
           </NativeSelect>
         ) : null}
         {regions.length ? (
-          <NativeSelect aria-label="Region" value={region} onChange={(e) => set({ region: e.target.value || undefined })} className="w-[150px] font-mono">
+          <NativeSelect aria-label="Region" value={region} onChange={(e) => set({ region: e.target.value || undefined })} className="w-[150px] font-mono max-md:flex-1">
             <option value="">All regions</option>
             {regions.map((name) => <option key={name} value={name}>{name}</option>)}
           </NativeSelect>
         ) : null}
         {environments.length ? (
-          <NativeSelect aria-label="Environment" value={environment} onChange={(e) => set({ environment: e.target.value || undefined })} className="w-[150px]">
+          <NativeSelect aria-label="Environment" value={environment} onChange={(e) => set({ environment: e.target.value || undefined })} className="w-[150px] max-md:flex-1">
             <option value="">All environments</option>
             {environments.map((name) => <option key={name} value={name}>{name}</option>)}
           </NativeSelect>
