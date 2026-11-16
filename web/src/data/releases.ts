@@ -58,6 +58,7 @@ type WireDetail = WireRelease & { before: WireTraffic; after: WireTraffic; issue
 type WireDeploy = { service: string; version: string; environment: string; at_ms: number }
 
 const FRESH_MS = 30_000
+const NO_DEPLOYS: Deploy[] = []
 const MINUTE_MS = 60_000
 
 export const RELEASE_WINDOWS: { value: string; label: string; ms: number }[] = [
@@ -159,7 +160,7 @@ export function useDeploys(fromMs: number | null, toMs: number | null, service =
       return body.deploys.map(marked)
     },
   })
-  return found.data ?? []
+  return found.data ?? NO_DEPLOYS
 }
 
 export function firstDeploys(deploys: Deploy[]): Deploy[] {

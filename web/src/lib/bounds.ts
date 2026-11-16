@@ -2,9 +2,11 @@ import { useLocation } from './router'
 
 export type Zoom = { from: number; to: number }
 
-const asMs = (value: unknown): number | null => {
+export const MAX_MS = 4_102_444_800_000
+
+export const asMs = (value: unknown): number | null => {
   const number = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN
-  return Number.isFinite(number) && number > 0 ? Math.round(number) : null
+  return Number.isFinite(number) && number > 0 && number <= MAX_MS ? Math.round(number) : null
 }
 
 export function useZoom(): Zoom | null {
