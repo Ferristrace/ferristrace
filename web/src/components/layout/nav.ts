@@ -11,7 +11,6 @@ export const AXES: NavAxis[] = [
     tabs: [
       { label: 'Overview', to: '/', icon: House, keys: 'O' },
       { label: 'AI', to: '/ai', icon: Sparkles, keys: 'C' },
-      { label: 'Cost', to: '/cost', icon: Coins },
     ],
   },
   {
@@ -57,6 +56,7 @@ export const AXES: NavAxis[] = [
       { label: 'Kubernetes', to: '/infra/kubernetes', icon: Boxes },
     ],
   },
+  { key: 'cost', label: 'Cost', icon: Coins, tabs: [{ label: 'Cost', to: '/cost', icon: Coins }] },
 ]
 
 export const ALL_NAV = AXES.flatMap((axis) => axis.tabs)

@@ -46,17 +46,18 @@ Decisions
   D4  Shell. A 54 px icon rail with tooltips; its logo cell is as tall as
       the top bar (51 px) and shares its bottom line. Rail order: Home,
       Alerts, Incidents, Dashboards, Services, Logs, Traces, Metrics,
-      Infrastructure; at the bottom Help, Settings, the account menu.
+      Infrastructure, Cost; at the bottom Help, Settings, the account menu.
       The top bar carries the breadcrumb (organisation switcher / project
       switcher / page), the search (⌘K) and the time window.
   D5  Sections and their tabs (URLs unchanged):
-        Home           Overview, AI, Cost
+        Home           Overview, AI
         Alerts         Rules (/alerts), On-call (/oncall, new)
         Incidents      Incidents, Insights, Issues, Status page
         Dashboards     Dashboards
         Services       Services, Service map, Releases, Backend views
         Logs, Traces, Metrics   one page each
         Infrastructure Overview, Kubernetes
+        Cost           Cost (own section since lot 22)
       Tabs sit under the page title, underlined, not in a second bar.
   D6  Phone (<= 760 px): the rail becomes a 60 px bottom bar: Home, Alerts
       and incidents, Services, Traces, More. More lists the rest and the
