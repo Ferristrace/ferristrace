@@ -27,6 +27,7 @@ mod provisioning;
 mod roster;
 mod sessions;
 mod status;
+mod subscriptions;
 mod teams;
 mod unit_of_work;
 mod views;
@@ -52,13 +53,17 @@ pub use memberships::{MembershipError, PostgresMemberships};
 pub use model_prices::PostgresModelPrices;
 pub use oncall::{PostgresPages, PostgresSchedules};
 pub use orgs::PostgresOrgs;
-pub use postgres::{CONTROL_PLANE, OVERAGE_FEATURE, SELF_HOSTED_PLAN, load_allowances};
+pub use postgres::{
+    BillingPlans, CONTROL_PLANE, FALLBACK_PLAN, OVERAGE_FEATURE, PlanSpec, SELF_HOSTED_PLAN,
+    billing_plans, load_allowances, sync_plans,
+};
 pub use postmortems::PostgresPostmortems;
 pub use projects::{PostgresProjects, ProjectError};
 pub use provisioning::PostgresControlPlane;
 pub use roster::PostgresRoster;
 pub use sessions::PostgresSessions;
 pub use status::{PostgresStatusOutbox, PostgresStatusPages, PostgresStatusSubscribers};
+pub use subscriptions::PostgresBillingAccounts;
 pub use teams::PostgresTeams;
 pub use unit_of_work::{Postgres, SharedTx};
 pub use views::PostgresViews;

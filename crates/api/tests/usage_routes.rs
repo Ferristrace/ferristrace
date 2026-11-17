@@ -193,6 +193,7 @@ impl Stack for TestStack {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 fn state(live: u64, included: Option<u64>) -> AppState<TestStack> {
@@ -209,6 +210,7 @@ fn priced_state(
         clock: Inert::default(),
         mailer: Inert::default(),
         webhooks: Inert::default(),
+        billing: None,
         photos: NoPhotos,
         meter: Live(live),
         span_store: None,

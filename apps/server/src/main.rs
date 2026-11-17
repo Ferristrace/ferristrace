@@ -32,8 +32,12 @@ use ferristrace_infra::{
     PhotoStoreSettings, S3Photos, SecretSeal, SmtpMailer, StaticDirectory, SystemClock,
     WebhookSettings, ack_key_from_hex, status_key_from_hex,
 };
-use ferristrace_postgres::{CONTROL_PLANE, Postgres, PostgresDirectory, load_allowances};
+use ferristrace_postgres::{
+    CONTROL_PLANE, FALLBACK_PLAN, PlanSpec, Postgres, PostgresDirectory, SELF_HOSTED_PLAN,
+    billing_plans, load_allowances, sync_plans,
+};
 use ferristrace_redis::RedisMeter;
+use ferristrace_stripe::{StripeGateway, StripeGatewaySettings};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
@@ -82,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
         None => {}
     }
     let pool = control_plane_pool(&config).await?;
+    plans_ready(&config, pool.as_ref()).await?;
     let allowances = allowances_of(&config, pool.as_ref()).await?;
     let meter = Arc::new(meter_of(&config).await?);
     if let (Some(pool), Meter::Redis(_)) = (pool.as_ref(), meter.as_ref()) {
@@ -183,6 +188,7 @@ async fn provision(command: Command, config: &Config) -> anyhow::Result<()> {
         Gallery::Nowhere,
         Arc::new(Meter::Memory(MemoryMeter::default())),
         Optional::default(),
+        None,
     );
     let app = Ferristrace::<Production>::new(repos, adapters);
     run_command(command, config, &app).await
@@ -203,7 +209,14 @@ fn control_plane(
         .with_seal(seal)
         .with_provision_policy(PROVISIONING);
     let agents = optional.agents.take();
-    let adapters = adapters_of(mailer, webhooks_of(config), gallery, meter, optional);
+    let adapters = adapters_of(
+        mailer,
+        webhooks_of(config),
+        gallery,
+        meter,
+        optional,
+        billing_of(config),
+    );
     let app = Arc::new(
         Ferristrace::<Production>::new(repos, adapters)
             .with_ack_key(ack)
@@ -229,6 +242,7 @@ fn adapters_of(
     photos: Gallery,
     meter: Arc<Meter>,
     optional: Optional,
+    billing: Option<Arc<StripeGateway>>,
 ) -> Adapters<Production> {
     Adapters {
         clock: SystemClock,
@@ -241,7 +255,17 @@ fn adapters_of(
         log_store: optional.log_store,
         metric_store: optional.metric_store,
         users: optional.users,
+        billing,
     }
+}
+
+fn billing_of(config: &Config) -> Option<Arc<StripeGateway>> {
+    let stripe = config.stripe.as_ref()?;
+    Some(Arc::new(StripeGateway::new(StripeGatewaySettings {
+        secret_key: stripe.secret_key.clone(),
+        webhook_secret: stripe.webhook_secret.clone(),
+        meter_event_name: stripe.meter_event_name.clone(),
+    })))
 }
 
 const PROVISIONING: ProvisionPolicy = ProvisionPolicy {
@@ -265,6 +289,74 @@ async fn control_plane_pool(config: &Config) -> anyhow::Result<Option<PgPool>> {
         .await
         .context("migrating the control plane")?;
     Ok(Some(pool))
+}
+
+async fn plans_ready(config: &Config, pool: Option<&PgPool>) -> anyhow::Result<()> {
+    let plans = plans_of(config)?;
+    match pool {
+        Some(pool) if !plans.is_empty() => {
+            sync_plans(pool, &plans)
+                .await
+                .context("writing the configured plans")?;
+            tracing::info!(plans = plans.len(), "configured plans written");
+        }
+        None if !plans.is_empty() => {
+            anyhow::bail!("[[plans]] needs database_url: plans live in the control plane")
+        }
+        _ => {}
+    }
+    if config.stripe.is_none() {
+        return Ok(());
+    }
+    let Some(pool) = pool else {
+        anyhow::bail!(
+            "[stripe] needs database_url: subscriptions are mirrored in the control plane"
+        );
+    };
+    let found = billing_plans(pool)
+        .await
+        .context("reading the plans billing relies on")?;
+    anyhow::ensure!(
+        found.fallback,
+        "[stripe] needs a plan with the slug `{FALLBACK_PLAN}`, where an organisation goes when its subscription ends"
+    );
+    anyhow::ensure!(
+        found.priced > 0,
+        "[stripe] needs at least one plan with a `price` to sell"
+    );
+    Ok(())
+}
+
+fn plans_of(config: &Config) -> anyhow::Result<Vec<PlanSpec>> {
+    let mut seen = std::collections::BTreeSet::new();
+    config
+        .plans
+        .iter()
+        .map(|plan| {
+            anyhow::ensure!(!plan.slug.trim().is_empty(), "a plan needs a slug");
+            anyhow::ensure!(
+                plan.slug != SELF_HOSTED_PLAN,
+                "the `{SELF_HOSTED_PLAN}` plan belongs to the migrations and cannot be configured"
+            );
+            anyhow::ensure!(
+                seen.insert(plan.slug.as_str()),
+                "the plan `{}` is declared twice",
+                plan.slug
+            );
+            Ok(PlanSpec {
+                slug: plan.slug.clone(),
+                name: plan.name.clone(),
+                ingest_gb: plan.ingest_gb.map(whole).transpose()?,
+                retention_days: plan.retention_days.map(whole).transpose()?,
+                overage: plan.overage,
+                price_ref: plan.price.clone(),
+            })
+        })
+        .collect()
+}
+
+fn whole(value: std::num::NonZeroU32) -> anyhow::Result<i32> {
+    i32::try_from(value.get()).context("a plan figure does not fit the control plane")
 }
 
 async fn allowances_of(
@@ -307,6 +399,7 @@ fn usage_of(pool: &PgPool, meter: Arc<Meter>) -> Ferristrace<Production> {
         Gallery::Nowhere,
         meter,
         Optional::default(),
+        None,
     );
     Ferristrace::new(repos, adapters)
 }

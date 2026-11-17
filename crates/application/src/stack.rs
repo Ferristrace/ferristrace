@@ -1,9 +1,9 @@
 use ferristrace_domain::{
-    AckKey, AgentTokens, AlertMailer, Clock, ClusterReader, CulpritReader, DeployFeed,
-    ESCALATE_AFTER_SECS, InfraReader, IssueReader, LinkKey, LlmReader, LogReader, LogSink,
-    MetricReader, MetricSink, Photos, PlacementReader, QuotaPolicy, ReleaseReader, SpanPages,
-    SpanReader, SpanSink, StatusMailer, TenantDirectory, UsageMeter, UsageReader, UserTokens,
-    WebhookSender,
+    AckKey, AgentTokens, AlertMailer, BillingGateway, Clock, ClusterReader, CulpritReader,
+    DeployFeed, ESCALATE_AFTER_SECS, InfraReader, IssueReader, LinkKey, LlmReader, LogReader,
+    LogSink, MetricReader, MetricSink, Photos, PlacementReader, QuotaPolicy, ReleaseReader,
+    SpanPages, SpanReader, SpanSink, StatusMailer, TenantDirectory, UsageMeter, UsageReader,
+    UserTokens, WebhookSender,
 };
 
 use ferristrace_domain::telemetry::PriceList;
@@ -26,6 +26,7 @@ pub trait Stack: Send + Sync + 'static {
     type Quota: QuotaPolicy + Send + Sync + 'static;
     type Directory: TenantDirectory + Send + Sync + 'static;
     type Webhooks: WebhookSender + Send + Sync + 'static;
+    type Billing: BillingGateway + Send + Sync + 'static;
 }
 
 #[derive(Debug)]
@@ -40,6 +41,7 @@ pub struct Adapters<S: Stack> {
     pub log_store: Option<S::LogStore>,
     pub metric_store: Option<S::MetricStore>,
     pub users: Option<S::Users>,
+    pub billing: Option<S::Billing>,
 }
 
 #[derive(Debug)]
@@ -56,6 +58,7 @@ pub struct Ferristrace<S: Stack> {
     pub(crate) metric_store: Option<S::MetricStore>,
     pub(crate) users: Option<S::Users>,
     pub(crate) agents: Option<S::Agents>,
+    pub(crate) billing: Option<S::Billing>,
     pub(crate) ack_key: Option<AckKey>,
     pub(crate) status_key: Option<LinkKey>,
     pub(crate) escalate_after_secs: u64,
@@ -106,6 +109,7 @@ impl<S: Stack> Ferristrace<S> {
             log_store: adapters.log_store,
             metric_store: adapters.metric_store,
             users: adapters.users,
+            billing: adapters.billing,
             agents: None,
             ack_key: None,
             status_key: None,

@@ -333,6 +333,7 @@ impl Stack for TestStack {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 struct World {
@@ -353,6 +354,7 @@ impl World {
             clock: Inert::default(),
             mailer: Inert::default(),
             webhooks: Inert::default(),
+            billing: None,
             photos: NoPhotos,
             meter: Inert::default(),
             span_store: None,

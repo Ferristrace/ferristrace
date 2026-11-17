@@ -2,11 +2,12 @@ use core::future::Future;
 
 use ferristrace_domain::{
     AccountDirectory, Accounts, Agents as AgentBook, AlertChannels, AlertDuty, AlertEvents,
-    AlertOutbox, AlertRules, AlertStates, ApiKeys, AuditTrail, ControlPlane, DashboardStore,
-    DeployMarks, ExplorerViews, ExportSource, InboxStore, IncidentAttachments, IncidentOutbox,
-    IncidentTimeline, Incidents, IssueDecisions, Memberships, ModelPrices as ModelPriceBook,
-    NotificationSettings, Orgs, Pages, Postmortems, Projects, Roll, Schedules, SessionStore,
-    SessionSwitch, Squads, StatusOutbox, StatusPages, StatusSubscribers, UsageHistory,
+    AlertOutbox, AlertRules, AlertStates, ApiKeys, AuditTrail, BillingAccounts, ControlPlane,
+    DashboardStore, DeployMarks, ExplorerViews, ExportSource, InboxStore, IncidentAttachments,
+    IncidentOutbox, IncidentTimeline, Incidents, IssueDecisions, Memberships,
+    ModelPrices as ModelPriceBook, NotificationSettings, Orgs, Pages, Postmortems, Projects, Roll,
+    Schedules, SessionStore, SessionSwitch, Squads, StatusOutbox, StatusPages, StatusSubscribers,
+    UsageHistory,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +104,8 @@ pub mod domain {
     #[derive(Debug)]
     pub struct StatusSubscribers;
     #[derive(Debug)]
+    pub struct BillingAccounts;
+    #[derive(Debug)]
     pub struct Teams;
     #[derive(Debug)]
     pub struct UsageHistory;
@@ -185,6 +188,16 @@ impl<R> AgentRepos for R where
 pub trait OrgRepos: StandingRepos + RecordingRepos + RepoFor<domain::Orgs, Repo: Orgs> {}
 
 impl<R> OrgRepos for R where R: StandingRepos + RecordingRepos + RepoFor<domain::Orgs, Repo: Orgs> {}
+
+pub trait BillingRepos:
+    StandingRepos + RepoFor<domain::BillingAccounts, Repo: BillingAccounts>
+{
+}
+
+impl<R> BillingRepos for R where
+    R: StandingRepos + RepoFor<domain::BillingAccounts, Repo: BillingAccounts>
+{
+}
 
 pub trait CatalogueRepos:
     StandingRepos + RecordingRepos + RepoFor<domain::Projects, Repo: Projects>

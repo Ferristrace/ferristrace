@@ -125,6 +125,10 @@ pub fn export<C>(backend: &Postgres<C>) -> Each<'_, domain::Export, C> {
     Each::over(backend)
 }
 
+pub fn billing_accounts<C>(backend: &Postgres<C>) -> Each<'_, domain::BillingAccounts, C> {
+    Each::over(backend)
+}
+
 pub fn control_plane_of<C>(backend: &Postgres<C>) -> Each<'_, domain::ControlPlane, C> {
     Each::over(backend)
 }
@@ -144,6 +148,14 @@ macro_rules! forward {
         }
     };
 }
+
+forward!(BillingAccounts: BillingAccounts {
+    fn of(&self, org: TenantId) -> Result<Option<Subscription>, SubscriptionsError>;
+    fn plan_of(&self, org: TenantId) -> Result<Option<CurrentPlan>, SubscriptionsError>;
+    fn offers(&self) -> Result<Vec<PlanOffer>, SubscriptionsError>;
+    fn link_customer(&self, org: TenantId, customer: &CustomerRef) -> Result<(), SubscriptionsError>;
+    fn apply(&self, event: &WebhookEvent) -> Result<Applied, SubscriptionsError>;
+});
 
 forward!(Sessions: SessionStore {
     fn resolve(&self, token: &SessionToken) -> Result<Session, SessionError>;

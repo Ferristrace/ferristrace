@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use axum::Router;
 use ferristrace_api::{
-    AppState, SignInMethods, agent_router, alert_router, audit_router, catalogue_router,
-    cluster_router, dashboard_query_router, dashboard_router, explore_router, export_router,
-    inbox_router, incident_router, infra_router, issue_router, key_router, llm_router, log_router,
-    mark_routes, mcp_router, me_router, methods_router, metric_router, oncall_router, org_router,
-    postmortem_router, release_router, roster_router, site_router, status_router, team_router,
-    usage_router, view_router, workspace_router,
+    AppState, SignInMethods, agent_router, alert_router, audit_router, billing_router,
+    catalogue_router, cluster_router, dashboard_query_router, dashboard_router, explore_router,
+    export_router, inbox_router, incident_router, infra_router, issue_router, key_router,
+    llm_router, log_router, mark_routes, mcp_router, me_router, methods_router, metric_router,
+    oncall_router, org_router, postmortem_router, release_router, roster_router, site_router,
+    status_router, team_router, usage_router, view_router, workspace_router,
 };
 
 use ferristrace_clickhouse::ClickhousePanelReader;
@@ -51,7 +51,8 @@ pub(crate) fn control_routes(
             .merge(usage_routes(state))
             .merge(agent_routes(state))
             .merge(mcp_routes(state))
-            .merge(inbox_routes(state)),
+            .merge(inbox_routes(state))
+            .merge(billing_routes(state)),
     )
 }
 
@@ -184,6 +185,10 @@ fn usage_routes(state: Option<&State>) -> Router {
 
 fn inbox_routes(state: Option<&State>) -> Router {
     state.map_or_else(Router::new, |state| inbox_router(state.clone()))
+}
+
+fn billing_routes(state: Option<&State>) -> Router {
+    state.map_or_else(Router::new, |state| billing_router(state.clone()))
 }
 
 #[cfg(test)]

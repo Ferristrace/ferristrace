@@ -29,6 +29,7 @@ mod releases;
 mod roster;
 mod stack;
 mod status;
+mod subscriptions;
 mod teams;
 mod usage;
 mod views;
@@ -42,6 +43,7 @@ pub use ferristrace_macros::{repository, transactional};
 pub use ingestion::Ingestion;
 pub use issues::IssueRuling;
 pub use stack::{Adapters, Ferristrace, Stack};
+pub use subscriptions::{BillingError, BillingRead, WebhookApplyError};
 pub use usage::UsageBackfill;
 
 #[cfg(test)]

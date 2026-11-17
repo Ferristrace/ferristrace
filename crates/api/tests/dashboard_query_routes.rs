@@ -244,6 +244,7 @@ impl Stack for TestStack {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -303,6 +304,7 @@ fn state() -> AppState<TestStack> {
         clock: Inert::default(),
         mailer: Inert::default(),
         webhooks: Inert::default(),
+        billing: None,
         photos: NoPhotos,
         meter: Inert::default(),
         span_store: None,

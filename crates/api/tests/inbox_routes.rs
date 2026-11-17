@@ -227,6 +227,7 @@ impl Stack for Wired {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 fn app(ledger: Arc<Ledger>) -> Router {
@@ -234,6 +235,7 @@ fn app(ledger: Arc<Ledger>) -> Router {
         clock: FixedClock::at(NOW),
         mailer: Inert::default(),
         webhooks: Inert::default(),
+        billing: None,
         photos: NoPhotos,
         meter: Inert::default(),
         span_store: None,

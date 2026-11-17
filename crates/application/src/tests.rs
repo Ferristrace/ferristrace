@@ -19,6 +19,7 @@ fn adapters() -> Adapters<Probing> {
         clock: Inert::default(),
         mailer: Inert::default(),
         webhooks: Inert::default(),
+        billing: None,
         photos: ferristrace_domain::NoPhotos,
         meter: Inert::default(),
         span_store: None,

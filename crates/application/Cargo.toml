@@ -11,6 +11,7 @@ testing = ["ferristrace-domain/testing"]
 [dependencies]
 ferristrace-domain.workspace = true
 ferristrace-macros.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 ferristrace-domain = { workspace = true, features = ["testing"] }

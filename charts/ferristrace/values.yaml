@@ -54,7 +54,11 @@ tolerations: []
 affinity: {}
 topologySpreadConstraints: []
 
-# -- Extra container env entries, raw Kubernetes syntax.
+# -- Extra container env entries, raw Kubernetes syntax. Plans and payments
+# are set here (deploy/README.md, "Plans and payments"), the Stripe keys as
+# secret references, e.g.
+#   - name: FERRISTRACE_STRIPE__SECRET_KEY
+#     valueFrom: {secretKeyRef: {name: ferristrace-stripe, key: secret-key}}
 extraEnv: []
 
 service:

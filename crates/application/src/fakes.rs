@@ -48,6 +48,7 @@ impl Stack for Probing {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 #[repository(domain = Sessions, backend = Recording)]

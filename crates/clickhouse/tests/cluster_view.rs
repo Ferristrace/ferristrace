@@ -854,6 +854,7 @@ impl Stack for Clustered {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 fn routes(client: &Client) -> Router {
@@ -861,6 +862,7 @@ fn routes(client: &Client) -> Router {
         clock: FixedClock::at(NOW_SECS),
         mailer: Inert::default(),
         webhooks: Inert::default(),
+        billing: None,
         photos: NoPhotos,
         meter: Inert::default(),
         span_store: None,

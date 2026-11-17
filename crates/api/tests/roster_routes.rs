@@ -343,6 +343,7 @@ impl Stack for TestStack {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 fn state(role: OrgRole, kept: &Arc<Kept>, notices: &Arc<Notices>) -> AppState<TestStack> {
@@ -355,6 +356,7 @@ fn state(role: OrgRole, kept: &Arc<Kept>, notices: &Arc<Notices>) -> AppState<Te
         clock: Inert::default(),
         mailer: Inert::default(),
         webhooks: Inert::default(),
+        billing: None,
         photos: NoPhotos,
         meter: Inert::default(),
         span_store: None,

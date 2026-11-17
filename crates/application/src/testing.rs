@@ -6,19 +6,20 @@ pub use ferristrace_domain::testing::{
 };
 use ferristrace_domain::{
     AccountId, Admission, AgentToken, AgentTokens, Aggregation, AlertMailer, ApiKey, ApiKeys,
-    ApiSecret, AuditEntry, AuditFilter, AuditPage, AuditTrail, Buckets, CallPage, CallQuery,
-    Carried, Clock, ClusterFilter, ClusterReader, ClusterSnapshot, Counted, DecompressedBytes,
-    DeliveryError, Deploy, DeployFeed, Deployed, Dispatch, Email, EmailList, Fingerprint,
-    InfraFilter, InfraReader, IngestKey, IssueFilter, IssueReader, IssuedKey, KeyId, KeyName,
-    KeyScopes, Letter, LlmReader, LogBucket, LogPage, LogQuery, LogReader, LogRecord, LogSink,
-    Metric, MetricDescriptor, MetricKind, MetricQuery, MetricReader, MetricSink, Occurrence,
-    PageDispatch, PageSize, ProjectId, QuotaPolicy, ReadGrant, Release, ReleaseDetail,
-    ReleaseFilter, ReleaseReader, Resource, Scope, SeenModel, SeriesSet, ServiceEdge,
-    ServiceFilter, ServiceSeries, ServiceSummary, SessionToken, SinkError, Span, SpanCursor,
-    SpanPage, SpanPages, SpanReader, SpanSink, SpendQuery, SpendRead, StatusMailer, StoreError,
-    TenantDirectory, TenantId, TokenRefusal, TraceFilter, TraceId, TraceSummary, UnixSeconds,
-    UnknownKey, UsageMeter, UsageReader, UserRefusal, UserTokens, VerifiedToken, WebhookSecret,
-    WebhookSender, WebhookUrl, Window,
+    ApiSecret, AuditEntry, AuditFilter, AuditPage, AuditTrail, BillingGateway, BillingHour,
+    Buckets, CallPage, CallQuery, Carried, CheckoutUrl, Clock, ClusterFilter, ClusterReader,
+    ClusterSnapshot, Counted, CustomerRef, DecompressedBytes, DeliveryError, Deploy, DeployFeed,
+    Deployed, Dispatch, Email, EmailList, Fingerprint, GatewayError, InfraFilter, InfraReader,
+    IngestKey, IssueFilter, IssueReader, IssuedKey, KeyId, KeyName, KeyScopes, Letter, LlmReader,
+    LogBucket, LogPage, LogQuery, LogReader, LogRecord, LogSink, Metric, MetricDescriptor,
+    MetricKind, MetricQuery, MetricReader, MetricSink, Occurrence, PageDispatch, PageSize,
+    PortalUrl, PriceRef, ProjectId, QuotaPolicy, ReadGrant, Release, ReleaseDetail, ReleaseFilter,
+    ReleaseReader, Resource, Scope, SeenModel, SeriesSet, ServiceEdge, ServiceFilter,
+    ServiceSeries, ServiceSummary, SessionToken, SinkError, Span, SpanCursor, SpanPage, SpanPages,
+    SpanReader, SpanSink, SpendQuery, SpendRead, StatusMailer, StoreError, TenantDirectory,
+    TenantId, TokenRefusal, TraceFilter, TraceId, TraceSummary, UnixSeconds, UnknownKey,
+    UsageMeter, UsageReader, UserRefusal, UserTokens, VerifiedToken, WebhookError, WebhookEvent,
+    WebhookSecret, WebhookSender, WebhookUrl, Window,
 };
 
 use crate::registry::{Settle, UnitOfWork};
@@ -393,6 +394,40 @@ impl LogReader for Inert {
 impl QuotaPolicy for Inert {
     async fn admit(&self, _tenant: TenantId, _incoming: DecompressedBytes) -> Admission {
         Admission::Within
+    }
+}
+
+impl BillingGateway for Inert {
+    async fn checkout_url(
+        &self,
+        _org: TenantId,
+        _customer: Option<&CustomerRef>,
+        _price: &PriceRef,
+        _success_url: &str,
+        _cancel_url: &str,
+    ) -> Result<(CheckoutUrl, CustomerRef), GatewayError> {
+        Err(GatewayError::Unreachable)
+    }
+
+    async fn portal_url(
+        &self,
+        _customer: &CustomerRef,
+        _return_url: &str,
+    ) -> Result<PortalUrl, GatewayError> {
+        Err(GatewayError::Unreachable)
+    }
+
+    async fn report_usage(
+        &self,
+        _customer: &CustomerRef,
+        _hour: BillingHour,
+        _over_by: DecompressedBytes,
+    ) -> Result<(), GatewayError> {
+        Err(GatewayError::Unreachable)
+    }
+
+    fn verify(&self, _signature: &str, _body: &[u8]) -> Result<WebhookEvent, WebhookError> {
+        Err(WebhookError::BadSignature)
     }
 }
 
