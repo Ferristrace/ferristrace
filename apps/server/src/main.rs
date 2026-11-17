@@ -34,6 +34,7 @@ use ferristrace_infra::{
 };
 use ferristrace_postgres::{CONTROL_PLANE, Postgres, PostgresDirectory, load_allowances};
 use ferristrace_redis::RedisMeter;
+use ferristrace_stripe::{StripeGateway, StripeGatewaySettings};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
@@ -183,6 +184,7 @@ async fn provision(command: Command, config: &Config) -> anyhow::Result<()> {
         Gallery::Nowhere,
         Arc::new(Meter::Memory(MemoryMeter::default())),
         Optional::default(),
+        None,
     );
     let app = Ferristrace::<Production>::new(repos, adapters);
     run_command(command, config, &app).await
@@ -203,7 +205,14 @@ fn control_plane(
         .with_seal(seal)
         .with_provision_policy(PROVISIONING);
     let agents = optional.agents.take();
-    let adapters = adapters_of(mailer, webhooks_of(config), gallery, meter, optional);
+    let adapters = adapters_of(
+        mailer,
+        webhooks_of(config),
+        gallery,
+        meter,
+        optional,
+        billing_of(config),
+    );
     let app = Arc::new(
         Ferristrace::<Production>::new(repos, adapters)
             .with_ack_key(ack)
@@ -229,6 +238,7 @@ fn adapters_of(
     photos: Gallery,
     meter: Arc<Meter>,
     optional: Optional,
+    billing: Option<Arc<StripeGateway>>,
 ) -> Adapters<Production> {
     Adapters {
         clock: SystemClock,
@@ -241,7 +251,18 @@ fn adapters_of(
         log_store: optional.log_store,
         metric_store: optional.metric_store,
         users: optional.users,
+        billing,
     }
+}
+
+fn billing_of(config: &Config) -> Option<Arc<StripeGateway>> {
+    let stripe = config.stripe.as_ref()?;
+    Some(Arc::new(StripeGateway::new(StripeGatewaySettings {
+        secret_key: stripe.secret_key.clone(),
+        webhook_secret: stripe.webhook_secret.clone(),
+        meter_event_name: stripe.meter_event_name.clone(),
+        pro_price_id: stripe.pro_price_id.clone(),
+    })))
 }
 
 const PROVISIONING: ProvisionPolicy = ProvisionPolicy {
@@ -307,6 +328,7 @@ fn usage_of(pool: &PgPool, meter: Arc<Meter>) -> Ferristrace<Production> {
         Gallery::Nowhere,
         meter,
         Optional::default(),
+        None,
     );
     Ferristrace::new(repos, adapters)
 }

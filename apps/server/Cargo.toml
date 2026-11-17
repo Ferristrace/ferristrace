@@ -17,6 +17,7 @@ ferristrace-clickhouse.workspace = true
 ferristrace-infra.workspace = true
 ferristrace-postgres.workspace = true
 ferristrace-redis.workspace = true
+ferristrace-stripe.workspace = true
 anyhow.workspace = true
 axum.workspace = true
 clap.workspace = true

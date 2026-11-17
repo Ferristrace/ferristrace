@@ -21,6 +21,7 @@ use ferristrace_infra::{
 };
 use ferristrace_postgres::{Postgres, PostgresDirectory};
 use ferristrace_redis::RedisMeter;
+use ferristrace_stripe::StripeGateway;
 
 #[derive(Debug)]
 pub(crate) struct Production;
@@ -41,6 +42,7 @@ impl Stack for Production {
     type Quota = StaticQuota<Arc<Meter>>;
     type Directory = Directory;
     type Webhooks = HttpWebhooks;
+    type Billing = Arc<StripeGateway>;
 }
 
 const _: fn() = || {

@@ -46,6 +46,16 @@ pub struct Config {
     pub alerts: AlertsConfig,
     #[serde(default)]
     pub billing: Option<BillingConfig>,
+    #[serde(default)]
+    pub stripe: Option<StripeConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StripeConfig {
+    pub secret_key: String,
+    pub webhook_secret: String,
+    pub meter_event_name: String,
+    pub pro_price_id: String,
 }
 
 fn a_month() -> u64 {
@@ -300,6 +310,7 @@ impl Default for Config {
             secrets: None,
             alerts: AlertsConfig::default(),
             billing: None,
+            stripe: None,
         }
     }
 }
