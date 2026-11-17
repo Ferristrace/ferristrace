@@ -134,11 +134,11 @@ impl BillingAccounts for PostgresBillingAccounts {
 
     async fn apply(&self, event: &WebhookEvent) -> Result<Applied, SubscriptionsError> {
         let mut tx = self.tx.lock().await;
-        if !record_event(&mut **tx, event.id()).await? {
+        if !record_event(&mut tx, event.id()).await? {
             return Ok(Applied::AlreadyApplied);
         }
         if let WebhookEvent::Changed { change, .. } = event {
-            mirror(&mut **tx, change).await?;
+            mirror(&mut tx, change).await?;
         }
         Ok(Applied::New)
     }

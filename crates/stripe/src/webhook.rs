@@ -184,14 +184,14 @@ mod tests {
     }
 
     fn event(kind: &str, object: Value) -> Vec<u8> {
-        json!({
+        let mut envelope = json!({
             "id": "evt_1",
             "type": kind,
             "created": 1_700_000_100,
-            "data": {"object": object}
-        })
-        .to_string()
-        .into_bytes()
+            "data": {}
+        });
+        envelope["data"]["object"] = object;
+        envelope.to_string().into_bytes()
     }
 
     fn subscription(status: &str, org: Option<Uuid>) -> Value {
