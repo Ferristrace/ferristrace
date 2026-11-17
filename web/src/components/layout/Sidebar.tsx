@@ -35,7 +35,7 @@ export function Sidebar({ onOpenShortcuts }: { onOpenShortcuts: () => void }) {
   const onSettings = isActivePath(pathname, '/settings')
   const section = sectionOf(pathname)
   return (
-    <aside className="sticky top-0 hidden h-screen w-[54px] shrink-0 flex-col items-center border-r bg-sidebar md:flex" aria-label="Primary">
+    <aside className="sticky top-0 z-30 hidden h-screen w-[54px] shrink-0 flex-col items-center border-r bg-sidebar md:flex" aria-label="Primary">
       <Link to="/" className="flex h-[51px] w-full shrink-0 items-center justify-center border-b text-foreground no-underline" aria-label="FerrisTrace home">
         <Logo className="size-7" />
       </Link>
