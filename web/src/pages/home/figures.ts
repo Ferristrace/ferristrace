@@ -1,14 +1,10 @@
-import { SafeLink } from '@/components/ft/panels/SafeLink'
 import { perSecond, type Stepped } from '@/data/services'
 import { dur } from '@/lib/format'
-import { cn } from '@/lib/utils'
-import { MIN_REQUESTS, deltaOf, linkOf, tracesQuery, withSearch, type Delta, type Tone } from './attention'
+import { MIN_REQUESTS, deltaOf, tracesQuery, withSearch, type Delta } from './attention'
 
 export type Figure = { key: string; label: string; value: string | null; delta: Delta; to: string; note: string | null; caveat: string | null }
 
 export type Read = 'ok' | 'failed' | 'pending'
-
-const TONE: Record<Tone, string> = { worse: 'font-semibold text-warning-text', better: 'font-semibold text-success-text', same: 'text-muted-foreground', none: 'text-muted-foreground' }
 
 const quiet = (series: Stepped | null) => series === null || series.requests === 0
 
@@ -49,29 +45,4 @@ export function figuresOf(now: Stepped | null, before: Stepped | null, windowMs:
     },
     { key: 'p95', label: 'p95 latency', value: p95 === null ? null : dur(p95), delta: deltaOf(p95, p95Was, 'latency'), to: withSearch('/services', place), note: note ?? (p95 === null ? 'No latency measured.' : null), caveat: null },
   ]
-}
-
-export function Figures({ figures, short }: { figures: Figure[]; short: string }) {
-  return (
-    <section aria-label="Figures" className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
-      {figures.map((figure) => {
-        const to = linkOf(figure.to)
-        return (
-          <SafeLink key={figure.key} to={to.path} search={to.search} className="relative flex min-w-0 flex-col gap-0.5 rounded-md border bg-card px-4 py-3.5 text-foreground no-underline hover:bg-row-hover max-md:min-h-11 focus-visible:outline-2 focus-visible:outline-ring">
-            <span className="text-caption text-muted-foreground">{figure.label}</span>
-            <span className="text-[28px] font-semibold leading-9 tabular">{figure.value ?? '—'}</span>
-            {figure.delta.text === '' ? (
-              <span className="text-caption text-faint-foreground">{figure.note ?? (figure.value === null ? 'No data.' : 'No previous period to compare.')}</span>
-            ) : (
-              <span className="text-caption text-faint-foreground">
-                <span className={cn('font-mono', TONE[figure.delta.tone])}>{figure.delta.text}</span> vs previous {short}
-                {figure.delta.word ? <span className={TONE[figure.delta.tone]}>, {figure.delta.word}</span> : null}
-                {figure.caveat ? ` ${figure.caveat}` : null}
-              </span>
-            )}
-          </SafeLink>
-        )
-      })}
-    </section>
-  )
 }
