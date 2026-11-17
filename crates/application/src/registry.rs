@@ -6,7 +6,8 @@ use ferristrace_domain::{
     DeployMarks, ExplorerViews, ExportSource, InboxStore, IncidentAttachments, IncidentOutbox,
     IncidentTimeline, Incidents, IssueDecisions, Memberships, ModelPrices as ModelPriceBook,
     NotificationSettings, Orgs, Pages, Postmortems, Projects, Roll, Schedules, SessionStore,
-    SessionSwitch, Squads, StatusOutbox, StatusPages, StatusSubscribers, UsageHistory,
+    SessionSwitch, Squads, StatusOutbox, StatusPages, StatusSubscribers, StripeSubscriptions,
+    UsageHistory,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,6 +104,8 @@ pub mod domain {
     #[derive(Debug)]
     pub struct StatusSubscribers;
     #[derive(Debug)]
+    pub struct StripeSubscriptions;
+    #[derive(Debug)]
     pub struct Teams;
     #[derive(Debug)]
     pub struct UsageHistory;
@@ -185,6 +188,16 @@ impl<R> AgentRepos for R where
 pub trait OrgRepos: StandingRepos + RecordingRepos + RepoFor<domain::Orgs, Repo: Orgs> {}
 
 impl<R> OrgRepos for R where R: StandingRepos + RecordingRepos + RepoFor<domain::Orgs, Repo: Orgs> {}
+
+pub trait SubscriptionsRepos:
+    StandingRepos + RepoFor<domain::StripeSubscriptions, Repo: StripeSubscriptions>
+{
+}
+
+impl<R> SubscriptionsRepos for R where
+    R: StandingRepos + RepoFor<domain::StripeSubscriptions, Repo: StripeSubscriptions>
+{
+}
 
 pub trait CatalogueRepos:
     StandingRepos + RecordingRepos + RepoFor<domain::Projects, Repo: Projects>

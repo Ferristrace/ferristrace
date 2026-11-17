@@ -27,6 +27,7 @@ pub mod profile;
 pub mod provisioning;
 pub mod releases;
 pub mod status;
+pub mod subscriptions;
 pub mod telemetry;
 pub mod views;
 
@@ -188,6 +189,11 @@ pub use status::{
     UpdateKind,
 };
 pub use store::StoreError;
+pub use subscriptions::{
+    Applied, BillingGateway, CheckoutUrl, GatewayError, PortalUrl, StripeCustomerId,
+    StripeEventId, StripePriceId, StripeSubscriptionId, StripeSubscriptions, Subscription,
+    SubscriptionStatus, SubscriptionsError, WebhookError, WebhookEvent,
+};
 pub use telemetry::{
     Admission, Allowance, BadRetention, BadSeverity, BillingHour, BillingMonth, Carried, Consumed,
     Consumption, CounterUnreachable, DecompressedBytes, HourSplit, HourTotal, HourlyCounters,
