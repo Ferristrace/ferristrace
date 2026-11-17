@@ -38,7 +38,7 @@ pub use ports::{
     UsageHistory, UsageLedger, UsageMeter, UsageReader,
 };
 pub use pricing::{BYTES_PER_GB, Bill, Currency, POINTS_PER_MILLION, PriceList, SignalBill};
-pub use quota::{Allowance, StaticQuota};
+pub use quota::{Allowance, Allowances, StaticQuota};
 pub use spending::{by_project, project_shares};
 pub use value_objects::{
     Admission, Carried, Consumed, Consumption, DayVolume, DecompressedBytes, HourSplit, HourTotal,

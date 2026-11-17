@@ -22,7 +22,7 @@ use ferristrace_clickhouse::{
     ClickhouseIssues, ClickhouseLogReader, ClickhouseMetricReader, ClickhousePanelReader,
     ClickhouseReader, SpanStoreSettings, open_span_store,
 };
-use ferristrace_domain::telemetry::{Allowance, PriceList, StaticQuota};
+use ferristrace_domain::telemetry::{Allowance, Allowances, PriceList, StaticQuota};
 use ferristrace_domain::{
     ANNOUNCE_TICK_SECS, AckKey, Clock, DEPLOY_WATCH_TICK_SECS, Drained, Followed, Heralded,
     LinkKey, PAGE_TICK_SECS, Paged, ProvisionPolicy, TenantId, Tick,
@@ -56,6 +56,7 @@ const DELIVER_EVERY: Duration = Duration::from_secs(10);
 const ESCALATE_EVERY: Duration = Duration::from_secs(PAGE_TICK_SECS);
 const ANNOUNCE_EVERY: Duration = Duration::from_secs(ANNOUNCE_TICK_SECS);
 const FOLLOW_DEPLOYS_EVERY: Duration = Duration::from_secs(DEPLOY_WATCH_TICK_SECS);
+const REFRESH_ALLOWANCES_EVERY: Duration = Duration::from_secs(20);
 
 #[derive(Default)]
 struct Optional {
@@ -134,12 +135,14 @@ async fn main() -> anyhow::Result<()> {
     watching.extend(watch_pages(state.as_ref(), &stopped));
     watching.extend(watch_status(state.as_ref(), &stopped));
     watching.extend(watch_deploys(state.as_ref(), held.issues, &stopped));
-    let gateway = Arc::new(gateway_of(
+    let (gateway, allowances) = gateway_of(
         directory_of(pool.as_ref(), default_retention_days(config.spans.as_ref())),
         allowances,
         meter,
         Arc::clone(&sink),
-    ));
+    );
+    let gateway = Arc::new(gateway);
+    watching.extend(watch_allowances(pool.as_ref(), allowances, &stopped));
 
     tracing::info!(
         grpc = %config.grpc_address,
@@ -330,9 +333,10 @@ fn gateway_of(
     allowances: BTreeMap<TenantId, Allowance>,
     meter: Arc<Meter>,
     sink: Arc<Sink>,
-) -> Ingestion<Production> {
+) -> (Ingestion<Production>, Allowances) {
     let quota = StaticQuota::new(Arc::clone(&meter), allowances);
-    Ingestion::new(directory, quota, sink, meter)
+    let handle = quota.allowances();
+    (Ingestion::new(directory, quota, sink, meter), handle)
 }
 
 struct Opened {
@@ -713,6 +717,38 @@ async fn escalate_pages(app: Arc<Ferristrace<Production>>, mut stopped: watch::R
                 "pages were escalated and mailed"
             ),
             Err(error) => tracing::error!(%error, "the pages could not be escalated"),
+        }
+    }
+}
+
+fn watch_allowances(
+    pool: Option<&PgPool>,
+    allowances: Allowances,
+    stopped: &watch::Receiver<bool>,
+) -> Option<JoinHandle<()>> {
+    let pool = pool?.clone();
+    tracing::info!("tenant allowances are refreshed every twenty seconds");
+    Some(tokio::spawn(refresh_allowances(
+        pool,
+        allowances,
+        stopped.clone(),
+    )))
+}
+
+async fn refresh_allowances(
+    pool: PgPool,
+    allowances: Allowances,
+    mut stopped: watch::Receiver<bool>,
+) {
+    let mut ticks = ticking(REFRESH_ALLOWANCES_EVERY);
+    loop {
+        tokio::select! {
+            _ = stopped.changed() => break,
+            _ = ticks.tick() => {}
+        }
+        match load_allowances(&pool).await {
+            Ok(loaded) => allowances.replace(loaded),
+            Err(error) => tracing::error!(%error, "the tenant allowances could not be refreshed"),
         }
     }
 }
