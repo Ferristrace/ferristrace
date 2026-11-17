@@ -1,4 +1,4 @@
-# 0039. Stripe mirrors into Postgres and never sits on the ingest path
+# 0040. Stripe mirrors into Postgres and never sits on the ingest path
 
 Status: proposed
 Date: 2026-11-16
@@ -8,7 +8,7 @@ Date: 2026-11-16
 volume, while a self-hosted stack with no payment provider configured keeps
 behaving exactly as it does today (ADR 0030: one build, nothing reserved to
 the hosted service). The ingest path already has one hard rule (ADR 0004,
-superseded by 0038 for the refresh, not for this): it calls no adapter it
+superseded by 0039 for the refresh, not for this): it calls no adapter it
 does not already call for every payload. Stripe is a third-party HTTP API,
 so a call to it on that path turns a Stripe outage into an ingest outage,
 which is the one failure mode ADR 0005 was written to avoid for Redis.
@@ -79,5 +79,5 @@ a price.
   never Stripe's API.
 - What becomes harder: the mirrored state can lag Stripe's by however long
   a webhook delivery takes. FerrisTrace already accepts that kind of lag
-  for the plan map itself (0038); billing inherits it rather than adding a
+  for the plan map itself (0039); billing inherits it rather than adding a
   second one.

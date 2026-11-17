@@ -1,4 +1,4 @@
-# 0038. Allowances refresh on a timer, not only at start
+# 0039. Allowances refresh on a timer, not only at start
 
 Status: proposed
 Date: 2026-11-16

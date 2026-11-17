@@ -5,8 +5,8 @@ Goal
   Stripe checkout, manages its card and invoices in a hosted Stripe portal,
   and is billed for the volume it ingests beyond what its plan includes. A
   self-hosted stack with no Stripe configuration behaves exactly as today.
-  Decisions: [ADR 0038](../adr/0038-allowances-refresh-on-a-timer-not-only-at-start.md),
-  [ADR 0039](../adr/0039-stripe-mirrors-into-postgres-and-never-sits-on-the-ingest-path.md).
+  Decisions: [ADR 0039](../adr/0039-allowances-refresh-on-a-timer-not-only-at-start.md),
+  [ADR 0040](../adr/0040-stripe-mirrors-into-postgres-and-never-sits-on-the-ingest-path.md).
 
 Context
   `plans` holds one row, `self-hosted` (`ingest_gb` and `retention_days`
@@ -45,7 +45,7 @@ Decisions
       nothing the second time. Nothing on the ingest path calls Stripe.
   D6  A plan change — an upgrade through checkout, a downgrade applied by
       a webhook — takes effect for ingestion within the refresh interval
-      ADR 0038 sets (20 seconds), not at the next restart.
+      ADR 0039 sets (20 seconds), not at the next restart.
   D7  After Stripe's payment retries are exhausted, the webhook that
       reports it moves the organisation's `plan_id` back to `free`.
       Nothing is deleted; retention shortens only once the next midnight
@@ -109,7 +109,7 @@ Design
     (`std::sync::RwLock`, no new dependency). A new periodic task in
     `apps/server`, `REFRESH_ALLOWANCES_EVERY = 20s`, re-reads
     `load_allowances` and replaces the map; a failed read logs and keeps
-    the map it has (ADR 0038). `StaticQuota::admit` is unchanged: a map
+    the map it has (ADR 0039). `StaticQuota::admit` is unchanged: a map
     lookup, no I/O.
 
   Postgres:
