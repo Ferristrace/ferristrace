@@ -178,7 +178,7 @@ async fn an_administrator_creates_a_page_that_members_list_and_read() {
 }
 
 #[tokio::test]
-async fn a_slug_is_unique_across_every_organisation() {
+async fn a_slug_is_unique_within_an_organisation_and_reusable_across_tenants() {
     let world = World::new();
     world.status.put_page(StatusPage {
         id: StatusPageId::fresh(),
@@ -195,8 +195,14 @@ async fn a_slug_is_unique_across_every_organisation() {
     let mine = world.a_page("mine").await;
     let desk = world.desk(OrgRole::Admin);
 
-    let created = desk
+    let allowed = desk
         .create(&session(), an_org(MINE), &draft("taken"), at(1))
+        .await
+        .expect("another tenant's slug is available in our org");
+    assert_eq!(allowed.page.slug.as_str(), "taken");
+
+    let duplicate = desk
+        .create(&session(), an_org(MINE), &draft("taken"), at(2))
         .await;
     let renamed = desk
         .update(
@@ -207,13 +213,13 @@ async fn a_slug_is_unique_across_every_organisation() {
                 slug: Some(Slug::try_from("taken").expect("a slug")),
                 ..PagePatch::default()
             },
-            at(1),
+            at(2),
         )
         .await;
 
-    assert_eq!(created.map(|_| ()), Err(StatusError::SlugTaken));
+    assert_eq!(duplicate.map(|_| ()), Err(StatusError::SlugTaken));
     assert_eq!(renamed.map(|_| ()), Err(StatusError::SlugTaken));
-    assert_eq!(world.status.pages().len(), 2);
+    assert_eq!(world.status.pages().len(), 3);
 }
 
 #[tokio::test]

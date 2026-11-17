@@ -57,10 +57,15 @@ where
 
     pub async fn list(&self, who: &Reader, org: TenantId) -> Result<Vec<Listed>, StatusError> {
         self.readers.grant(who, org).await?;
+        let org_slug = self.pages.org_slug(org).await?;
         let mut listed = Vec::new();
         for page in self.pages.list(org).await? {
             let subscribers = self.subscribers.confirmed(page.id).await?;
-            listed.push(Listed { page, subscribers });
+            listed.push(Listed {
+                org_slug: org_slug.clone(),
+                page,
+                subscribers,
+            });
         }
         Ok(listed)
     }
@@ -369,9 +374,11 @@ where
     }
 
     async fn sheet(&self, page: StatusPage) -> Result<Sheet, StatusError> {
+        let org_slug = self.pages.org_slug(page.org).await?;
         let components = self.pages.components(page.org, page.id).await?;
         let subscribers = self.subscribers.confirmed(page.id).await?;
         Ok(Sheet {
+            org_slug,
             page,
             components,
             subscribers,

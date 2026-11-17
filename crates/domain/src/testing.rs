@@ -1519,10 +1519,29 @@ pub struct QueuedLetter {
 
 #[derive(Debug, Default)]
 struct Board {
+    org_slugs: Vec<(TenantId, crate::status::Slug)>,
     pages: Vec<crate::status::StatusPage>,
     components: Vec<(TenantId, crate::status::Component)>,
     subscribers: Vec<crate::status::Subscriber>,
     letters: Vec<QueuedLetter>,
+}
+
+fn default_org_slug(org: TenantId) -> crate::status::Slug {
+    let raw = org.as_uuid().as_u128();
+    let candidate = if raw <= 1 {
+        "acme".to_string()
+    } else {
+        format!("org-{raw:x}")
+    };
+    crate::status::Slug::try_from(candidate.as_str())
+        .expect("fallback test org slug is always valid")
+}
+
+fn resolve_org_slug(held: &Board, org: TenantId) -> crate::status::Slug {
+    held.org_slugs
+        .iter()
+        .find(|(id, _)| *id == org)
+        .map_or_else(|| default_org_slug(org), |(_, slug)| slug.clone())
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1545,6 +1564,13 @@ impl StatusLedger {
 
     pub fn letters(&self) -> Vec<QueuedLetter> {
         self.with(|held| held.letters.clone())
+    }
+
+    pub fn put_org_slug(&self, org: TenantId, slug: crate::status::Slug) {
+        self.with(|held| {
+            held.org_slugs.retain(|(id, _)| *id != org);
+            held.org_slugs.push((org, slug));
+        });
     }
 
     pub fn put_page(&self, page: crate::status::StatusPage) {
@@ -1584,11 +1610,34 @@ impl crate::status::StatusPages for StatusLedger {
         }))
     }
 
+    async fn org_slug(&self, org: TenantId) -> Result<crate::status::Slug, StoreError> {
+        Ok(self.with(|held| resolve_org_slug(held, org)))
+    }
+
     async fn by_slug(
         &self,
         slug: &crate::status::Slug,
     ) -> Result<Option<crate::status::StatusPage>, StoreError> {
-        Ok(self.with(|held| held.pages.iter().find(|page| &page.slug == slug).cloned()))
+        Ok(self.with(|held| {
+            held.pages
+                .iter()
+                .find(|page| page.public && resolve_org_slug(held, page.org) == *slug)
+                .or_else(|| held.pages.iter().find(|page| &page.slug == slug))
+                .cloned()
+        }))
+    }
+
+    async fn by_org_and_slug(
+        &self,
+        org_slug: &crate::status::Slug,
+        slug: &crate::status::Slug,
+    ) -> Result<Option<crate::status::StatusPage>, StoreError> {
+        Ok(self.with(|held| {
+            held.pages
+                .iter()
+                .find(|page| resolve_org_slug(held, page.org) == *org_slug && &page.slug == slug)
+                .cloned()
+        }))
     }
 
     async fn by_id(
@@ -1603,7 +1652,11 @@ impl crate::status::StatusPages for StatusLedger {
         page: &crate::status::StatusPage,
     ) -> Result<crate::status::Saved, StoreError> {
         Ok(self.with(|held| {
-            if held.pages.iter().any(|kept| kept.slug == page.slug) {
+            if held
+                .pages
+                .iter()
+                .any(|kept| kept.org == page.org && kept.slug == page.slug)
+            {
                 return crate::status::Saved::SlugTaken;
             }
             held.pages.push(page.clone());
@@ -1619,7 +1672,7 @@ impl crate::status::StatusPages for StatusLedger {
             if held
                 .pages
                 .iter()
-                .any(|kept| kept.slug == page.slug && kept.id != page.id)
+                .any(|kept| kept.org == page.org && kept.slug == page.slug && kept.id != page.id)
             {
                 return crate::status::Saved::SlugTaken;
             }

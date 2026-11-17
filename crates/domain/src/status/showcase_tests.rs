@@ -612,3 +612,78 @@ async fn a_published_postmortem_of_a_public_incident_is_linked_and_served_redact
         );
     }
 }
+
+#[tokio::test]
+async fn view_in_org_isolates_pages_sharing_the_same_slug_and_populates_thirty_day_bars() {
+    let world = World::new();
+    let other_org = TenantId::new(Uuid::from_u128(2));
+    world.status.put_org_slug(org(), slug("mercato"));
+    world.status.put_org_slug(other_org, slug("globex"));
+
+    let mercato_page = world.page("test", true);
+    world.component_with(
+        mercato_page,
+        "Ingest",
+        Link::Manual,
+        Some(ComponentStatus::Degraded),
+        true,
+    );
+
+    let globex_page = StatusPageId::fresh();
+    world.status.put_page(StatusPage {
+        id: globex_page,
+        org: other_org,
+        name: PageName::try_from("Globex").expect("a name"),
+        slug: slug("test"),
+        public: true,
+        hide_from_search: false,
+        theme: Theme::default(),
+        intro: None,
+        created_ms: 1,
+        updated_ms: 2,
+    });
+    world.status.put_component(
+        other_org,
+        Component {
+            id: ComponentId::fresh(),
+            page: globex_page,
+            name: ComponentName::try_from("Billing").expect("a name"),
+            link: Link::Manual,
+            manual_status: Some(ComponentStatus::Operational),
+            position: 0,
+            public: true,
+        },
+    );
+
+    let mercato = world
+        .showcase()
+        .view_in_org(&slug("mercato"), &slug("test"), now())
+        .await
+        .expect("mercato shown");
+    let globex = world
+        .showcase()
+        .view_in_org(&slug("globex"), &slug("test"), now())
+        .await
+        .expect("globex shown");
+
+    assert_eq!(mercato.org_slug.as_str(), "mercato");
+    assert_eq!(mercato.components.len(), 1);
+    assert_eq!(mercato.components[0].name.as_str(), "Ingest");
+    assert_eq!(mercato.components[0].days.len(), 30);
+    assert_eq!(
+        mercato.components[0].days[28],
+        Some(ComponentStatus::Operational)
+    );
+    assert_eq!(
+        mercato.components[0].days[29],
+        Some(ComponentStatus::Degraded)
+    );
+
+    assert_eq!(globex.org_slug.as_str(), "globex");
+    assert_eq!(globex.components.len(), 1);
+    assert_eq!(globex.components[0].name.as_str(), "Billing");
+    assert_eq!(
+        globex.components[0].days[29],
+        Some(ComponentStatus::Operational)
+    );
+}

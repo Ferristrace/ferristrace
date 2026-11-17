@@ -1,10 +1,14 @@
 use uuid::Uuid;
 
-use super::derivation::{by_error_rate, derive, overall, public_updates, redacted, shown};
+use super::derivation::{
+    alert_days_from_state, by_error_rate, derive, derive_days, overall, public_updates, redacted,
+    service_days_from_points, shown,
+};
 use super::entities::{Link, Observed, PublicComponent, ServiceLoad};
-use super::value_objects::{ComponentName, ComponentStatus, ServiceName, UpdateKind};
-use crate::alerts::{AlertSeverity, AlertStatus, Labels, RuleId};
+use super::value_objects::{ComponentName, ComponentStatus, ServiceName, UPTIME_DAYS, UpdateKind};
+use crate::alerts::{AlertEvent, AlertSeverity, AlertStatus, EventId, Labels, RuleId};
 use crate::catalogue::ProjectId;
+use crate::explore::ServicePoint;
 use crate::identity::AccountId;
 use crate::incidents::{
     Attachment, AttachmentId, AttachmentKind, AttachmentLabel, Author, Change, CommentBody,
@@ -49,7 +53,7 @@ fn an_alert_link_follows_whether_its_rule_fires_and_how_badly() {
             (rule(2), AlertSeverity::Warning),
             (rule(3), AlertSeverity::Info),
         ],
-        services: Vec::new(),
+        ..Observed::default()
     };
     let table = [
         (rule(1), ComponentStatus::Down),
@@ -97,8 +101,8 @@ fn a_service_link_follows_its_error_rate_over_the_last_minutes() {
             "{errors}/{requests}"
         );
         let observed = Observed {
-            firing: Vec::new(),
             services: vec![load("checkout", None, requests, errors)],
+            ..Observed::default()
         };
         assert_eq!(
             derive(&service("checkout", None), None, &observed),
@@ -110,11 +114,11 @@ fn a_service_link_follows_its_error_rate_over_the_last_minutes() {
 #[test]
 fn a_service_link_reads_the_load_of_its_own_project() {
     let observed = Observed {
-        firing: Vec::new(),
         services: vec![
             load("checkout", Some(project(1)), 100, 50),
             load("checkout", Some(project(2)), 100, 0),
         ],
+        ..Observed::default()
     };
 
     assert_eq!(
@@ -150,6 +154,7 @@ fn component(status: ComponentStatus) -> PublicComponent {
     PublicComponent {
         name: ComponentName::try_from("Checkout").expect("a name"),
         status,
+        days: vec![Some(status); UPTIME_DAYS],
     }
 }
 
@@ -349,4 +354,70 @@ fn an_address_in_a_published_text_is_redacted() {
         "no @mention or trailing@ or a@b here"
     );
     assert_eq!(redacted("caf\u{e9} ok"), "caf\u{e9} ok");
+}
+
+#[test]
+fn thirty_day_uptime_bars_reflect_service_points_and_alert_events() {
+    const DAY_NANOS: u64 = 86_400_000_000_000;
+    let from_nanos = 1_000_000_000_000_000;
+    let points = vec![
+        ServicePoint {
+            start_unix_nanos: from_nanos + 27 * DAY_NANOS,
+            requests: 100,
+            errors: 10,
+            p50_nanos: None,
+            p95_nanos: None,
+            p99_nanos: None,
+        },
+        ServicePoint {
+            start_unix_nanos: from_nanos + 28 * DAY_NANOS,
+            requests: 100,
+            errors: 30,
+            p50_nanos: None,
+            p95_nanos: None,
+            p99_nanos: None,
+        },
+    ];
+    let service_days = service_days_from_points(&points, from_nanos);
+    assert_eq!(service_days.len(), UPTIME_DAYS);
+    assert_eq!(service_days[26], None);
+    assert_eq!(service_days[27], Some(ComponentStatus::Degraded));
+    assert_eq!(service_days[28], Some(ComponentStatus::Down));
+    assert_eq!(service_days[29], None);
+
+    let event = AlertEvent {
+        id: EventId::fresh(),
+        rule: rule(1),
+        org: TenantId::new(Uuid::from_u128(1)),
+        from: AlertStatus::Ok,
+        to: AlertStatus::Firing,
+        value: Some(12.0),
+        labels: Labels::none(),
+        at_ms: NOW_MS - 2 * DAY_MS,
+        context: None,
+    };
+    let alert_days = alert_days_from_state(
+        AlertSeverity::Warning,
+        false,
+        0,
+        NOW_MS - 3 * DAY_MS,
+        &[event],
+        NOW_MS,
+    );
+    assert_eq!(alert_days.len(), UPTIME_DAYS);
+    assert_eq!(alert_days[26], None);
+    assert_eq!(alert_days[27], Some(ComponentStatus::Operational));
+    assert_eq!(alert_days[28], Some(ComponentStatus::Degraded));
+    assert_eq!(alert_days[29], Some(ComponentStatus::Operational));
+
+    let manual_days = derive_days(
+        &Link::Manual,
+        ComponentStatus::Degraded,
+        &Observed::default(),
+        NOW_MS - DAY_MS,
+        NOW_MS,
+    );
+    assert_eq!(manual_days.len(), UPTIME_DAYS);
+    assert_eq!(manual_days[28], None);
+    assert_eq!(manual_days[29], Some(ComponentStatus::Degraded));
 }

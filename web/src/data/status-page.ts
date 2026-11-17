@@ -24,6 +24,7 @@ export type StatusComponent = {
 
 export type StatusPage = {
   id: string
+  org_slug?: string
   name: string
   slug: string
   public: boolean
@@ -58,19 +59,31 @@ export type PublicIncident = {
 }
 
 export type PublicStatus = {
-  page: { name: string; theme: Theme; intro: string | null; hide_from_search: boolean }
+  page: {
+    org_slug?: string
+    slug?: string
+    name: string
+    theme: Theme
+    intro: string | null
+    hide_from_search: boolean
+    updated_ms?: number
+  }
   overall: ComponentStatus
-  components: { name: string; status: ComponentStatus }[]
+  components: { name: string; status: ComponentStatus; days?: (ComponentStatus | null)[] }[]
   incidents: PublicIncident[]
 }
 
 export type PublicPostmortem = { title: string; body: string; published_ms: number }
 
+export const UPTIME_DAYS = 30
 export const ACCENTS: Accent[] = ['indigo', 'teal', 'orange', 'rose', 'slate']
 export const MODES: Mode[] = ['light', 'dark', 'auto']
 export const COMPONENT_STATUSES: ComponentStatus[] = ['operational', 'degraded', 'down']
 export const SLUG_PATTERN = /^[a-z0-9-]{3,48}$/
-const RESERVED_SLUGS = ['confirm', 'unsubscribe']
+const RESERVED_SLUGS = ['confirm', 'unsubscribe', 'subscribe']
+
+export const statusPagePath = (page: { org_slug?: string; slug: string }): string =>
+  page.org_slug ? `/status/${page.org_slug}/${page.slug}` : `/status/${page.slug}`
 
 export const slugProblem = (slug: string): string | null =>
   !SLUG_PATTERN.test(slug)
@@ -174,32 +187,35 @@ async function publicly<T>(path: string): Promise<T> {
   return (await response.json()) as T
 }
 
-export function usePublicStatus(slug: string | undefined) {
+const apiStatusPath = (slug: string | undefined, org?: string) =>
+  org ? `/api/status/${org}/${slug}` : `/api/status/${slug}`
+
+export function usePublicStatus(slug: string | undefined, org?: string) {
   const { data, isPending, error } = useQuery({
-    queryKey: ['public-status', slug],
+    queryKey: ['public-status', org ?? null, slug],
     enabled: Boolean(slug),
     staleTime: FRESH_MS,
     refetchInterval: PUBLIC_REFRESH_MS,
     retry: retryable,
-    queryFn: async () => publicly<PublicStatus>(`/api/status/${slug}`),
+    queryFn: async () => publicly<PublicStatus>(apiStatusPath(slug, org)),
   })
   return { status: data, pending: isPending, failed: error }
 }
 
-export function usePublicPostmortem(slug: string | undefined, incident: string | undefined) {
+export function usePublicPostmortem(slug: string | undefined, incident: string | undefined, org?: string) {
   const { data, isPending, error } = useQuery({
-    queryKey: ['public-postmortem', slug, incident],
+    queryKey: ['public-postmortem', org ?? null, slug, incident],
     enabled: Boolean(slug) && Boolean(incident),
     retry: retryable,
-    queryFn: async () => publicly<PublicPostmortem>(`/api/status/${slug}/postmortems/${incident}`),
+    queryFn: async () => publicly<PublicPostmortem>(`${apiStatusPath(slug, org)}/postmortems/${incident}`),
   })
   return { postmortem: data, pending: isPending, failed: error }
 }
 
-export function useSubscribe(slug: string | undefined) {
+export function useSubscribe(slug: string | undefined, org?: string) {
   return useMutation({
     mutationFn: async (email: string) => {
-      const response = await fetch(`/api/status/${slug}/subscribe`, {
+      const response = await fetch(`${apiStatusPath(slug, org)}/subscribe`, {
         method: 'POST',
         credentials: 'omit',
         headers: { 'content-type': 'application/json' },

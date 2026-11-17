@@ -17,7 +17,7 @@ import { useAlerts } from '@/data/alerts'
 import { useProjects } from '@/data/projects'
 import { useServiceNames } from '@/data/services'
 import {
-  ACCENTS, COMPONENT_STATUSES, MODES, STATUS_WORDS, slugProblem, useAddComponent, useChangeComponent, useChangeStatusPage, useCreateStatusPage,
+  ACCENTS, COMPONENT_STATUSES, MODES, STATUS_WORDS, slugProblem, statusPagePath, useAddComponent, useChangeComponent, useChangeStatusPage, useCreateStatusPage,
   useDeleteStatusPage, useOrderComponents, useRemoveComponent, useStatusPage, useStatusPages, useStatusPreview,
   type ComponentLink, type ComponentStatus, type Mode, type StatusSheet,
 } from '@/data/status-page'
@@ -46,10 +46,10 @@ export function StatusPageEditor() {
       >
         {pages && pages.length > 1 ? (
           <NativeSelect aria-label="Status page" value={selected ?? ''} onChange={(event) => setChosen(event.target.value)} className="w-[220px] max-md:w-full">
-            {pages.map((page) => <option key={page.id} value={page.id}>{page.name} · /status/{page.slug}</option>)}
+            {pages.map((page) => <option key={page.id} value={page.id}>{page.name} · {statusPagePath(page)}</option>)}
           </NativeSelect>
         ) : null}
-        {current?.public ? <Button asChild size="sm"><Link to={`/status/${current.slug}`} target="_blank">View public page<ExternalLink /></Link></Button> : null}
+        {current?.public ? <Button asChild size="sm"><Link to={statusPagePath(current)} target="_blank">View public page<ExternalLink /></Link></Button> : null}
         {admin ? <Button variant="primary" size="sm" onClick={() => setCreating(true)}><Plus />New status page</Button> : null}
       </PageHeader>
       {failed ? <span className="text-control text-destructive-text">{because(failed, 'The status pages could not be loaded.')}</span> : null}
@@ -59,7 +59,7 @@ export function StatusPageEditor() {
         </EmptyState>
       ) : null}
       {selected ? <Editing key={selected} id={selected} admin={admin} /> : null}
-      <CreateDialog open={creating} onOpenChange={setCreating} onCreated={(id) => setChosen(id)} />
+      <CreateDialog open={creating} onOpenChange={setCreating} orgSlug={current?.org_slug} onCreated={(id) => setChosen(id)} />
     </>
   )
 }
@@ -97,6 +97,8 @@ function Settings({ sheet, admin }: { sheet: StatusSheet; admin: boolean }) {
     })
   const problem = slugProblem(slug)
   const edited = name !== sheet.name || slug !== sheet.slug || intro !== (sheet.intro ?? '')
+  const publicPath = statusPagePath(sheet)
+  const draftPath = statusPagePath({ org_slug: sheet.org_slug, slug })
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -104,7 +106,7 @@ function Settings({ sheet, admin }: { sheet: StatusSheet; admin: boolean }) {
         {sheet.public ? <Badge variant="success">Public</Badge> : <Badge variant="outline">Private</Badge>}
         <span className="text-caption text-muted-foreground">{sheet.subscribers} confirmed subscriber{sheet.subscribers === 1 ? '' : 's'}</span>
         <span className="flex-1" />
-        {sheet.public ? <Link to={`/status/${sheet.slug}`} target="_blank" className="inline-flex items-center gap-1 font-mono text-control">/status/{sheet.slug}<ExternalLink className="size-3" aria-hidden /></Link> : null}
+        {sheet.public ? <Link to={publicPath} target="_blank" className="inline-flex items-center gap-1 font-mono text-control">{publicPath}<ExternalLink className="size-3" aria-hidden /></Link> : null}
       </CardHeader>
       <div className="flex flex-col gap-4 p-4">
       <form className="flex flex-col gap-4" onSubmit={(event) => {
@@ -112,7 +114,7 @@ function Settings({ sheet, admin }: { sheet: StatusSheet; admin: boolean }) {
         send({ name: name.trim(), slug, intro: intro.trim() ? intro : null }, 'Status page saved')
       }}>
         <Field label="Name" htmlFor="sp-name"><Input id="sp-name" value={name} disabled={!admin} onChange={(event) => setName(event.target.value)} /></Field>
-        <Field label="Address" htmlFor="sp-slug" hint={problem ?? `Served at /status/${slug}`}><Input id="sp-slug" mono value={slug} disabled={!admin} onChange={(event) => setSlug(event.target.value)} /></Field>
+        <Field label="Address" htmlFor="sp-slug" hint={problem ?? `Served at ${draftPath}`}><Input id="sp-slug" mono value={slug} disabled={!admin} onChange={(event) => setSlug(event.target.value)} /></Field>
         <Field label="Introduction" htmlFor="sp-intro" hint="Optional. Shown above the components."><Textarea id="sp-intro" rows={2} value={intro} disabled={!admin} onChange={(event) => setIntro(event.target.value)} /></Field>
         {admin ? <Button type="submit" size="sm" variant="primary" className="self-start" disabled={!edited || Boolean(problem) || !name.trim() || change.isPending}>Save</Button> : null}
       </form>
@@ -250,11 +252,13 @@ function AddComponentDialog({ open, onOpenChange, page }: { open: boolean; onOpe
   )
 }
 
-function CreateDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; onCreated: (id: string) => void }) {
+function CreateDialog({ open, onOpenChange, orgSlug, onCreated }: { open: boolean; onOpenChange: (open: boolean) => void; orgSlug?: string; onCreated: (id: string) => void }) {
   const create = useCreateStatusPage()
+  const { active } = useOrganisations()
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const problem = slug ? slugProblem(slug) : null
+  const inferredOrg = orgSlug || (active ? slugOf(active.name) : undefined)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="New status page" description="It stays private until you make it public.">
@@ -274,7 +278,7 @@ function CreateDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpen
             setName(event.target.value)
             if (!slug || slug === slugOf(name)) setSlug(slugOf(event.target.value))
           }} placeholder="Acme" /></Field>
-          <Field label="Address" htmlFor="new-sp-slug" hint={problem ?? (slug ? `Served at /status/${slug}` : 'Lowercase letters, digits and hyphens.')}><Input id="new-sp-slug" mono value={slug} onChange={(event) => setSlug(event.target.value)} /></Field>
+          <Field label="Address" htmlFor="new-sp-slug" hint={problem ?? (slug ? `Served at ${statusPagePath({ org_slug: inferredOrg, slug })}` : 'Lowercase letters, digits and hyphens.')}><Input id="new-sp-slug" mono value={slug} onChange={(event) => setSlug(event.target.value)} /></Field>
           <DialogFooter><Button type="button" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" variant="primary" disabled={!name.trim() || !slug || Boolean(problem) || create.isPending}>Create</Button></DialogFooter>
         </form>
       </DialogContent>
@@ -287,11 +291,12 @@ const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').
 function Preview({ sheet }: { sheet: StatusSheet }) {
   const { preview, failed } = useStatusPreview(sheet.id)
   const [dark, setDark] = useState(sheet.theme.mode === 'dark')
+  const path = statusPagePath(sheet)
   return (
     <Card className="min-w-0 overflow-hidden">
       <CardHeader><CardTitle>Preview</CardTitle><span className="text-caption text-muted-foreground">what visitors see now</span><span className="flex-1" /><Segmented size="sm" label="Preview theme" value={dark ? 'dark' : 'light'} onChange={(v) => setDark(v === 'dark')} options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} /></CardHeader>
       <div className="m-3 overflow-hidden rounded-md border">
-        <div className="flex h-8 items-center gap-2 border-b bg-sidebar px-2.5"><span className="flex gap-1">{[0, 1, 2].map((i) => <span key={i} className="size-2 rounded-full bg-border" />)}</span><span className="flex h-5 flex-1 items-center rounded bg-muted px-2 font-mono text-[11px] text-muted-foreground">/status/{sheet.slug}</span></div>
+        <div className="flex h-8 items-center gap-2 border-b bg-sidebar px-2.5"><span className="flex gap-1">{[0, 1, 2].map((i) => <span key={i} className="size-2 rounded-full bg-border" />)}</span><span className="flex h-5 flex-1 items-center rounded bg-muted px-2 font-mono text-[11px] text-muted-foreground">{path}</span></div>
         <div className={cn('h-[640px] overflow-y-auto', dark ? 'dark' : 'light')}>
           {preview ? <div className="origin-top-left scale-[0.62]" style={{ width: '161%' }}><StatusPageView view={preview} compact /></div> : <div className="p-4 text-control text-muted-foreground">{failed ? because(failed, 'The preview could not be loaded.') : 'Loading the preview…'}</div>}
         </div>
