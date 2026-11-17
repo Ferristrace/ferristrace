@@ -15,6 +15,9 @@ use crate::unit_of_work::{Postgres, SharedTx};
 const UNIQUE_VIOLATION: &str = "23505";
 const PAGE_COLUMNS: &str = "id, org_id, name, slug, public, hide_from_search, accent, mode, \
                             intro, created_ms, updated_ms";
+const QUALIFIED_PAGE_COLUMNS: &str = "p.id, p.org_id, p.name, p.slug, p.public, \
+                                      p.hide_from_search, p.accent, p.mode, p.intro, \
+                                      p.created_ms, p.updated_ms";
 const COMPONENT_COLUMNS: &str = "id, page_id, name, link_kind, service, project_id, rule_id, \
                                  manual_status, position, public";
 const SUBSCRIBER_COLUMNS: &str = "id, page_id, email, confirmed, invited_ms";
@@ -189,15 +192,51 @@ impl StatusPages for PostgresStatusPages {
         self.one(id, Some(org)).await
     }
 
+    async fn org_slug(&self, org: TenantId) -> Result<Slug, StoreError> {
+        let mut tx = self.tx.lock().await;
+        let raw: Option<String> = sqlx::query_scalar("SELECT slug FROM orgs WHERE id = $1")
+            .bind(org.as_uuid())
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(unreachable("read an organisation slug"))?;
+        let raw = raw.ok_or_else(|| refused("org_slug"))?;
+        Slug::try_from(raw.as_str()).map_err(|_| refused("org_slug"))
+    }
+
     async fn by_slug(&self, slug: &Slug) -> Result<Option<StatusPage>, StoreError> {
         let mut tx = self.tx.lock().await;
         let row = sqlx::query(sqlx::AssertSqlSafe(format!(
-            "SELECT {PAGE_COLUMNS} FROM status_pages WHERE slug = $1"
+            "SELECT {QUALIFIED_PAGE_COLUMNS} FROM status_pages p \
+             JOIN orgs o ON o.id = p.org_id \
+             WHERE (o.slug = $1 AND p.public) OR p.slug = $1 \
+             ORDER BY (o.slug = $1 AND p.public) DESC, p.public DESC, p.created_ms, p.id \
+             LIMIT 1"
         )))
         .bind(slug.as_str())
         .fetch_optional(&mut **tx)
         .await
         .map_err(unreachable("find a status page by its slug"))?;
+        row.as_ref().map(read_page).transpose()
+    }
+
+    async fn by_org_and_slug(
+        &self,
+        org_slug: &Slug,
+        slug: &Slug,
+    ) -> Result<Option<StatusPage>, StoreError> {
+        let mut tx = self.tx.lock().await;
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "SELECT {QUALIFIED_PAGE_COLUMNS} FROM status_pages p \
+             JOIN orgs o ON o.id = p.org_id \
+             WHERE o.slug = $1 AND p.slug = $2"
+        )))
+        .bind(org_slug.as_str())
+        .bind(slug.as_str())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(unreachable(
+            "find a status page by its organisation and slug",
+        ))?;
         row.as_ref().map(read_page).transpose()
     }
 
@@ -212,7 +251,7 @@ impl StatusPages for PostgresStatusPages {
              (id, org_id, name, slug, public, hide_from_search, accent, mode, intro, \
               created_ms, updated_ms) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
-             ON CONFLICT (slug) DO NOTHING",
+             ON CONFLICT (org_id, slug) DO NOTHING",
         )
         .bind(page.id.as_uuid())
         .bind(page.org.as_uuid())
@@ -238,8 +277,9 @@ impl StatusPages for PostgresStatusPages {
     async fn keep(&self, page: &StatusPage) -> Result<Saved, StoreError> {
         let mut tx = self.tx.lock().await;
         let clashing: bool = sqlx::query_scalar(
-            "SELECT EXISTS (SELECT 1 FROM status_pages WHERE slug = $1 AND id <> $2)",
+            "SELECT EXISTS (SELECT 1 FROM status_pages WHERE org_id = $1 AND slug = $2 AND id <> $3)",
         )
+        .bind(page.org.as_uuid())
         .bind(page.slug.as_str())
         .bind(page.id.as_uuid())
         .fetch_one(&mut **tx)

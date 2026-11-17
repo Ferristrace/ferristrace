@@ -1,11 +1,14 @@
 use super::entities::{Link, Observed, PublicComponent, PublicUpdate};
 use super::value_objects::{
-    ComponentStatus, DEGRADED_ERROR_PERCENT, DOWN_ERROR_PERCENT, PUBLIC_WINDOW_DAYS, UpdateKind,
+    ComponentStatus, DEGRADED_ERROR_PERCENT, DOWN_ERROR_PERCENT, PUBLIC_WINDOW_DAYS, UPTIME_DAYS,
+    UpdateKind,
 };
-use crate::alerts::AlertSeverity;
+use crate::alerts::{AlertEvent, AlertSeverity, AlertStatus};
+use crate::explore::ServicePoint;
 use crate::incidents::{Change, Incident, IncidentStatus, TimelineEntry};
 
 const DAY_MS: u64 = 86_400_000;
+const DAY_NANOS: u64 = 86_400_000_000_000;
 const PERCENT: u128 = 100;
 const REDACTED: &str = "[redacted]";
 
@@ -27,6 +30,114 @@ pub fn derive(
                 by_error_rate(load.requests, load.errors)
             }),
     }
+}
+
+pub fn derive_days(
+    link: &Link,
+    current: ComponentStatus,
+    observed: &Observed,
+    since_ms: u64,
+    now_ms: u64,
+) -> Vec<Option<ComponentStatus>> {
+    let from_ms = now_ms.saturating_sub((UPTIME_DAYS as u64) * DAY_MS);
+    let mut days = match link {
+        Link::Manual => (0..UPTIME_DAYS)
+            .map(|idx| {
+                let day_end = from_ms.saturating_add(((idx + 1) as u64) * DAY_MS);
+                (day_end > since_ms).then_some(ComponentStatus::Operational)
+            })
+            .collect(),
+        Link::Alert(rule) => observed.alert_days(*rule).map_or_else(
+            || vec![None; UPTIME_DAYS],
+            <[Option<ComponentStatus>]>::to_vec,
+        ),
+        Link::Service { name, project } => observed.service_days(name, *project).map_or_else(
+            || vec![None; UPTIME_DAYS],
+            <[Option<ComponentStatus>]>::to_vec,
+        ),
+    };
+    if days.len() < UPTIME_DAYS {
+        days.resize(UPTIME_DAYS, None);
+    } else if days.len() > UPTIME_DAYS {
+        days.truncate(UPTIME_DAYS);
+    }
+    if let Some(today) = days.last_mut() {
+        match link {
+            Link::Service { name, project } => {
+                if observed
+                    .load(name, *project)
+                    .is_some_and(|load| load.requests > 0)
+                    || current != ComponentStatus::Operational
+                {
+                    *today = Some(today.map_or(current, |prev| prev.max(current)));
+                }
+            }
+            Link::Alert(_) | Link::Manual => {
+                *today = Some(today.map_or(current, |prev| prev.max(current)));
+            }
+        }
+    }
+    days
+}
+
+pub fn alert_days_from_state(
+    severity: AlertSeverity,
+    firing: bool,
+    since_ms: u64,
+    created_ms: u64,
+    events: &[AlertEvent],
+    now_ms: u64,
+) -> Vec<Option<ComponentStatus>> {
+    let from_ms = now_ms.saturating_sub((UPTIME_DAYS as u64) * DAY_MS);
+    let mut days: Vec<Option<ComponentStatus>> = (0..UPTIME_DAYS)
+        .map(|idx| {
+            let day_end = from_ms.saturating_add(((idx + 1) as u64) * DAY_MS);
+            (day_end > created_ms).then_some(ComponentStatus::Operational)
+        })
+        .collect();
+    let impact = match severity {
+        AlertSeverity::Critical => ComponentStatus::Down,
+        AlertSeverity::Warning | AlertSeverity::Info => ComponentStatus::Degraded,
+    };
+    let bucket = |at_ms: u64| -> usize {
+        ((at_ms.saturating_sub(from_ms)) / DAY_MS).min((UPTIME_DAYS - 1) as u64) as usize
+    };
+    if firing {
+        let start = if since_ms >= from_ms {
+            bucket(since_ms)
+        } else {
+            UPTIME_DAYS - 1
+        };
+        for day in &mut days[start..UPTIME_DAYS] {
+            *day = Some(day.map_or(impact, |prev| prev.max(impact)));
+        }
+    }
+    for event in events {
+        if event.at_ms >= from_ms
+            && (event.from == AlertStatus::Firing || event.to == AlertStatus::Firing)
+        {
+            let index = bucket(event.at_ms);
+            days[index] = Some(days[index].map_or(impact, |prev| prev.max(impact)));
+        }
+    }
+    days
+}
+
+pub fn service_days_from_points(
+    points: &[ServicePoint],
+    from_nanos: u64,
+) -> Vec<Option<ComponentStatus>> {
+    let mut buckets = [(0_u64, 0_u64); UPTIME_DAYS];
+    for point in points {
+        let index = ((point.start_unix_nanos.saturating_sub(from_nanos)) / DAY_NANOS)
+            .min((UPTIME_DAYS - 1) as u64) as usize;
+        buckets[index].0 = buckets[index].0.saturating_add(point.requests);
+        buckets[index].1 = buckets[index].1.saturating_add(point.errors);
+    }
+    buckets
+        .into_iter()
+        .map(|(requests, errors)| (requests > 0).then(|| by_error_rate(requests, errors)))
+        .collect()
 }
 
 pub fn by_error_rate(requests: u64, errors: u64) -> ComponentStatus {

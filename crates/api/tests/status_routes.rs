@@ -813,17 +813,23 @@ async fn spec_l2_7_the_public_page_needs_no_session_and_shows_only_what_is_publi
     assert_eq!(
         shown["page"],
         json!({
+            "org_slug": "acme",
+            "slug": "acme",
             "name": "Acme",
             "theme": {"accent": "indigo", "mode": "auto"},
             "intro": null,
             "hide_from_search": false,
+            "updated_ms": NOW * 1000,
         })
     );
     assert_eq!(shown["overall"], "down");
+    assert_eq!(shown["components"][0]["name"], "Payments");
+    assert_eq!(shown["components"][0]["status"], "down");
     assert_eq!(
-        shown["components"],
-        json!([{"name": "Payments", "status": "down"}])
+        shown["components"][0]["days"].as_array().map(Vec::len),
+        Some(30)
     );
+    assert_eq!(shown["components"][0]["days"][29], "down");
     let incidents = shown["incidents"].as_array().expect("incidents");
     assert_eq!(incidents.len(), 1);
     let incident = &incidents[0];
@@ -906,11 +912,75 @@ async fn a_member_previews_a_page_before_it_is_public() {
 
     assert_eq!(previewed, StatusCode::OK, "{shown}");
     assert_eq!(shown["overall"], "degraded");
+    assert_eq!(shown["components"][0]["name"], "Website");
+    assert_eq!(shown["components"][0]["status"], "degraded");
     assert_eq!(
-        shown["components"],
-        json!([{"name": "Website", "status": "degraded"}])
+        shown["components"][0]["days"].as_array().map(Vec::len),
+        Some(30)
     );
+    assert_eq!(shown["components"][0]["days"][29], "degraded");
     assert_eq!(nobody, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn multi_tenant_routes_resolve_each_organisation_page_by_org_and_slug() {
+    let harness = Harness::new();
+    harness.status.put_org_slug(
+        org(MINE),
+        ferristrace_domain::Slug::try_from("mercato").expect("a slug"),
+    );
+    harness.status.put_org_slug(
+        org(THEIRS),
+        ferristrace_domain::Slug::try_from("globex").expect("a slug"),
+    );
+    let page = harness.a_page("test", true).await;
+    assert_eq!(page["org_slug"], "mercato");
+    harness
+        .a_component(
+            &page,
+            json!({"name": "Ingest", "link": {"kind": "manual"}, "manual_status": "degraded"}),
+        )
+        .await;
+    harness.status.put_page(ferristrace_domain::StatusPage {
+        id: StatusPageId::fresh(),
+        org: org(THEIRS),
+        name: ferristrace_domain::PageName::try_from("Globex").expect("a name"),
+        slug: ferristrace_domain::Slug::try_from("test").expect("a slug"),
+        public: true,
+        hide_from_search: false,
+        theme: ferristrace_domain::Theme::default(),
+        intro: None,
+        created_ms: 1,
+        updated_ms: 2,
+    });
+
+    let (mercato_status, mercato) = harness
+        .public(Method::GET, "/api/status/mercato/test", None)
+        .await;
+    let (globex_status, globex) = harness
+        .public(Method::GET, "/api/status/globex/test", None)
+        .await;
+    let (subscribed, _) = harness
+        .public(
+            Method::POST,
+            "/api/status/mercato/test/subscribe",
+            Some(json!({"email": "ada@example.com"})),
+        )
+        .await;
+
+    assert_eq!(mercato_status, StatusCode::OK, "{mercato}");
+    assert_eq!(mercato["page"]["org_slug"], "mercato");
+    assert_eq!(mercato["page"]["slug"], "test");
+    assert_eq!(mercato["overall"], "degraded");
+    assert_eq!(mercato["components"][0]["name"], "Ingest");
+
+    assert_eq!(globex_status, StatusCode::OK, "{globex}");
+    assert_eq!(globex["page"]["org_slug"], "globex");
+    assert_eq!(globex["page"]["name"], "Globex");
+    assert_eq!(globex["overall"], "operational");
+
+    assert_eq!(subscribed, StatusCode::ACCEPTED);
+    assert_eq!(harness.status.subscribers().len(), 1);
 }
 
 #[tokio::test]

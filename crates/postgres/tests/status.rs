@@ -206,7 +206,7 @@ async fn a_page_and_its_components_read_back_whole() {
 }
 
 #[tokio::test]
-async fn a_slug_is_unique_across_organisations() {
+async fn a_slug_is_unique_within_an_organisation_and_reusable_across_tenants() {
     let Some(pool) = control_plane("status_slugs", 2).await else {
         return;
     };
@@ -214,25 +214,45 @@ async fn a_slug_is_unique_across_organisations() {
     let (mine, _) = an_org(&pool, "Acme", "owner@example.com").await;
     let (theirs, _) = an_org(&pool, "Globex", "owner@globex.example.com").await;
     let first = a_page(mine, "taken", true);
-    let second = a_page(theirs, "taken", true);
+    let duplicate = a_page(mine, "taken", true);
+    let foreign = a_page(theirs, "taken", true);
     let mut renamed = a_page(theirs, "free", true);
 
-    let (one, two, three, four, listed) = committed!(pg, |pages: StatusPages| {
-        let one = pages.create(&first).await.expect("created");
-        let two = pages.create(&second).await.expect("refused");
-        let three = pages.create(&renamed).await.expect("created");
-        renamed.slug = Slug::try_from("taken").expect("a slug");
-        let four = pages.keep(&renamed).await.expect("refused");
-        let listed = pages.list(theirs).await.expect("listed");
-        (one, two, three, four, listed)
-    });
+    let (one, dup, two, three, four, mine_page, theirs_page, listed) =
+        committed!(pg, |pages: StatusPages| {
+            let one = pages.create(&first).await.expect("created");
+            let dup = pages.create(&duplicate).await.expect("refused in same org");
+            let two = pages.create(&foreign).await.expect("allowed in other org");
+            let three = pages.create(&renamed).await.expect("created");
+            renamed.slug = Slug::try_from("taken").expect("a slug");
+            let four = pages.keep(&renamed).await.expect("refused in same org");
+            let mine_slug = pages.org_slug(mine).await.expect("mine slug");
+            let theirs_slug = pages.org_slug(theirs).await.expect("theirs slug");
+            let mine_page = pages
+                .by_org_and_slug(&mine_slug, &first.slug)
+                .await
+                .expect("read mine");
+            let theirs_page = pages
+                .by_org_and_slug(&theirs_slug, &foreign.slug)
+                .await
+                .expect("read theirs");
+            let listed = pages.list(theirs).await.expect("listed");
+            (one, dup, two, three, four, mine_page, theirs_page, listed)
+        });
 
     assert_eq!(
-        (one, two, three, four),
-        (Saved::Done, Saved::SlugTaken, Saved::Done, Saved::SlugTaken)
+        (one, dup, two, three, four),
+        (
+            Saved::Done,
+            Saved::SlugTaken,
+            Saved::Done,
+            Saved::Done,
+            Saved::SlugTaken
+        )
     );
-    assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].slug.as_str(), "free");
+    assert_eq!(mine_page, Some(first));
+    assert_eq!(theirs_page, Some(foreign));
+    assert_eq!(listed.len(), 2);
 }
 
 #[tokio::test]

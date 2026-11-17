@@ -15,6 +15,7 @@ pub const DEGRADED_ERROR_PERCENT: u64 = 5;
 pub const DOWN_ERROR_PERCENT: u64 = 25;
 pub const SERVICE_WINDOW_SECS: u64 = 300;
 pub const PUBLIC_WINDOW_DAYS: u64 = 7;
+pub const UPTIME_DAYS: usize = 30;
 pub const CONFIRM_LIFETIME_SECS: u64 = 7 * 24 * 3_600;
 pub const UNSUBSCRIBE_LIFETIME_SECS: u64 = 90 * 24 * 3_600;
 pub const RESEND_AFTER_SECS: u64 = 3_600;

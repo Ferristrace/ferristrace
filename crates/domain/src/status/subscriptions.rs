@@ -1,4 +1,4 @@
-use super::entities::{Invite, Landing, LinkNotice, Subscriber};
+use super::entities::{Invite, Landing, LinkNotice, StatusPage, Subscriber};
 use super::errors::{LinkRefused, StatusError};
 use super::link::{LinkKey, Purpose};
 use super::ports::{StatusOutbox, StatusPages, StatusSubscribers};
@@ -18,7 +18,7 @@ pub struct Subscriptions<'a, Pg, Sb, O> {
 
 impl<'a, Pg, Sb, O> Subscriptions<'a, Pg, Sb, O>
 where
-    Pg: StatusPages,
+    Pg: StatusPages + Sync,
     Sb: StatusSubscribers,
     O: StatusOutbox,
 {
@@ -43,6 +43,36 @@ where
         let Some(page) = self.pages.by_slug(slug).await?.filter(|page| page.public) else {
             return Ok(false);
         };
+        self.subscribe_page(&page, email, now).await
+    }
+
+    pub async fn subscribe_in_org(
+        &self,
+        org_slug: &Slug,
+        slug: &Slug,
+        email: &Email,
+        now: UnixSeconds,
+    ) -> Result<bool, StatusError> {
+        if self.key.is_none() {
+            return Ok(false);
+        }
+        let Some(page) = self
+            .pages
+            .by_org_and_slug(org_slug, slug)
+            .await?
+            .filter(|page| page.public)
+        else {
+            return Ok(false);
+        };
+        self.subscribe_page(&page, email, now).await
+    }
+
+    async fn subscribe_page(
+        &self,
+        page: &StatusPage,
+        email: &Email,
+        now: UnixSeconds,
+    ) -> Result<bool, StatusError> {
         let now_ms = now.get().saturating_mul(MILLIS_PER_SECOND);
         let invited = match self.subscribers.find(page.id, email).await? {
             None => {
@@ -132,7 +162,9 @@ where
             .by_id(page)
             .await?
             .ok_or(StatusError::NoSuchPage)?;
+        let org_slug = self.pages.org_slug(page.org).await?;
         Ok(Landing {
+            org_slug,
             slug: page.slug,
             notice,
         })

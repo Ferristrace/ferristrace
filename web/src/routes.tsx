@@ -81,7 +81,17 @@ const publicStatusRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): { notice?: string } => ({ notice: typeof search.notice === 'string' ? search.notice : undefined }),
 })
 
+const orgPublicStatusRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/status/$org/$slug',
+  component: PublicStatus,
+  staticData: real,
+  validateSearch: (search: Record<string, unknown>): { notice?: string } => ({ notice: typeof search.notice === 'string' ? search.notice : undefined }),
+})
+
 const publicPostmortemRoute = createRoute({ getParentRoute: () => rootRoute, path: '/status/$slug/postmortems/$incident', component: PublicPostmortem, staticData: real })
+
+const orgPublicPostmortemRoute = createRoute({ getParentRoute: () => rootRoute, path: '/status/$org/$slug/postmortems/$incident', component: PublicPostmortem, staticData: real })
 
 async function signedIn(queryClient: QueryClient, href: string) {
   try {
@@ -156,7 +166,9 @@ const settingsChildren = [
 const routeTree = rootRoute.addChildren([
   welcomeRoute,
   publicStatusRoute,
+  orgPublicStatusRoute,
   publicPostmortemRoute,
+  orgPublicPostmortemRoute,
   shellRoute.addChildren([
     inShell('/', Home, timed),
     inShell('/onboarding', Onboarding, real),

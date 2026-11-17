@@ -21,10 +21,25 @@ pub trait StatusPages {
         id: StatusPageId,
     ) -> impl Future<Output = Result<Option<StatusPage>, StoreError>> + Send;
 
+    fn org_slug(&self, _org: TenantId) -> impl Future<Output = Result<Slug, StoreError>> + Send {
+        async { Ok(Slug::try_from("acme").expect("default test org slug is always valid")) }
+    }
+
     fn by_slug(
         &self,
         slug: &Slug,
     ) -> impl Future<Output = Result<Option<StatusPage>, StoreError>> + Send;
+
+    fn by_org_and_slug(
+        &self,
+        _org_slug: &Slug,
+        slug: &Slug,
+    ) -> impl Future<Output = Result<Option<StatusPage>, StoreError>> + Send
+    where
+        Self: Sync,
+    {
+        self.by_slug(slug)
+    }
 
     fn by_id(
         &self,

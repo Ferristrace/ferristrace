@@ -189,7 +189,7 @@ where
         .await
     }
 
-    #[transactional(sessions, memberships, api_keys, alert_rules, alert_states, status_pages, incidents, incident_timeline, postmortems, unavailable = StatusError::StoreUnreachable)]
+    #[transactional(sessions, memberships, api_keys, alert_rules, alert_states, alert_events, status_pages, incidents, incident_timeline, postmortems, unavailable = StatusError::StoreUnreachable)]
     pub async fn preview_status_page(
         &self,
         who: &Reader,
@@ -205,6 +205,7 @@ where
             alert_states,
             self.span_store.as_ref(),
         )
+        .with_events(alert_events)
         .preview(
             &Readers::new(Whoami::new(sessions, memberships), api_keys),
             who,
@@ -215,7 +216,7 @@ where
         .await
     }
 
-    #[transactional(alert_rules, alert_states, status_pages, incidents, incident_timeline, postmortems, unavailable = StatusError::StoreUnreachable)]
+    #[transactional(alert_rules, alert_states, alert_events, status_pages, incidents, incident_timeline, postmortems, unavailable = StatusError::StoreUnreachable)]
     pub async fn public_status(&self, slug: &Slug) -> Result<PublicView, StatusError> {
         Showcase::new(
             status_pages,
@@ -226,7 +227,28 @@ where
             alert_states,
             self.span_store.as_ref(),
         )
+        .with_events(alert_events)
         .view(slug, self.clock.now())
+        .await
+    }
+
+    #[transactional(alert_rules, alert_states, alert_events, status_pages, incidents, incident_timeline, postmortems, unavailable = StatusError::StoreUnreachable)]
+    pub async fn public_status_in_org(
+        &self,
+        org_slug: &Slug,
+        slug: &Slug,
+    ) -> Result<PublicView, StatusError> {
+        Showcase::new(
+            status_pages,
+            incidents,
+            incident_timeline,
+            postmortems,
+            alert_rules,
+            alert_states,
+            self.span_store.as_ref(),
+        )
+        .with_events(alert_events)
+        .view_in_org(org_slug, slug, self.clock.now())
         .await
     }
 
@@ -249,6 +271,26 @@ where
         .await
     }
 
+    #[transactional(alert_rules, alert_states, status_pages, incidents, incident_timeline, postmortems, unavailable = StatusError::StoreUnreachable)]
+    pub async fn public_postmortem_in_org(
+        &self,
+        org_slug: &Slug,
+        slug: &Slug,
+        incident: IncidentId,
+    ) -> Result<PublicPostmortem, StatusError> {
+        Showcase::new(
+            status_pages,
+            incidents,
+            incident_timeline,
+            postmortems,
+            alert_rules,
+            alert_states,
+            self.span_store.as_ref(),
+        )
+        .postmortem_in_org(org_slug, slug, incident)
+        .await
+    }
+
     #[transactional(status_pages, status_subscribers, status_outbox, unavailable = StatusError::StoreUnreachable)]
     pub async fn subscribe_to_status(
         &self,
@@ -262,6 +304,23 @@ where
             self.status_key.as_ref(),
         )
         .subscribe(slug, email, self.clock.now())
+        .await
+    }
+
+    #[transactional(status_pages, status_subscribers, status_outbox, unavailable = StatusError::StoreUnreachable)]
+    pub async fn subscribe_to_status_in_org(
+        &self,
+        org_slug: &Slug,
+        slug: &Slug,
+        email: &Email,
+    ) -> Result<bool, StatusError> {
+        Subscriptions::new(
+            status_pages,
+            status_subscribers,
+            status_outbox,
+            self.status_key.as_ref(),
+        )
+        .subscribe_in_org(org_slug, slug, email, self.clock.now())
         .await
     }
 

@@ -33,10 +33,10 @@ function Missing({ failed }: { failed: unknown }) {
 }
 
 export function PublicStatus() {
-  const { slug } = useParams()
+  const { org, slug } = useParams()
   const notice = useSearchParam('notice')
-  const { status, failed } = usePublicStatus(slug)
-  const subscribe = useSubscribe(slug)
+  const { status, failed } = usePublicStatus(slug, org)
+  const subscribe = useSubscribe(slug, org)
   useNoIndex(status?.page.hide_from_search ?? true)
   useEffect(() => {
     if (status) document.title = `${status.page.name} status`
@@ -52,16 +52,17 @@ export function PublicStatus() {
 }
 
 export function PublicPostmortem() {
-  const { slug, incident } = useParams()
-  const { postmortem, failed } = usePublicPostmortem(slug, incident)
-  const { status } = usePublicStatus(slug)
+  const { org, slug, incident } = useParams()
+  const { postmortem, failed } = usePublicPostmortem(slug, incident, org)
+  const { status } = usePublicStatus(slug, org)
   useNoIndex(status?.page.hide_from_search ?? true)
   if (failed) return <Missing failed={failed} />
   if (!postmortem) return <div className="min-h-screen bg-background" aria-busy />
+  const backHref = org ? `/status/${org}/${slug}` : `/status/${slug}`
   return (
     <div className="min-h-screen bg-background text-foreground">
       <main className="mx-auto flex max-w-[880px] flex-col gap-4 px-6 pb-16 pt-8">
-        <a className="text-control" href={`/status/${slug}`}>Back to the status page</a>
+        <a className="text-control" href={backHref}>Back to the status page</a>
         <h1 className="text-[24px] font-semibold">{postmortem.title}</h1>
         <span className="text-caption text-muted-foreground">Published {new Date(postmortem.published_ms).toLocaleString('en-US')}</span>
         <article className="rounded-md border bg-card px-6 py-5"><Markdown source={postmortem.body} /></article>

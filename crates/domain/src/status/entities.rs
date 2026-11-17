@@ -91,6 +91,7 @@ pub struct ComponentPatch {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sheet {
+    pub org_slug: Slug,
     pub page: StatusPage,
     pub components: Vec<Component>,
     pub subscribers: u64,
@@ -98,6 +99,7 @@ pub struct Sheet {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Listed {
+    pub org_slug: Slug,
     pub page: StatusPage,
     pub subscribers: u64,
 }
@@ -117,10 +119,19 @@ pub struct ServiceLoad {
     pub errors: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServiceHistory {
+    pub name: Box<str>,
+    pub project: Option<ProjectId>,
+    pub days: Vec<Option<ComponentStatus>>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Observed {
     pub firing: Vec<(RuleId, AlertSeverity)>,
     pub services: Vec<ServiceLoad>,
+    pub alert_days: Vec<(RuleId, Vec<Option<ComponentStatus>>)>,
+    pub service_days: Vec<ServiceHistory>,
 }
 
 impl Observed {
@@ -135,6 +146,24 @@ impl Observed {
         self.services
             .iter()
             .find(|load| &*load.name == name.as_str() && load.project == project)
+    }
+
+    pub fn alert_days(&self, rule: RuleId) -> Option<&[Option<ComponentStatus>]> {
+        self.alert_days
+            .iter()
+            .find(|(held, _)| *held == rule)
+            .map(|(_, days)| days.as_slice())
+    }
+
+    pub fn service_days(
+        &self,
+        name: &ServiceName,
+        project: Option<ProjectId>,
+    ) -> Option<&[Option<ComponentStatus>]> {
+        self.service_days
+            .iter()
+            .find(|history| &*history.name == name.as_str() && history.project == project)
+            .map(|history| history.days.as_slice())
     }
 }
 
@@ -161,18 +190,34 @@ pub struct PublicIncident {
 pub struct PublicComponent {
     pub name: ComponentName,
     pub status: ComponentStatus,
+    pub days: Vec<Option<ComponentStatus>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicView {
+    pub org_slug: Slug,
     pub name: PageName,
     pub slug: Slug,
     pub theme: Theme,
     pub intro: Option<Intro>,
     pub hide_from_search: bool,
+    pub updated_ms: u64,
     pub overall: ComponentStatus,
     pub components: Vec<PublicComponent>,
     pub incidents: Vec<PublicIncident>,
+}
+
+impl PublicView {
+    pub fn postmortem_path(&self, incident: IncidentId) -> String {
+        if self.org_slug == self.slug {
+            format!("/status/{}/postmortems/{incident}", self.slug)
+        } else {
+            format!(
+                "/status/{}/{}/postmortems/{incident}",
+                self.org_slug, self.slug
+            )
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,8 +253,24 @@ impl LinkNotice {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Landing {
+    pub org_slug: Slug,
     pub slug: Slug,
     pub notice: LinkNotice,
+}
+
+impl Landing {
+    pub fn path(&self) -> String {
+        if self.org_slug == self.slug {
+            format!("/status/{}?notice={}", self.slug, self.notice.as_str())
+        } else {
+            format!(
+                "/status/{}/{}?notice={}",
+                self.org_slug,
+                self.slug,
+                self.notice.as_str()
+            )
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

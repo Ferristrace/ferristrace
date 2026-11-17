@@ -54,11 +54,20 @@ where
         )
         .route("/api/status/confirm", get(confirm::<S>))
         .route("/api/status/unsubscribe", get(unsubscribe::<S>))
-        .route("/api/status/{slug}", get(public::<S>))
-        .route("/api/status/{slug}/subscribe", post(subscribe::<S>))
+        .route("/api/status/{org}", get(public::<S>))
+        .route("/api/status/{org}/subscribe", post(subscribe::<S>))
         .route(
-            "/api/status/{slug}/postmortems/{incident}",
+            "/api/status/{org}/postmortems/{incident}",
             get(postmortem::<S>),
+        )
+        .route("/api/status/{org}/{slug}", get(public_in_org::<S>))
+        .route(
+            "/api/status/{org}/{slug}/subscribe",
+            post(subscribe_in_org::<S>),
+        )
+        .route(
+            "/api/status/{org}/{slug}/postmortems/{incident}",
+            get(postmortem_in_org::<S>),
         )
         .with_state(state)
 }
@@ -151,6 +160,7 @@ impl From<&Component> for ComponentBody {
 #[derive(Debug, Serialize)]
 pub struct PageBody {
     id: Uuid,
+    org_slug: String,
     name: String,
     slug: String,
     public: bool,
@@ -165,9 +175,15 @@ pub struct PageBody {
 }
 
 impl PageBody {
-    fn of(page: &StatusPage, subscribers: u64, components: Option<&[Component]>) -> Self {
+    fn of(
+        org_slug: &Slug,
+        page: &StatusPage,
+        subscribers: u64,
+        components: Option<&[Component]>,
+    ) -> Self {
         Self {
             id: page.id.as_uuid(),
+            org_slug: org_slug.as_str().to_owned(),
             name: page.name.as_str().to_owned(),
             slug: page.slug.as_str().to_owned(),
             public: page.public,
@@ -185,13 +201,18 @@ impl PageBody {
 
 impl From<&Sheet> for PageBody {
     fn from(sheet: &Sheet) -> Self {
-        Self::of(&sheet.page, sheet.subscribers, Some(&sheet.components))
+        Self::of(
+            &sheet.org_slug,
+            &sheet.page,
+            sheet.subscribers,
+            Some(&sheet.components),
+        )
     }
 }
 
 impl From<&Listed> for PageBody {
     fn from(listed: &Listed) -> Self {
-        Self::of(&listed.page, listed.subscribers, None)
+        Self::of(&listed.org_slug, &listed.page, listed.subscribers, None)
     }
 }
 
@@ -383,16 +404,20 @@ pub struct TokenLink {
 
 #[derive(Debug, Serialize)]
 pub struct PublicPageBody {
+    org_slug: String,
+    slug: String,
     name: String,
     theme: ThemeBody,
     intro: Option<String>,
     hide_from_search: bool,
+    updated_ms: u64,
 }
 
 #[derive(Debug, Serialize)]
 pub struct PublicComponentBody {
     name: String,
     status: &'static str,
+    days: Vec<Option<&'static str>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -414,7 +439,7 @@ pub struct PublicIncidentBody {
 }
 
 impl PublicIncidentBody {
-    fn of(incident: &PublicIncident, slug: &Slug) -> Self {
+    fn of(incident: &PublicIncident, view: &PublicView) -> Self {
         Self {
             title: incident.title.as_str().to_owned(),
             status: incident.status.as_str(),
@@ -432,7 +457,7 @@ impl PublicIncidentBody {
                 .collect(),
             postmortem_url: incident
                 .postmortem
-                .then(|| format!("/status/{slug}/postmortems/{}", incident.id)),
+                .then(|| view.postmortem_path(incident.id)),
         }
     }
 }
@@ -449,10 +474,13 @@ impl From<&PublicView> for PublicBody {
     fn from(view: &PublicView) -> Self {
         Self {
             page: PublicPageBody {
+                org_slug: view.org_slug.as_str().to_owned(),
+                slug: view.slug.as_str().to_owned(),
                 name: view.name.as_str().to_owned(),
                 theme: ThemeBody::of(view.theme),
                 intro: view.intro.as_ref().map(|intro| intro.as_str().to_owned()),
                 hide_from_search: view.hide_from_search,
+                updated_ms: view.updated_ms,
             },
             overall: view.overall.as_str(),
             components: view
@@ -461,12 +489,18 @@ impl From<&PublicView> for PublicBody {
                 .map(|component| PublicComponentBody {
                     name: component.name.as_str().to_owned(),
                     status: component.status.as_str(),
+                    days: component
+                        .days
+                        .iter()
+                        .copied()
+                        .map(|day| day.map(ComponentStatus::as_str))
+                        .collect(),
                 })
                 .collect(),
             incidents: view
                 .incidents
                 .iter()
-                .map(|incident| PublicIncidentBody::of(incident, &view.slug))
+                .map(|incident| PublicIncidentBody::of(incident, view))
                 .collect(),
         }
     }
@@ -683,6 +717,19 @@ where
     Ok(shared(json!(PublicBody::from(&view))))
 }
 
+async fn public_in_org<S: Stack>(
+    State(state): State<AppState<S>>,
+    Path((org, slug)): Path<(String, String)>,
+) -> Result<Response, StatusRefused>
+where
+    S::Repos: StatusRepos,
+{
+    let org = slug_of(&org)?;
+    let slug = slug_of(&slug)?;
+    let view = state.app.public_status_in_org(&org, &slug).await?;
+    Ok(shared(json!(PublicBody::from(&view))))
+}
+
 async fn postmortem<S: Stack>(
     State(state): State<AppState<S>>,
     Path((slug, incident)): Path<(String, Uuid)>,
@@ -694,6 +741,26 @@ where
     let held = state
         .app
         .public_postmortem(&slug, IncidentId::new(incident))
+        .await?;
+    Ok(shared(json!({
+        "title": held.title.as_str(),
+        "body": &*held.body,
+        "published_ms": held.published_ms,
+    })))
+}
+
+async fn postmortem_in_org<S: Stack>(
+    State(state): State<AppState<S>>,
+    Path((org, slug, incident)): Path<(String, String, Uuid)>,
+) -> Result<Response, StatusRefused>
+where
+    S::Repos: StatusRepos,
+{
+    let org = slug_of(&org)?;
+    let slug = slug_of(&slug)?;
+    let held = state
+        .app
+        .public_postmortem_in_org(&org, &slug, IncidentId::new(incident))
         .await?;
     Ok(shared(json!({
         "title": held.title.as_str(),
@@ -721,12 +788,31 @@ where
     Ok(StatusCode::ACCEPTED)
 }
 
+async fn subscribe_in_org<S: Stack>(
+    State(state): State<AppState<S>>,
+    Path((org, slug)): Path<(String, String)>,
+    Json(asked): Json<SubscribeAsked>,
+) -> Result<StatusCode, StatusRefused>
+where
+    S::Repos: StatusRepos,
+{
+    let email =
+        Email::try_from(asked.email.as_str()).map_err(|_| StatusRefused::Malformed("email"))?;
+    let (Ok(org), Ok(slug)) = (Slug::try_from(org.as_str()), Slug::try_from(slug.as_str())) else {
+        return Ok(StatusCode::ACCEPTED);
+    };
+    if state
+        .app
+        .subscribe_to_status_in_org(&org, &slug, &email)
+        .await?
+    {
+        tracing::info!(org = %org, slug = %slug, "a status page subscription was asked for");
+    }
+    Ok(StatusCode::ACCEPTED)
+}
+
 fn landed(landing: &Landing) -> Redirect {
-    Redirect::to(&format!(
-        "/status/{}?notice={}",
-        landing.slug,
-        landing.notice.as_str()
-    ))
+    Redirect::to(&landing.path())
 }
 
 async fn confirm<S: Stack>(
