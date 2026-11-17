@@ -19,30 +19,41 @@ Context
   today, because no plan sets the feature. Issue #345.
 
 Decisions
-  D1  Two more plan rows: `free` (`ingest_gb = 30`, `retention_days = 7`,
-      `features = {}`) and `pro` (`ingest_gb = 100`, `retention_days = 30`,
-      `features = {overage}`, `stripe_price_id` set). `self-hosted` is
-      unchanged. Both new plans carry every feature FerrisTrace has; a plan
-      never gates anything but volume and retention.
+  D1  Plans other than `self-hosted` are declared in the server config
+      (`[[plans]]`, or `FERRISTRACE_PLANS`) and written to `plans` on every
+      start, updated in place by slug and never deleted. No migration
+      inserts one, so a self-hosted database keeps exactly the
+      `self-hosted` row. The hosted service declares `free`
+      (`ingest_gb = 30`, `retention_days = 7`) and `pro` (`ingest_gb = 100`,
+      `retention_days = 30`, `overage = true`, a `price`). A plan never
+      gates anything but volume and retention.
   D2  Free beyond 30 GB is refused by the `Capped` branch that already
       exists. Pro beyond 100 GB is admitted and reported by the `Overage`
       branch that already exists; slice 20c reports that overage to
       Stripe, which prices and bills it. Neither branch changes.
-  D3  Prices live in Stripe only. `plans.stripe_price_id` names Stripe's
-      subscription price for a paid plan; no amount, currency or price is
+  D3  Prices live in Stripe only. `plans.price_ref` names the payment
+      provider's price for a paid plan, and is the only place that id
+      lives; no amount, currency or price is
       written anywhere else — not in a migration, a config file, a log
       line, a spec or a test.
   D4  A Stripe customer is created the first time an organisation starts
-      checkout (ADR 0002: the organisation is the tenant Stripe bills).
-      Free has no Stripe object. The mapping lives in a new table,
-      `billing_subscriptions`, one row per organisation that has ever
-      talked to Stripe, holding the customer id, the subscription id, the
-      mirrored status and period, and the plan's `stripe_price_id`.
+      checkout, before the checkout session (ADR 0002: the organisation is
+      the tenant Stripe bills), and the subscription carries the
+      organisation in its metadata. Free has no Stripe object. The mapping
+      lives in a new table, `billing_subscriptions`, one row per
+      organisation that has ever talked to Stripe, holding the customer
+      ref, the subscription ref, the mirrored status and period, and the
+      creation time of the last event applied.
   D5  Subscription state moves one way, Stripe to Postgres, through
       webhooks verified by Stripe's signature and applied inside one
-      transaction each (ADR 0024). `stripe_events` records the Stripe
-      event id in that same transaction, so a retried delivery changes
-      nothing the second time. Nothing on the ingest path calls Stripe.
+      transaction each (ADR 0024). `billing_events` records the event id
+      in that same transaction, so a retried delivery changes nothing the
+      second time. The mirror follows `customer.subscription.created`,
+      `.updated` and `.deleted`: active or trialing moves the organisation
+      to the plan carrying the subscription's price, past due keeps it,
+      unpaid, canceled, paused or incomplete_expired moves it to `free`. An
+      event older than the mirrored one is skipped. Nothing on the ingest
+      path calls Stripe.
   D6  A plan change — an upgrade through checkout, a downgrade applied by
       a webhook — takes effect for ingestion within the refresh interval
       ADR 0039 sets (20 seconds), not at the next restart.
@@ -73,7 +84,7 @@ Decisions
 
 Invariants
   - With no Stripe secret key and webhook secret configured, no billing
-    route does anything beyond reporting every organisation as Free, and
+    route does anything beyond reporting each organisation's own plan, and
     the ingest and control plane paths are byte-for-byte what they are
     today.
   - The quota decision for a given `Allowance` is the same with or without
@@ -90,17 +101,18 @@ Invariants
 Design
   Domain (`billing`, new context in `ferristrace-domain`, alongside
   `telemetry`):
-    Value objects: `StripeCustomerId`, `StripeSubscriptionId`,
-    `StripePriceId`, `StripeEventId` (opaque newtypes), `SubscriptionStatus`
+    Value objects: `CustomerRef`, `SubscriptionRef`, `PriceRef`,
+    `BillingEventId`, `PlanSlug` (opaque newtypes, named by role so the
+    domain does not take the shape of one provider), `SubscriptionStatus`
     (closed enum: `Active`, `PastDue`, `Canceled`).
     Entity: `Subscription { org: TenantId, customer, subscription, status,
     price, period_end }`, gaining `budget_cap_reached` in 20d.
     Ports: `BillingGateway` (`checkout_url`, `portal_url`,
     `report_usage(org, hour, over_by)`, `verify(signature, body) ->
-    Result<WebhookEvent, WebhookError>`); `Subscriptions`, a repository
+    Result<WebhookEvent, WebhookError>`); `BillingAccounts`, a repository
     port for `Subscription`, registered like any other (ADR 0023/0024).
     Use cases on `Ferristrace<S>`: `start_checkout`, `open_portal`,
-    `apply_webhook` (verifies, checks `stripe_events`, upserts
+    `apply_webhook` (verifies, checks `billing_events`, upserts
     `Subscription`, and on exhausted retries moves `orgs.plan_id` to
     `free`, all in one transaction).
 
@@ -113,13 +125,13 @@ Design
     lookup, no I/O.
 
   Postgres:
-    Migration: `plans.stripe_price_id text UNIQUE NULL`; `free` and `pro`
-    rows inserted with `stripe_price_id` NULL until 20b sets Pro's.
+    Migration: `plans.price_ref text UNIQUE NULL`. No plan row is
+    inserted; `sync_plans` writes the configured ones on start.
     Migration: `billing_subscriptions` (`org_id` PK/FK `orgs`,
     `stripe_customer_id` UNIQUE, `stripe_subscription_id` UNIQUE, `status`,
     `period_end` bigint). 20d adds `budget_cap_reached boolean default
     false` to this table in its own migration.
-    Migration: `stripe_events` (`event_id` text PRIMARY KEY, `received_at`
+    Migration: `billing_events` (`event_id` text PRIMARY KEY, `received_at`
     bigint). `apply_webhook` inserts into it before anything else in the
     same transaction; a unique violation means the event was already
     applied, and the use case returns `Ok(())` without touching
@@ -136,7 +148,9 @@ Design
     `Stack::Billing: BillingGateway + Send + Sync + 'static`;
     `Adapters<S>.billing: Option<S::Billing>`, `None` without a configured
     secret key and webhook secret — the same optionality `Users`,
-    `Agents` and the span stores already have. A `[stripe]` config section
+    `Agents` and the span stores already have. With `[stripe]` set, the
+    server refuses to start without a control plane, a `free` plan and at
+    least one plan with a `price`. A `[stripe]` config section
     (secret key, webhook secret, meter name) documented in
     `deploy/README.md` and the Helm chart values, both as secret
     references, never a literal value.
@@ -246,7 +260,7 @@ Acceptance (20b)
   @spec-l20b-2  Starting checkout for an organisation with no Stripe
                 customer creates one and returns a URL; a second checkout
                 for the same organisation reuses the customer.
-  @spec-l20b-3  A `checkout.session.completed` webhook, applied once,
+  @spec-l20b-3  An active `customer.subscription.*` webhook, applied once,
                 moves the organisation to `pro` and records the
                 subscription; applied again with the same event id changes
                 nothing.
@@ -257,7 +271,7 @@ Acceptance (20b)
                 allowance refresh enforces 30 GB again.
   @spec-l20b-6  With no Stripe secret key or webhook secret configured,
                 the checkout, portal and webhook routes answer 404 and
-                every organisation reads as Free on the settings page.
+                every organisation reads as its own plan on the settings page.
   @spec-l20b-7  A Pro organisation ingests past 100 GB in the month and is
                 admitted; `Admission::Overage` is reported with the bytes
                 over.

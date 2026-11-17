@@ -26,7 +26,7 @@ Billing is a bounded context in `ferristrace-domain` (`billing`), alongside
   checkout session, open a portal session, report a rolled-up hour to the
   usage meter. Nothing on this port returns a price or a currency; it takes
   identifiers and volumes and returns identifiers and URLs.
-- `Subscriptions`, a repository port (ADR 0024: one use case, one
+- `BillingAccounts`, a repository port (ADR 0024: one use case, one
   transaction) for the subscription state mirrored locally: plan, status,
   the Stripe customer and subscription id, the current period.
 
@@ -73,7 +73,7 @@ a price.
 - Gains: a Stripe outage degrades checkout and the portal, never ingestion
   or a read already served from the mirrored state. A self-hosted operator
   never sees Stripe mentioned unless they configure it.
-- Costs: a `stripe_events` table and the discipline of checking it inside
+- Costs: a `billing_events` table and the discipline of checking it inside
   every webhook's transaction; a new crate to keep green in CI; tests for
   the port use a recorded webhook body and an in-memory `BillingGateway`,
   never Stripe's API.
