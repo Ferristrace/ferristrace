@@ -334,6 +334,7 @@ where
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 pub fn state<R, M, P, Z>(
@@ -352,6 +353,7 @@ where
         clock: Inert::default(),
         mailer,
         webhooks: Inert::default(),
+        billing: None,
         photos,
         meter: Inert::default(),
         span_store: None,

@@ -222,6 +222,7 @@ impl Stack for TestStack {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 fn app(world: &Arc<Mutex<World>>) -> Router {
@@ -229,6 +230,7 @@ fn app(world: &Arc<Mutex<World>>) -> Router {
         clock: Inert::default(),
         mailer: Inert::default(),
         webhooks: Inert::default(),
+        billing: None,
         photos: NoPhotos,
         meter: Inert::default(),
         span_store: None,

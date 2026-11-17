@@ -594,6 +594,7 @@ impl Stack for Watching {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Couriered;
+    type Billing = Inert;
 }
 
 #[tokio::test]
@@ -649,6 +650,7 @@ async fn spec_l2_1_an_error_rate_rule_goes_pending_then_firing_then_back_to_ok()
             clock: clock.clone(),
             mailer: Couriered::default(),
             webhooks: Couriered::default(),
+            billing: None,
             photos: NoPhotos,
             meter: Inert::default(),
             span_store: Some(ClickhouseReader::new(client)),
@@ -765,6 +767,7 @@ async fn spec_l2_4_an_incident_declared_from_a_firing_alert_hears_of_its_recover
             clock: clock.clone(),
             mailer: Couriered::default(),
             webhooks: Couriered::default(),
+            billing: None,
             photos: NoPhotos,
             meter: Inert::default(),
             span_store: Some(ClickhouseReader::new(client)),
@@ -1267,6 +1270,7 @@ async fn spec_l3_5_a_firing_rule_stores_the_culprits_on_its_event() {
             clock: clock.clone(),
             mailer: Couriered::default(),
             webhooks: Couriered::default(),
+            billing: None,
             photos: NoPhotos,
             meter: Inert::default(),
             span_store: Some(ClickhouseReader::new(client)),
@@ -1307,6 +1311,7 @@ impl Stack for Spending {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Couriered;
+    type Billing = Inert;
 }
 
 fn an_llm_call(seed: u32, second: u64, feature: &str, model: &str) -> Span {
@@ -1499,6 +1504,7 @@ async fn spec_l4_4_a_cost_rule_fires_when_the_priced_calls_cross_ten_dollars_and
             clock: clock.clone(),
             mailer: Couriered::default(),
             webhooks: Couriered::default(),
+            billing: None,
             photos: NoPhotos,
             meter: Inert::default(),
             span_store: None,

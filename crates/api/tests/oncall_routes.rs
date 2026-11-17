@@ -321,6 +321,7 @@ impl Stack for TestStack {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 fn ack_key() -> AckKey {
@@ -377,6 +378,7 @@ impl Harness {
             clock: FixedClock::at(NOW + 3_600),
             mailer: Couriered::default(),
             webhooks: Inert::default(),
+            billing: None,
             photos: NoPhotos,
             meter: Inert::default(),
             span_store: None,
@@ -1085,6 +1087,7 @@ impl Stack for Watching {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 #[tokio::test]
@@ -1144,6 +1147,7 @@ async fn spec_l2_5_a_firing_alert_pages_escalates_and_stops_once_acknowledged() 
             clock: clock.clone(),
             mailer: mail.clone(),
             webhooks: Inert::default(),
+            billing: None,
             photos: NoPhotos,
             meter: Inert::default(),
             span_store: Some(Failing),

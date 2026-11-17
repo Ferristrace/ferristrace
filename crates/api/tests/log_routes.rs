@@ -221,6 +221,7 @@ impl Stack for TestStack {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Inert;
+    type Billing = Inert;
 }
 
 fn state(shelf: Option<Arc<Shelf>>) -> AppState<TestStack> {
@@ -228,6 +229,7 @@ fn state(shelf: Option<Arc<Shelf>>) -> AppState<TestStack> {
         clock: Inert::default(),
         mailer: Inert::default(),
         webhooks: Inert::default(),
+        billing: None,
         photos: NoPhotos,
         meter: Inert::default(),
         span_store: None,

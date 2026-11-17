@@ -321,6 +321,7 @@ impl Stack for TestStack {
     type Quota = Inert;
     type Directory = Inert;
     type Webhooks = Couriered;
+    type Billing = Inert;
 }
 
 struct Harness {
@@ -354,6 +355,7 @@ impl Harness {
             clock: FixedClock::at(NOW),
             mailer: self.mailer.clone(),
             webhooks: self.hooks.clone(),
+            billing: None,
             photos: NoPhotos,
             meter: Inert::default(),
             span_store: Some(Steady),
