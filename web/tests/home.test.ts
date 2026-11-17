@@ -5,7 +5,9 @@ import { createElement, html, load, stop } from './harness.ts'
 type Rules = typeof import('../src/pages/home/attention')
 type Status = typeof import('../src/pages/home/StatusLine')
 type List = typeof import('../src/pages/home/AttentionList')
-type Figures = typeof import('../src/pages/home/Figures')
+type Figures = typeof import('../src/pages/home/figures')
+type Hub = typeof import('../src/pages/home/hub')
+type TilesView = typeof import('../src/pages/home/Tiles')
 type Changes = typeof import('../src/pages/home/Changes')
 type Empty = typeof import('../src/pages/home/EmptyProject')
 type Item = import('../src/pages/home/attention').Item
@@ -14,7 +16,9 @@ type Stepped = import('../src/data/services').Stepped
 const rules = await load<Rules>('pages/home/attention.ts')
 const status = await load<Status>('pages/home/StatusLine.tsx')
 const list = await load<List>('pages/home/AttentionList.tsx')
-const figures = await load<Figures>('pages/home/Figures.tsx')
+const figures = await load<Figures>('pages/home/figures.ts')
+const hub = await load<Hub>('pages/home/hub.ts')
+const tiles = await load<TilesView>('pages/home/Tiles.tsx')
 const changes = await load<Changes>('pages/home/Changes.tsx')
 const empty = await load<Empty>('pages/home/EmptyProject.tsx')
 
@@ -38,10 +42,10 @@ const item = (over: Partial<Item>): Item => ({
 })
 
 const line = (state: import('../src/pages/home/attention').Status, missing: string[] = []) =>
-  html(createElement(status.StatusLine, { status: state, checked, missing, updatedMs: NOW - 12_000, windowLabel: '1 hour', now: NOW }))
+  html(createElement(status.StatusLine, { status: state, checked, missing, now: NOW }))
 
-const rows = (items: Item[], state: import('../src/pages/home/attention').Status, missing: string[] = []) =>
-  html(createElement(list.Attention, { items, status: state, missing }))
+const rows = (items: Item[], state: import('../src/pages/home/attention').Status, missing: string[] = [], notes: string[] = []) =>
+  html(createElement(list.Attention, { items, status: state, missing, notes, checked, now: NOW }))
 
 const series = (requests: number, errors: number, p95Ms: number | null): Stepped => ({ stepMs: 60_000, requests, errors, p95Ms, points: [] })
 
@@ -50,13 +54,11 @@ describe('@spec-l17-10 the home states', () => {
     const out = line({ kind: 'calm' })
     assert.match(out, /Nothing needs attention/)
     assert.match(out, /Checked 12 services, 3 alert rules, 24 pods, 0 open incidents/)
-    assert.match(out, /Updated 12 s ago/)
-    assert.match(out, /last 1 hour/)
     assert.doesNotMatch(out, /NaN|undefined/)
-    assert.match(rows([], { kind: 'calm' }), /No open incident/)
+    assert.match(rows([], { kind: 'calm' }), /Nothing needs attention/)
   })
 
-  it('attention lists ranked rows with severity word, kind, evidence and real links', () => {
+  it('attention lists ranked rows with severity word, time, action button and real links', () => {
     const items = [
       item({ id: 'a', severity: 'warning' }),
       item({ id: 'b', kind: 'incident', severity: 'critical', title: 'Checkout is down', to: '/incidents/42', evidence: { label: 'Open alert', to: '/alerts?rule=9' }, since: NOW - 4 * MIN }),
@@ -64,13 +66,14 @@ describe('@spec-l17-10 the home states', () => {
     const state = rules.status(items, [], NOW, NOW)
     assert.match(line(state), /2 things need attention/)
     const out = rows(items, state)
+    assert.match(out, /<span role="status"[^>]*>2 things need attention<\/span>/)
     assert.ok(out.indexOf('Checkout is down') < out.indexOf('>checkout<'))
     assert.match(out, /Critical/)
     assert.match(out, /Warning/)
-    assert.match(out, /Incident/)
+    assert.match(out, /Open incident/)
     assert.match(out, /Open alert/)
     assert.match(out, /Open traces/)
-    assert.match(out, /4 min ago/)
+    assert.match(out, /open 4 min/)
     assert.match(out, /<a [^>]*href="\/incidents\/42"/)
     assert.match(out, /<a [^>]*href="\/alerts\?rule=9"/)
     assert.doesNotMatch(out, /onclick/i)
@@ -86,17 +89,16 @@ describe('@spec-l17-10 the home states', () => {
   })
 
   it('keeps the detail out of the status region and names the hidden sources', () => {
-    const out = html(createElement(status.StatusLine, { status: { kind: 'calm' }, checked: { ...checked, rules: null, incidents: null }, missing: [], notes: ['Not visible to you: alerts.'], updatedMs: null, windowLabel: '1 hour', now: NOW }))
-    assert.match(out, /<div role="status"[^>]*><h2[^>]*>Nothing needs attention<\/h2><\/div>/)
+    const out = html(createElement(status.StatusLine, { status: { kind: 'calm' }, checked: { ...checked, rules: null, incidents: null }, missing: [], now: NOW }))
+    assert.match(out, /<div role="status"[^>]*><h3[^>]*>Nothing needs attention<\/h3><\/div>/)
     assert.match(out, /Checked 12 services, 24 pods/)
     assert.doesNotMatch(out, /alert rule|open incident/)
-    assert.match(out, /Not visible to you: alerts\./)
-    assert.match(out, /Not updated yet/)
+    assert.match(rows([], { kind: 'calm' }, [], ['Not visible to you: alerts.']), /Not visible to you: alerts\./)
   })
 
   it('a truncated list says so instead of calm', () => {
     assert.match(line({ kind: 'partial', names: ['issues'] }), /Only part of issues was checked/)
-    assert.match(rows([], { kind: 'partial', names: ['issues'] }), /truncated/)
+    assert.match(rows([], { kind: 'partial', names: ['issues'] }), /was truncated/)
   })
 
   it('evidence links carry the item title and the overflow names its kind', () => {
@@ -112,7 +114,8 @@ describe('@spec-l17-10 the home states', () => {
     assert.match(out, /Could not check alerts and pods/)
     assert.doesNotMatch(out, /Nothing needs attention/)
     assert.doesNotMatch(out, /Checked 12/)
-    assert.match(rows([], { kind: 'unchecked', names: ['alerts', 'pods'] }, ['alerts', 'pods']), /Could not check alerts and pods, so this list may be incomplete/)
+    assert.match(rows([], { kind: 'unchecked', names: ['alerts', 'pods'] }, ['alerts', 'pods']), /Could not check alerts and pods/)
+    assert.match(rows([item({})], { kind: 'attention', count: 1, worst: 'warning' }, ['alerts']), /Could not check alerts, so this list may be incomplete/)
     const withItem = line({ kind: 'attention', count: 1, worst: 'warning' }, ['alerts'])
     assert.match(withItem, /Could not check alerts/)
     assert.doesNotMatch(withItem, /Nothing needs attention/)
@@ -146,51 +149,80 @@ describe('@spec-l17-10 the home states', () => {
   })
 })
 
-describe('home figures', () => {
-  const read = (now: Stepped | null, before: Stepped | null) => figures.figuresOf(now, before, 3_600_000, '1 hour', 'ok')
-  const out = (list: import('../src/pages/home/Figures').Figure[]) => html(createElement(figures.Figures, { figures: list, short: '1 h' }))
+describe('@spec-l22-1 home figures', () => {
+  const issues = { value: 17, note: null, fresh: 5, cut: false }
+  const build = (now: Stepped | null, before: Stepped | null, failed = 1175) =>
+    hub.tilesOf(figures.figuresOf(now, before, 3_600_000, '1 hour', 'ok'), { value: failed, note: null }, issues, 3_600_000, new Date(2026, 10, 17, 8, 0).getTime(), '1 h')
+  const out = (list: import('../src/pages/home/hub').Tile[]) => html(createElement(tiles.Tiles, { tiles: list }))
 
-  it('shows value, comparison, a word and no sparkline', () => {
-    const text = out(read(series(7200, 144, 300), series(3600, 36, 200)))
+  it('shows four tiles with value and comparison, and no sparkline', () => {
+    const text = out(build(series(7200, 144, 300), series(3600, 36, 200)))
+    assert.match(text, /Failed spans/)
+    assert.match(text, /1,175/)
+    assert.match(text, /\+1\.0 pp vs previous 1 h/)
     assert.match(text, /2\.0\/s/)
-    assert.match(text, /\+100 %/)
-    assert.match(text, /vs previous 1 h/)
-    assert.match(text, /\+1\.0 pp/)
-    assert.match(text, /worse/)
+    assert.match(text, /\+100 % vs previous 1 h/)
     assert.match(text, /300 ms/)
+    assert.match(text, /\+50 % vs previous 1 h/)
+    assert.match(text, /Open issues/)
+    assert.match(text, />17</)
+    assert.match(text, /\+5 since 07:00/)
     assert.doesNotMatch(text, /<svg|<polyline/)
   })
 
+  it('fills failed spans red and p95 amber only when they got worse', () => {
+    const worse = build(series(7200, 144, 300), series(3600, 36, 200))
+    assert.deepEqual(worse.map((tile) => tile.fill), ['error', null, 'warning', null])
+    assert.match(out(worse), /data-fill="error"/)
+    const better = build(series(7200, 36, 200), series(3600, 36, 300))
+    assert.deepEqual(better.map((tile) => tile.fill), [null, null, null, null])
+    const flat = build(series(7200, 144, 300), series(7200, 144, 300))
+    assert.deepEqual(flat.map((tile) => tile.fill), [null, null, null, null])
+    const none = build(series(7200, 0, 300), series(3600, 36, 200), 0)
+    assert.equal(none[0].fill, null)
+    const small = build(series(7200, 144, 310), series(7200, 144, 300))
+    assert.equal(small[2].fill, null)
+  })
+
   it('shows no delta when the previous period holds no data', () => {
-    const list = read(series(7200, 144, 300), series(0, 0, null))
-    assert.ok(list.every((one) => one.delta.tone === 'none'))
+    const list = build(series(7200, 144, 300), series(0, 0, null))
+    assert.ok(list.every((one) => one.fill === null))
     const text = out(list)
     assert.doesNotMatch(text, /vs previous/)
     assert.match(text, /No previous period to compare/)
-    assert.doesNotMatch(out(read(series(7200, 144, 300), null)), /vs previous/)
+    assert.doesNotMatch(out(build(series(7200, 144, 300), null)), /vs previous/)
   })
 
   it('says what is unknown when the period itself holds nothing or failed', () => {
-    assert.match(out(read(series(0, 0, null), series(10, 0, 1))), /No request in the last 1 hour/)
-    assert.match(out(figures.figuresOf(null, null, 3_600_000, '1 hour', 'failed')), /Could not read the figures/)
-    assert.match(out(figures.figuresOf(null, null, 3_600_000, '1 hour', 'pending')), /Reading the figures/)
-    assert.doesNotMatch(out(read(null, null)), /NaN|undefined/)
+    assert.match(out(build(series(0, 0, null), series(10, 0, 1))), /No request in the last 1 hour/)
+    const failed = hub.tilesOf(figures.figuresOf(null, null, 3_600_000, '1 hour', 'failed'), { value: null, note: 'Could not read the services.' }, { value: null, note: 'Could not read the issues.', fresh: 0, cut: false }, 3_600_000, NOW, '1 h')
+    const text = out(failed)
+    assert.match(text, /Could not read the figures/)
+    assert.match(text, /Could not read the services/)
+    assert.match(text, /Could not read the issues/)
+    assert.match(out(hub.tilesOf(figures.figuresOf(null, null, 3_600_000, '1 hour', 'pending'), { value: null, note: null }, issues, 3_600_000, NOW, '1 h')), /Reading the figures/)
+    assert.doesNotMatch(out(build(null, null)), /NaN|undefined/)
   })
 
   it('says when the previous period could not be read, and gives no delta', () => {
     const list = figures.figuresOf(series(7200, 144, 300), null, 3_600_000, '1 hour', 'ok', {}, 'failed')
     assert.ok(list.every((one) => one.delta.tone === 'none' && one.delta.text === ''))
-    assert.match(out(list), /Could not read the previous period/)
-    assert.doesNotMatch(out(list), /vs previous/)
+    const text = out(hub.tilesOf(list, { value: 3, note: null }, issues, 3_600_000, NOW, '1 h'))
+    assert.match(text, /Could not read the previous period/)
+    assert.doesNotMatch(text, /vs previous/)
   })
 
-  it('gives the error rate no verdict under 20 requests in either period', () => {
-    const thin = figures.figuresOf(series(15, 3, 100), series(500, 5, 100), 3_600_000, '1 hour', 'ok')
-    assert.equal(thin[1].delta.tone, 'none')
-    assert.match(out(thin), /Fewer than 20 requests, no verdict/)
-    assert.doesNotMatch(out(thin).slice(out(thin).indexOf('Error rate'), out(thin).indexOf('p95 latency')), /worse/)
-    const fine = figures.figuresOf(series(500, 50, 100), series(500, 5, 100), 3_600_000, '1 hour', 'ok')
-    assert.equal(fine[1].delta.tone, 'worse')
+  it('gives the error rate no verdict and no fill under 20 requests in either period', () => {
+    const thin = build(series(15, 3, 100), series(500, 5, 100), 3)
+    assert.equal(thin[0].fill, null)
+    assert.match(thin[0].sub, /Fewer than 20 requests, no verdict/)
+    const fine = build(series(500, 50, 100), series(500, 5, 100), 50)
+    assert.equal(fine[0].fill, 'error')
+  })
+
+  it('counts a truncated issue list as a floor', () => {
+    const list = hub.tilesOf([], { value: 0, note: null }, { value: 200, note: null, fresh: 3, cut: true }, 3_600_000, NOW, '1 h')
+    assert.equal(list[3].value, '200+')
   })
 
   it('keeps the placement on the links', () => {
@@ -198,5 +230,8 @@ describe('home figures', () => {
     assert.equal(list[0].to, '/services?namespace=shop')
     assert.match(list[1].to, /^\/traces\?/)
     assert.match(list[1].to, /namespace=shop/)
+    const placed = hub.tilesOf(list, { value: 0, note: null }, issues, 3_600_000, NOW, '1 h', { namespace: 'shop' })
+    assert.match(placed[0].to, /namespace=shop/)
+    assert.equal(placed[1].to, '/services?namespace=shop')
   })
 })
