@@ -1,5 +1,8 @@
 use super::ports::{UsageHistory, UsageReader};
-use super::value_objects::{Consumption, DecompressedBytes, TenantId};
+use super::pricing::PriceList;
+use super::spending::by_project;
+use super::value_objects::{Consumption, DecompressedBytes, Split, TenantId};
+use crate::clock::UnixSeconds;
 use crate::explore::{ExploreError, Window};
 use crate::identity::SessionStore;
 use crate::organisation::{Memberships, OrgRole, Whoami};
@@ -10,6 +13,7 @@ pub struct Metering<S, G, R, H> {
     whoami: Whoami<S, G>,
     live: R,
     history: H,
+    prices: Option<PriceList>,
 }
 
 impl<S, G, R, H> Metering<S, G, R, H>
@@ -24,7 +28,14 @@ where
             whoami,
             live,
             history,
+            prices: None,
         }
+    }
+
+    #[must_use]
+    pub fn priced(mut self, prices: Option<PriceList>) -> Self {
+        self.prices = prices;
+        self
     }
 
     pub async fn consumption(
@@ -32,11 +43,15 @@ where
         token: &SessionToken,
         org: TenantId,
         window: Window,
+        now: UnixSeconds,
     ) -> Result<Consumption, ExploreError> {
         let who = self.whoami.of(token).await?;
         if !who.may_act_in(org, OrgRole::Member) {
             return Err(ExploreError::NotYours);
         }
+        let hours = self.history.hours(org, window).await?;
+        let projects = by_project(&hours, self.history.project_hours(org, window).await?);
+        let used: Split = hours.iter().filter_map(|hour| hour.split).sum();
         Ok(Consumption {
             ingested_bytes: self.live.used(org).await.get(),
             included_bytes: self
@@ -44,7 +59,10 @@ where
                 .included(org)
                 .await?
                 .map(DecompressedBytes::get),
-            hours: self.history.hours(org, window).await?,
+            hours,
+            pricing: self.prices,
+            bill: self.prices.map(|prices| prices.bill(used, window, now)),
+            projects,
         })
     }
 }

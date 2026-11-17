@@ -13,11 +13,51 @@ export type Hour = {
   metrics_points: number | null
 }
 
+export type Pricing = {
+  currency: string
+  spans_gb_micros: number
+  logs_gb_micros: number
+  metrics_million_micros: number
+  included: { spans_bytes: number; logs_bytes: number; metrics_points: number }
+}
+
+export type SignalBill = {
+  used: number
+  included: number
+  projected: number
+  value_micros: number
+  billable_micros: number
+  projected_billable_micros: number
+  passes_at_ms: number | null
+}
+
+export type Bill = {
+  value_micros: number
+  billable_micros: number
+  projected_value_micros: number
+  projected_billable_micros: number
+  by_signal: Record<Signal, SignalBill>
+}
+
+export type ProjectDay = { day_ms: number; spans_bytes: number; logs_bytes: number; metrics_points: number }
+
+export type ProjectUsage = {
+  project: string | null
+  name: string | null
+  spans_bytes: number
+  logs_bytes: number
+  metrics_points: number
+  days: ProjectDay[]
+}
+
 export type Metered = {
   ingested_bytes: number
   included_bytes: number | null
   by_signal: { spans_bytes: number; logs_bytes: number; metrics_points: number; unsplit_hours: number }
   hours: Hour[]
+  pricing?: Pricing | null
+  bill?: Bill | null
+  projects?: ProjectUsage[]
 }
 
 export const SIGNALS: { key: Signal; label: string; unit: 'bytes' | 'points'; read: (hour: Hour) => number | null }[] = [

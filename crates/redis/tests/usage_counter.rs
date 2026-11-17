@@ -1,6 +1,8 @@
 use ferristrace_application::testing::{Bearers, Inert};
 use ferristrace_application::{Adapters, Ferristrace, Stack};
-use ferristrace_domain::{Carried, DecompressedBytes, NoPhotos, TenantId, UsageMeter, UsageReader};
+use ferristrace_domain::{
+    Carried, DecompressedBytes, NoPhotos, ProjectId, TenantId, UsageMeter, UsageReader,
+};
 use ferristrace_infra::FixedClock;
 use ferristrace_postgres::{CONTROL_PLANE, Postgres, SELF_HOSTED_PLAN};
 use ferristrace_redis::RedisMeter;
@@ -116,10 +118,20 @@ async fn a_recorded_payload_shows_up_in_the_monthly_counter() {
     let tenant = TenantId::new(Uuid::new_v4());
 
     meter
-        .record_ingest(tenant, DecompressedBytes::new(400), Carried::spans(400))
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(400),
+            Carried::spans(400),
+        )
         .await;
     meter
-        .record_ingest(tenant, DecompressedBytes::new(600), Carried::spans(600))
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(600),
+            Carried::spans(600),
+        )
         .await;
 
     assert_eq!(meter.used(tenant).await, DecompressedBytes::new(1000));
@@ -146,7 +158,12 @@ async fn two_tenants_do_not_share_a_counter() {
     let second = TenantId::new(Uuid::new_v4());
 
     meter
-        .record_ingest(first, DecompressedBytes::new(100), Carried::spans(100))
+        .record_ingest(
+            first,
+            None,
+            DecompressedBytes::new(100),
+            Carried::spans(100),
+        )
         .await;
 
     assert_eq!(meter.used(first).await, DecompressedBytes::new(100));
@@ -162,7 +179,12 @@ async fn a_new_month_starts_the_counter_again() {
     let tenant = TenantId::new(Uuid::new_v4());
 
     november
-        .record_ingest(tenant, DecompressedBytes::new(900), Carried::spans(900))
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(900),
+            Carried::spans(900),
+        )
         .await;
 
     assert_eq!(november.used(tenant).await, DecompressedBytes::new(900));
@@ -203,7 +225,7 @@ async fn rehydration_leaves_a_live_counter_alone() {
     let tenant = seeded_org(&pool).await;
     billed(&pool, tenant, 1_698_800_000_000_000_000, 700).await;
     meter
-        .record_ingest(tenant, DecompressedBytes::new(50), Carried::spans(50))
+        .record_ingest(tenant, None, DecompressedBytes::new(50), Carried::spans(50))
         .await;
 
     let seeded = driven(&pool, NOVEMBER, "live")
@@ -295,7 +317,12 @@ async fn a_finished_hour_moves_into_the_billing_table() {
     let tenant = seeded_org(&pool).await;
 
     earlier
-        .record_ingest(tenant, DecompressedBytes::new(1500), Carried::spans(1500))
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(1500),
+            Carried::spans(1500),
+        )
         .await;
     let rolled = later.roll_up_usage().await.expect("the rollup runs");
 
@@ -320,7 +347,12 @@ async fn rolling_the_same_hour_twice_does_not_double_the_bill() {
     let tenant = seeded_org(&pool).await;
 
     earlier
-        .record_ingest(tenant, DecompressedBytes::new(800), Carried::spans(800))
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(800),
+            Carried::spans(800),
+        )
         .await;
     let first = later.roll_up_usage().await.expect("the first rollup");
     let second = later.roll_up_usage().await.expect("the second rollup");
@@ -342,7 +374,12 @@ async fn the_hour_in_progress_is_left_to_finish() {
     let tenant = seeded_org(&pool).await;
 
     meter
-        .record_ingest(tenant, DecompressedBytes::new(400), Carried::spans(400))
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(400),
+            Carried::spans(400),
+        )
         .await;
     let rolled = driven(&pool, NOVEMBER, "current")
         .await
@@ -369,7 +406,12 @@ async fn a_rollup_leaves_the_monthly_counter_standing() {
     let tenant = seeded_org(&pool).await;
 
     earlier
-        .record_ingest(tenant, DecompressedBytes::new(1200), Carried::spans(1200))
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(1200),
+            Carried::spans(1200),
+        )
         .await;
     later.roll_up_usage().await.expect("the rollup runs");
 
@@ -390,16 +432,26 @@ async fn a_rolled_hour_carries_what_each_signal_added() {
     let tenant = seeded_org(&pool).await;
 
     earlier
-        .record_ingest(tenant, DecompressedBytes::new(100), Carried::spans(100))
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(100),
+            Carried::spans(100),
+        )
         .await;
     earlier
-        .record_ingest(tenant, DecompressedBytes::new(40), Carried::logs(40))
+        .record_ingest(tenant, None, DecompressedBytes::new(40), Carried::logs(40))
         .await;
     earlier
-        .record_ingest(tenant, DecompressedBytes::new(60), Carried::metrics(7))
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(60),
+            Carried::metrics(7),
+        )
         .await;
     earlier
-        .record_ingest(tenant, DecompressedBytes::new(10), Carried::spans(10))
+        .record_ingest(tenant, None, DecompressedBytes::new(10), Carried::spans(10))
         .await;
     later.roll_up_usage().await.expect("the rollup runs");
 
@@ -415,4 +467,75 @@ async fn a_rolled_hour_carries_what_each_signal_added() {
     assert_eq!(row.get::<Option<i64>, _>("spans"), Some(110));
     assert_eq!(row.get::<Option<i64>, _>("logs"), Some(40));
     assert_eq!(row.get::<Option<i64>, _>("points"), Some(7));
+}
+
+#[tokio::test]
+async fn a_rolled_hour_carries_what_each_project_added_and_the_rest_is_no_project() {
+    let Some(pool) = control_plane("counter_projects").await else {
+        return;
+    };
+    let Some(earlier) = namespaced_meter_at(NOVEMBER, "projects").await else {
+        return;
+    };
+    let later = driven(&pool, NOVEMBER + 3600, "projects")
+        .await
+        .expect("the same store");
+    let tenant = seeded_org(&pool).await;
+    let web = ProjectId::new(Uuid::new_v4());
+    let api = ProjectId::new(Uuid::new_v4());
+
+    for (project, bytes, carried) in [
+        (Some(web), 100, Carried::spans(100)),
+        (Some(web), 40, Carried::logs(40)),
+        (Some(api), 60, Carried::metrics(7)),
+        (Some(api), 10, Carried::spans(10)),
+        (None, 5, Carried::spans(5)),
+    ] {
+        earlier
+            .record_ingest(tenant, project, DecompressedBytes::new(bytes), carried)
+            .await;
+    }
+    later.roll_up_usage().await.expect("the rollup runs");
+
+    let rows: Vec<(Uuid, i64, i64, i64)> = sqlx::query(
+        "SELECT project_id AS project, spans_bytes AS spans, logs_bytes AS logs, \
+         metrics_points AS points FROM usage_hourly_project WHERE org_id = $1",
+    )
+    .bind(tenant.as_uuid())
+    .fetch_all(&pool)
+    .await
+    .expect("reading the project rows")
+    .into_iter()
+    .map(|row| {
+        (
+            row.get("project"),
+            row.get("spans"),
+            row.get("logs"),
+            row.get("points"),
+        )
+    })
+    .collect();
+    let of = |project: ProjectId| {
+        rows.iter()
+            .find(|row| row.0 == project.as_uuid())
+            .map(|row| (row.1, row.2, row.3))
+    };
+    assert_eq!(rows.len(), 2);
+    assert_eq!(of(web), Some((100, 40, 0)));
+    assert_eq!(of(api), Some((10, 0, 7)));
+    let org = sqlx::query(
+        "SELECT spans_bytes AS spans, logs_bytes AS logs, metrics_points AS points \
+         FROM usage_hourly WHERE org_id = $1",
+    )
+    .bind(tenant.as_uuid())
+    .fetch_one(&pool)
+    .await
+    .expect("reading the rolled hour");
+    assert_eq!(
+        org.get::<Option<i64>, _>("spans"),
+        Some(115),
+        "5 of no project"
+    );
+    assert_eq!(org.get::<Option<i64>, _>("logs"), Some(40));
+    assert_eq!(org.get::<Option<i64>, _>("points"), Some(7));
 }

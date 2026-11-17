@@ -5,7 +5,8 @@ use axum::http::HeaderMap;
 use axum::routing::get;
 use ferristrace_application::Stack;
 use ferristrace_application::registry::UsageRepos;
-use ferristrace_domain::{Consumed, Consumption, TenantId, Window};
+use ferristrace_domain::telemetry::{Bill, DayVolume, PriceList, ProjectUsage, SignalBill, Split};
+use ferristrace_domain::{Consumed, Consumption, ProjectId, TenantId, Window};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -27,6 +28,140 @@ pub struct Metered {
     included_bytes: Option<u64>,
     by_signal: BySignal,
     hours: Vec<Hour>,
+    pricing: Option<Pricing>,
+    bill: Option<Billed>,
+    projects: Vec<Spender>,
+}
+
+#[derive(Debug, Serialize)]
+struct Volumes {
+    spans_bytes: u64,
+    logs_bytes: u64,
+    metrics_points: u64,
+}
+
+impl From<Split> for Volumes {
+    fn from(split: Split) -> Self {
+        Self {
+            spans_bytes: split.spans_bytes,
+            logs_bytes: split.logs_bytes,
+            metrics_points: split.metrics_points,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct Pricing {
+    currency: String,
+    spans_gb_micros: u64,
+    logs_gb_micros: u64,
+    metrics_million_micros: u64,
+    included: Volumes,
+}
+
+impl From<PriceList> for Pricing {
+    fn from(prices: PriceList) -> Self {
+        Self {
+            currency: prices.currency.code().to_owned(),
+            spans_gb_micros: prices.spans_gb_micros,
+            logs_gb_micros: prices.logs_gb_micros,
+            metrics_million_micros: prices.metrics_million_micros,
+            included: prices.included.into(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct Billed {
+    value_micros: u64,
+    billable_micros: u64,
+    projected_value_micros: u64,
+    projected_billable_micros: u64,
+    by_signal: BilledSignals,
+}
+
+#[derive(Debug, Serialize)]
+struct BilledSignals {
+    spans: BilledSignal,
+    logs: BilledSignal,
+    metrics: BilledSignal,
+}
+
+#[derive(Debug, Serialize)]
+struct BilledSignal {
+    used: u64,
+    included: u64,
+    projected: u64,
+    value_micros: u64,
+    billable_micros: u64,
+    projected_billable_micros: u64,
+    passes_at_ms: Option<u64>,
+}
+
+impl From<SignalBill> for BilledSignal {
+    fn from(line: SignalBill) -> Self {
+        Self {
+            used: line.used,
+            included: line.included,
+            projected: line.projected,
+            value_micros: line.value_micros,
+            billable_micros: line.billable_micros,
+            projected_billable_micros: line.projected_billable_micros,
+            passes_at_ms: line.passes_at_unix_nanos.map(|at| at / NANOS_PER_MILLI),
+        }
+    }
+}
+
+impl From<Bill> for Billed {
+    fn from(bill: Bill) -> Self {
+        Self {
+            value_micros: bill.value_micros(),
+            billable_micros: bill.billable_micros(),
+            projected_value_micros: bill.projected_value_micros(),
+            projected_billable_micros: bill.projected_billable_micros(),
+            by_signal: BilledSignals {
+                spans: bill.spans.into(),
+                logs: bill.logs.into(),
+                metrics: bill.metrics.into(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct Spender {
+    project: Option<Uuid>,
+    name: Option<Box<str>>,
+    #[serde(flatten)]
+    total: Volumes,
+    days: Vec<Day>,
+}
+
+#[derive(Debug, Serialize)]
+struct Day {
+    day_ms: u64,
+    #[serde(flatten)]
+    volumes: Volumes,
+}
+
+impl From<DayVolume> for Day {
+    fn from(day: DayVolume) -> Self {
+        Self {
+            day_ms: day.day_start_unix_nanos / NANOS_PER_MILLI,
+            volumes: day.split.into(),
+        }
+    }
+}
+
+impl From<ProjectUsage> for Spender {
+    fn from(usage: ProjectUsage) -> Self {
+        Self {
+            project: usage.project.map(ProjectId::as_uuid),
+            name: usage.name,
+            total: usage.total.into(),
+            days: usage.days.into_iter().map(Day::from).collect(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -86,6 +221,13 @@ impl From<Consumption> for Metered {
                     logs_bytes: hour.split.map(|split| split.logs_bytes),
                     metrics_points: hour.split.map(|split| split.metrics_points),
                 })
+                .collect(),
+            pricing: consumption.pricing.map(Pricing::from),
+            bill: consumption.bill.map(Billed::from),
+            projects: consumption
+                .projects
+                .into_iter()
+                .map(Spender::from)
                 .collect(),
         }
     }

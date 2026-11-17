@@ -1,158 +1,88 @@
 import { useMemo, useState } from 'react'
-import { DailyBars } from '@/components/ft/DailyBars'
-import { Meter } from '@/components/ft/Meter'
-import { PageHeader } from '@/components/ft/bits'
-import { Card, CardHeader, CardKind, CardTitle } from '@/components/ui/card'
-import { Pager } from '@/components/ui/pager'
+import { Kpi, PageHeader } from '@/components/ft/bits'
+import { Card, CardKind } from '@/components/ui/card'
+import { NativeSelect } from '@/components/ui/input'
 import { Segmented } from '@/components/ui/segmented'
-import { Table, Td, Tr, SortTh } from '@/components/ui/misc'
-import { Button } from '@/components/ui/button'
-import { HOUR, SIGNALS, bytes, count, dailyOf, projected, startOfMonth, startOfNextMonth, useMetered, type Signal } from '@/data/usage'
-import { pagesOf } from '@/lib/paging'
+import { useMetered, type Signal } from '@/data/usage'
 import { Link } from '@/lib/router'
-import { sorted } from '@/lib/sorting'
-import { useSortState } from './useSortState'
+import { cn } from '@/lib/utils'
+import { ProjectTable } from './cost/ProjectTable'
+import { QuotaBars } from './cost/QuotaBars'
+import { SpendBars } from './cost/SpendBars'
+import { SpendDonut } from './cost/SpendDonut'
+import { SpendLine } from './cost/SpendLine'
+import { ALL, DAY, choicesOf, dayLabel, pillOf, previousWindow, rowsOf, viewOf, windowOf } from './cost/shape'
 
-const DAY = 86_400_000
-
-const month = (at: number) => new Date(at).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
-const dayLabel = (at: number) => new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-const hourLabel = (at: number) => `${dayLabel(at)}, ${new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })}`
-const HOURLY_UP_TO = 7 * DAY
-const DEFAULT_SIZE = 25
-
-const TOTALS: Record<Signal, 'spans_bytes' | 'logs_bytes' | 'metrics_points'> = {
-  spans: 'spans_bytes',
-  logs: 'logs_bytes',
-  metrics: 'metrics_points',
-}
+const MINUTE = 60_000
 
 export function Cost() {
-  const [period, setPeriod] = useState('this')
-  const now = Date.now()
-
-  const [zoom, setZoom] = useState<[number, number] | null>(null)
-  const [size, setSize] = useState(DEFAULT_SIZE)
-  const [page, setPage] = useState(1)
-  const { sorting, dir, on } = useSortState<string>()
-
-  const [from, to] = useMemo(() => {
-    if (zoom) return zoom
-    const start = startOfMonth(now)
-    return period === 'this' ? [start, startOfNextMonth(now)] : [startOfMonth(start - DAY), start]
-  }, [period, now, zoom])
-
+  const [period, setPeriod] = useState<'this' | 'last'>('this')
+  const [chosen, setChosen] = useState(ALL)
+  const [signal, setSignal] = useState<Signal | typeof ALL>(ALL)
+  const now = Math.floor(Date.now() / MINUTE) * MINUTE
+  const [from, to] = windowOf(period, now)
+  const [then, until] = previousWindow(from, to, now)
   const { metered, nothing } = useMetered(from, to)
-  const step = to - from <= HOURLY_UP_TO ? HOUR : DAY
-  const until = Math.min(to, now + step)
-  const series = useMemo(
-    () => SIGNALS.map((signal) => ({ signal, days: metered ? dailyOf(metered.hours, signal.read, from, until, step) : [] })),
-    [metered, from, until, step],
-  )
-  const stampOf = step === HOUR ? hourLabel : dayLabel
-  const choose = (from: number, to: number) => {
-    setPage(1)
-    setZoom([from, to])
-  }
+  const { metered: before } = useMetered(then, until)
+  const running = now >= from && now < to
+
+  const choices = useMemo(() => choicesOf(metered), [metered])
+  const choice = choices.some((one) => one.value === chosen) ? chosen : ALL
+  const view = useMemo(() => (metered ? viewOf({ metered, before, choice, from, to, now }) : null), [metered, before, choice, from, to, now])
+  const rows = useMemo(() => (metered ? rowsOf({ metered, before, signal, from, to, now }) : []), [metered, before, signal, from, to, now])
   const split = metered ? metered.hours.length - metered.by_signal.unsplit_hours : 0
-  const show = (unit: 'bytes' | 'points', value: number) => (unit === 'bytes' ? bytes(value) : count(value))
-  const rows = useMemo(() => {
-    const all = series[0].days.map((_, at) => ({ at: series[0].days[at].at, cells: series.map((one) => one.days[at].bytes) })).reverse()
-    return sorted(all, sorting, (row, key) => (key === 'at' ? row.at : (row.cells[SIGNALS.findIndex((signal) => signal.key === key)] ?? null)))
-  }, [series, sorting])
-  const shown = Math.min(page, pagesOf(rows.length, size))
+  const noun = view === null ? 'Spend' : view.priced ? 'Usage value' : 'Ingested'
+  const when = running ? 'this month' : `in ${new Date(from).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })}`
 
   return (
     <>
-      <PageHeader title="Cost meter" meta={<><CardKind>{zoom ? `${hourLabel(from)} to ${hourLabel(to)} UTC` : month(from)}</CardKind> <span className="max-md:hidden">what was ingested, by signal, for the whole organisation</span></>}>
-        {zoom ? <Button size="sm" onClick={() => setZoom(null)}>Reset zoom</Button> : null}
-        <Segmented
-          label="Period"
-          value={zoom ? '' : period}
-          onChange={(value) => {
-            setZoom(null)
-            setPage(1)
-            setPeriod(value)
-          }}
-          options={[{ value: 'this', label: 'This month' }, { value: 'last', label: 'Last month' }]}
-        />
+      <PageHeader title="Cost meter" meta={<CardKind>{pillOf(from, to, now)}</CardKind>}>
+        <Segmented label="Period" value={period} onChange={(value) => { setPeriod(value); setChosen(ALL) }} options={[{ value: 'this', label: 'This month' }, { value: 'last', label: 'Last month' }]} />
+        <NativeSelect aria-label="Project" value={choice} onChange={(event) => setChosen(event.target.value)} className="w-auto min-w-[160px] max-w-full">
+          {choices.map((one) => <option key={one.value} value={one.value}>{one.value === ALL ? 'Project: all' : one.label}</option>)}
+        </NativeSelect>
       </PageHeader>
-      {metered ? (
+      {metered && view ? (
         split === 0 ? (
           <Card className="px-4 py-3 text-control text-muted-foreground">
             No finished hour of this month carries a split yet. Hours are rolled up once they end, so the first figures appear within the hour after a payload arrives.
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
-              {SIGNALS.map((signal) => {
-                const total = metered.by_signal[TOTALS[signal.key]]
-                const ahead = projected(total, now)
-                const ofAll = signal.unit === 'bytes' && metered.ingested_bytes > 0 ? (total / metered.ingested_bytes) * 100 : null
-                return (
-                  <Meter
-                    key={signal.key}
-                    label={signal.label}
-                    used={show(signal.unit, total)}
-                    of={signal.unit === 'bytes' ? 'decompressed' : 'datapoints'}
-                    share={ofAll}
-                    note={
-                      period === 'this' && !zoom
-                        ? `About ${show(signal.unit, ahead)} at month end, at this rate.`
-                        : zoom ? 'Every finished hour of the range selected.' : ofAll === null ? 'Every finished hour of that month.' : `${ofAll.toFixed(0)} % of what that month ingested.`
-                    }
-                  />
-                )
-              })}
-            </div>
-            {metered.by_signal.unsplit_hours > 0 ? (
+            {view.priced ? null : (
+              <Card className="px-4 py-3 text-control text-muted-foreground">
+                This server has no prices configured, so the meter shows volumes. Whoever runs the server sets them in the <code>[billing]</code> section of its configuration.
+              </Card>
+            )}
+            {view.single && view.priced ? (
               <p className="m-0 text-caption text-muted-foreground">
-                {metered.by_signal.unsplit_hours} {metered.by_signal.unsplit_hours === 1 ? 'hour was' : 'hours were'} rolled up before signals were counted apart. They are in the <Link to="/settings/usage">usage total</Link> and left out of these figures.
+                One project is picked: figures are the value of its usage. What the plan includes belongs to the organisation, so the bill and the allowances are left out.
               </p>
             ) : null}
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-3">
-              {series.map(({ signal, days }) => (
-                <DailyBars
-                  key={signal.key}
-                  title={`${signal.label} per ${step === HOUR ? 'hour' : 'day'}`}
-                  what={signal.label}
-                  label={signal.unit === 'bytes' ? 'size' : 'datapoints'}
-                  days={days}
-                  step={step}
-                  onSelect={choose}
-                  format={(value) => show(signal.unit, value)}
-                />
-              ))}
+            <div className={cn('grid grid-cols-2 gap-3', view.tiles.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-4')}>
+              {view.tiles.map((tile) => <Kpi key={tile.key} label={tile.label} value={tile.value} sub={tile.sub} tone={tile.tone} />)}
             </div>
-            <Card className="overflow-hidden">
-              <CardHeader><CardTitle>{step === HOUR ? 'By hour' : 'By day'}</CardTitle><CardKind>Table</CardKind></CardHeader>
-              <div className="overflow-x-auto">
-                <Table aria-label="Ingested per period and signal">
-                  <thead>
-                    <tr>
-                      <SortTh label={step === HOUR ? 'Hour' : 'Day'} dir={dir('at')} onSort={on('at', 'desc')} />
-                      {SIGNALS.map((signal) => <SortTh key={signal.key} numeric label={signal.label} dir={dir(signal.key)} onSort={on(signal.key, 'desc')} className="w-[160px]" />)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.slice((shown - 1) * size, shown * size).map((row) => (
-                      <Tr key={row.at}>
-                        <Td className="font-mono">{stampOf(row.at)}</Td>
-                        {row.cells.map((cell, index) => <Td key={SIGNALS[index].key} numeric className="font-mono">{show(SIGNALS[index].unit, cell)}</Td>)}
-                      </Tr>
-                    ))}
-                  </tbody>
-                </Table>
-              </div>
-              <Pager total={rows.length} page={shown} size={size} onPage={setPage} onSize={(next) => { setSize(next); setPage(1) }} noun={step === HOUR ? 'hours' : 'days'} className="border-t" />
-            </Card>
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+              <SpendLine title={`${noun} ${when}`} noun={noun} from={from} last={view.last} actual={view.actual} ahead={view.ahead} format={view.format} axis={view.axis} />
+              <SpendDonut title={`${noun} by signal`} slices={view.slices} total={view.total} format={view.format} caption={view.last >= 0 ? `${dayLabel(from)} – ${dayLabel(from + view.last * DAY)}` : ''} />
+            </div>
+            <div className={cn('grid gap-3', view.quotas.length > 0 && 'lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]')}>
+              <SpendBars title={`${noun} per day by signal`} bars={view.bars} shown={view.shown} format={view.format} axis={view.axis} />
+              {view.quotas.length > 0 ? <QuotaBars title={view.priced ? 'Usage against what is included' : 'Usage by signal'} quotas={view.quotas} /> : null}
+            </div>
+            <ProjectTable rows={rows} pricing={metered.pricing ?? null} signal={signal} onSignal={setSignal} from={from} since={running ? 'last month' : 'month before'} noun={view.priced ? 'Spend' : 'Usage'} />
+            {metered.by_signal.unsplit_hours > 0 ? (
+              <p className="m-0 text-caption text-muted-foreground">
+                {metered.by_signal.unsplit_hours} {metered.by_signal.unsplit_hours === 1 ? 'hour was' : 'hours were'} rolled up before signals were counted apart. They are in the <Link to="/settings/usage">usage total</Link> and count for nothing in money or in these figures.
+              </p>
+            ) : null}
           </>
         )
       ) : (
         <Card className="px-4 py-3 text-control text-muted-foreground">{nothing}</Card>
       )}
       <p className="m-0 text-caption text-muted-foreground">
-        Logs and spans are counted in decompressed payload bytes, metrics in datapoints, when a payload is accepted. Hours from before that can be rebuilt from what the span store holds with <code>ferristrace backfill-usage</code>; those figures are measured on stored rows and sit a few percent under the payload bytes. A payload refused at the ceiling counts in none of them. The total the <Link to="/settings/billing">plan</Link> is measured against stays on <Link to="/settings/usage">Usage</Link>.
+        Logs and spans are counted in decompressed payload bytes, metrics in datapoints, when a payload is accepted. Money is the volume times the price the server is configured with, in whole millionths of the currency, rounded half up. Hours from before that can be rebuilt from what the span store holds with <code>ferristrace backfill-usage</code>; those figures are measured on stored rows and sit a few percent under the payload bytes. A payload refused at the ceiling counts in none of them. The total the <Link to="/settings/billing">plan</Link> is measured against stays on <Link to="/settings/usage">Usage</Link>.
       </p>
     </>
   )

@@ -7,10 +7,11 @@ use ferristrace_api::{AppState, usage_router};
 use ferristrace_application::registry::{RepoFor, domain};
 use ferristrace_application::testing::{Bearers, Inert, Untransacted};
 use ferristrace_application::{Adapters, Ferristrace, Stack};
+use ferristrace_domain::telemetry::{Currency, HourVolume, PriceList, ProjectHours};
 use ferristrace_domain::{
     AccountId, Carried, Consumed, DecompressedBytes, Membership, Memberships, NoPhotos, OrgRole,
-    Session, SessionError, SessionStore, SessionToken, Split, StoreError, TenantId, UnixSeconds,
-    UsageHistory, UsageMeter, UsageReader, WhoamiError, Window,
+    ProjectId, Session, SessionError, SessionStore, SessionToken, Split, StoreError, TenantId,
+    UnixSeconds, UsageHistory, UsageMeter, UsageReader, WhoamiError, Window,
 };
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -18,6 +19,7 @@ use uuid::Uuid;
 const TOKEN: &str = "ft.person.0123456789";
 const MINE: u128 = 1;
 const THEIRS: u128 = 2;
+const WEB: u128 = 7;
 const AN_HOUR_MS: u64 = 3_600_000;
 const AN_HOUR_NANOS: u64 = AN_HOUR_MS * 1_000_000;
 
@@ -62,6 +64,7 @@ impl UsageMeter for Live {
     async fn record_ingest(
         &self,
         _tenant: TenantId,
+        _project: Option<ProjectId>,
         _decompressed: DecompressedBytes,
         _carried: Carried,
     ) {
@@ -110,6 +113,25 @@ impl UsageHistory for Rolled {
 
     async fn included(&self, _org: TenantId) -> Result<Option<DecompressedBytes>, StoreError> {
         Ok(self.included.map(DecompressedBytes::new))
+    }
+
+    async fn project_hours(
+        &self,
+        _org: TenantId,
+        window: Window,
+    ) -> Result<Vec<ProjectHours>, StoreError> {
+        Ok(vec![ProjectHours {
+            project: ProjectId::new(Uuid::from_u128(WEB)),
+            name: Some("web".into()),
+            hours: vec![HourVolume {
+                started_at_unix_nanos: window.from_unix_nanos() + AN_HOUR_NANOS,
+                split: Split {
+                    spans_bytes: 400,
+                    logs_bytes: 100,
+                    metrics_points: 20,
+                },
+            }],
+        }])
     }
 }
 
@@ -174,6 +196,14 @@ impl Stack for TestStack {
 }
 
 fn state(live: u64, included: Option<u64>) -> AppState<TestStack> {
+    priced_state(live, included, None)
+}
+
+fn priced_state(
+    live: u64,
+    included: Option<u64>,
+    prices: Option<PriceList>,
+) -> AppState<TestStack> {
     let fakes = Fakes { included };
     let adapters = Adapters {
         clock: Inert::default(),
@@ -187,11 +217,17 @@ fn state(live: u64, included: Option<u64>) -> AppState<TestStack> {
         metric_store: None,
         users: Some(Bearers),
     };
-    AppState::new(Arc::new(Ferristrace::new(fakes, adapters)))
+    AppState::new(Arc::new(
+        Ferristrace::new(fakes, adapters).with_prices(prices),
+    ))
 }
 
 async fn served(live: u64, included: Option<u64>, request: Request<Body>) -> (StatusCode, String) {
-    let response = usage_router(state(live, included))
+    answered(state(live, included), request).await
+}
+
+async fn answered(state: AppState<TestStack>, request: Request<Body>) -> (StatusCode, String) {
+    let response = usage_router(state)
         .oneshot(request)
         .await
         .expect("a response");
@@ -294,4 +330,99 @@ async fn an_hour_without_a_split_answers_null_rather_than_zero() {
     assert_eq!(hours[1]["spans_bytes"], 600);
     assert_eq!(hours[1]["logs_bytes"], 400);
     assert_eq!(hours[1]["metrics_points"], 25);
+}
+
+fn euros() -> PriceList {
+    PriceList {
+        currency: Currency::try_from("EUR").expect("a currency"),
+        spans_gb_micros: 1_000_000_000,
+        logs_gb_micros: 2_000_000_000,
+        metrics_million_micros: 1_000_000,
+        included: Split {
+            spans_bytes: 200,
+            logs_bytes: 0,
+            metrics_points: 0,
+        },
+    }
+}
+
+#[tokio::test]
+async fn a_server_without_prices_answers_no_pricing_and_no_bill() {
+    let (status, body) = served(0, None, asking(MINE, &a_month(), Some(TOKEN))).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let metered = read(&body);
+    assert!(metered["pricing"].is_null());
+    assert!(metered["bill"].is_null());
+    assert!(metered["projects"].is_array());
+}
+
+#[tokio::test]
+async fn a_server_with_prices_answers_them_and_the_bill_of_the_window() {
+    let (status, body) = answered(
+        priced_state(0, None, Some(euros())),
+        asking(MINE, &a_month(), Some(TOKEN)),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    let metered = read(&body);
+    assert_eq!(
+        metered["pricing"],
+        serde_json::json!({
+            "currency": "EUR",
+            "spans_gb_micros": 1_000_000_000u64,
+            "logs_gb_micros": 2_000_000_000u64,
+            "metrics_million_micros": 1_000_000,
+            "included": { "spans_bytes": 200, "logs_bytes": 0, "metrics_points": 0 },
+        })
+    );
+    assert_eq!(
+        metered["bill"],
+        serde_json::json!({
+            "value_micros": 1_530,
+            "billable_micros": 1_330,
+            "projected_value_micros": 1_530,
+            "projected_billable_micros": 1_330,
+            "by_signal": {
+                "spans": {
+                    "used": 700, "included": 200, "projected": 700,
+                    "value_micros": 700, "billable_micros": 500,
+                    "projected_billable_micros": 500, "passes_at_ms": null,
+                },
+                "logs": {
+                    "used": 400, "included": 0, "projected": 400,
+                    "value_micros": 800, "billable_micros": 800,
+                    "projected_billable_micros": 800, "passes_at_ms": null,
+                },
+                "metrics": {
+                    "used": 30, "included": 0, "projected": 30,
+                    "value_micros": 30, "billable_micros": 30,
+                    "projected_billable_micros": 30, "passes_at_ms": null,
+                },
+            },
+        })
+    );
+}
+
+#[tokio::test]
+async fn each_project_and_no_project_answer_their_volumes_per_day() {
+    let (_, body) = served(0, None, asking(MINE, &a_month(), Some(TOKEN))).await;
+
+    let a_day_ms = 0;
+    assert_eq!(
+        read(&body)["projects"],
+        serde_json::json!([
+            {
+                "project": id(WEB), "name": "web",
+                "spans_bytes": 400, "logs_bytes": 100, "metrics_points": 20,
+                "days": [{ "day_ms": a_day_ms, "spans_bytes": 400, "logs_bytes": 100, "metrics_points": 20 }],
+            },
+            {
+                "project": null, "name": null,
+                "spans_bytes": 300, "logs_bytes": 300, "metrics_points": 10,
+                "days": [{ "day_ms": a_day_ms, "spans_bytes": 300, "logs_bytes": 300, "metrics_points": 10 }],
+            },
+        ])
+    );
 }

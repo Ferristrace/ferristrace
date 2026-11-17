@@ -5,8 +5,9 @@ use super::entities::{LogRecord, Span};
 use super::errors::{CounterUnreachable, SinkError, UnknownKey};
 use super::value_objects::{
     Admission, Carried, Consumed, DecompressedBytes, HourSplit, HourTotal, IngestKey, MonthTotal,
-    Scope, TenantId,
+    ProjectHourShare, ProjectHourSplit, ProjectHours, Scope, TenantId,
 };
+use crate::catalogue::ProjectId;
 use crate::explore::Window;
 use crate::store::StoreError;
 
@@ -123,6 +124,7 @@ pub trait UsageMeter {
     fn record_ingest(
         &self,
         tenant: TenantId,
+        project: Option<ProjectId>,
         decompressed: DecompressedBytes,
         carried: Carried,
     ) -> impl Future<Output = ()> + Send;
@@ -132,10 +134,11 @@ impl<T: UsageMeter + Sync> UsageMeter for &T {
     fn record_ingest(
         &self,
         tenant: TenantId,
+        project: Option<ProjectId>,
         decompressed: DecompressedBytes,
         carried: Carried,
     ) -> impl Future<Output = ()> + Send {
-        (*self).record_ingest(tenant, decompressed, carried)
+        (*self).record_ingest(tenant, project, decompressed, carried)
     }
 }
 
@@ -143,10 +146,12 @@ impl<T: UsageMeter + Send + Sync> UsageMeter for std::sync::Arc<T> {
     fn record_ingest(
         &self,
         tenant: TenantId,
+        project: Option<ProjectId>,
         decompressed: DecompressedBytes,
         carried: Carried,
     ) -> impl Future<Output = ()> + Send {
-        self.as_ref().record_ingest(tenant, decompressed, carried)
+        self.as_ref()
+            .record_ingest(tenant, project, decompressed, carried)
     }
 }
 
@@ -177,6 +182,12 @@ pub trait UsageHistory {
         &self,
         org: TenantId,
     ) -> impl Future<Output = Result<Option<DecompressedBytes>, StoreError>> + Send;
+
+    fn project_hours(
+        &self,
+        org: TenantId,
+        window: Window,
+    ) -> impl Future<Output = Result<Vec<ProjectHours>, StoreError>> + Send;
 }
 
 impl<T: UsageHistory + Sync> UsageHistory for &T {
@@ -194,6 +205,14 @@ impl<T: UsageHistory + Sync> UsageHistory for &T {
     ) -> impl Future<Output = Result<Option<DecompressedBytes>, StoreError>> + Send {
         (*self).included(org)
     }
+
+    fn project_hours(
+        &self,
+        org: TenantId,
+        window: Window,
+    ) -> impl Future<Output = Result<Vec<ProjectHours>, StoreError>> + Send {
+        (*self).project_hours(org, window)
+    }
 }
 
 impl<T: UsageHistory + Send + Sync> UsageHistory for std::sync::Arc<T> {
@@ -210,6 +229,14 @@ impl<T: UsageHistory + Send + Sync> UsageHistory for std::sync::Arc<T> {
         org: TenantId,
     ) -> impl Future<Output = Result<Option<DecompressedBytes>, StoreError>> + Send {
         self.as_ref().included(org)
+    }
+
+    fn project_hours(
+        &self,
+        org: TenantId,
+        window: Window,
+    ) -> impl Future<Output = Result<Vec<ProjectHours>, StoreError>> + Send {
+        self.as_ref().project_hours(org, window)
     }
 }
 
@@ -294,10 +321,19 @@ pub trait UsageLedger {
         &self,
         splits: &[HourSplit],
     ) -> impl Future<Output = Result<usize, StoreError>> + Send;
+
+    fn fill_project_shares(
+        &self,
+        shares: &[ProjectHourShare],
+    ) -> impl Future<Output = Result<usize, StoreError>> + Send;
 }
 
 pub trait StoredVolumes {
     fn hourly(&self) -> impl Future<Output = Result<Vec<HourSplit>, StoreError>> + Send;
+
+    fn hourly_by_project(
+        &self,
+    ) -> impl Future<Output = Result<Vec<ProjectHourSplit>, StoreError>> + Send;
 }
 
 impl<T: UsageLedger + Sync> UsageLedger for &T {
@@ -321,6 +357,13 @@ impl<T: UsageLedger + Sync> UsageLedger for &T {
     ) -> impl Future<Output = Result<usize, StoreError>> + Send {
         (*self).fill_splits(splits)
     }
+
+    fn fill_project_shares(
+        &self,
+        shares: &[ProjectHourShare],
+    ) -> impl Future<Output = Result<usize, StoreError>> + Send {
+        (*self).fill_project_shares(shares)
+    }
 }
 
 impl<T: UsageLedger + Send + Sync> UsageLedger for std::sync::Arc<T> {
@@ -343,5 +386,12 @@ impl<T: UsageLedger + Send + Sync> UsageLedger for std::sync::Arc<T> {
         splits: &[HourSplit],
     ) -> impl Future<Output = Result<usize, StoreError>> + Send {
         self.as_ref().fill_splits(splits)
+    }
+
+    fn fill_project_shares(
+        &self,
+        shares: &[ProjectHourShare],
+    ) -> impl Future<Output = Result<usize, StoreError>> + Send {
+        self.as_ref().fill_project_shares(shares)
     }
 }

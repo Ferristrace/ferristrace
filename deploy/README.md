@@ -310,6 +310,7 @@ stores inside its own network rather than something to choose.
 | `FERRISTRACE_ALERTS__BASE_URL` | the mail `base_url` | Public address of the app, for the link in an alert |
 | `FERRISTRACE_AGENTS__ISSUER` | the OIDC issuer | Issuer of the access tokens AI agents present; without it (and without OIDC) or without the audience every agent token is refused with 401 |
 | `FERRISTRACE_AGENTS__AUDIENCE` | `ferristrace-agents` in this compose file | Required for agents to be on: an agent token must carry this audience. An issuer without it leaves agents off (a warning is logged at startup, sign-in is unaffected) |
+| `FERRISTRACE_BILLING__*` | unset | Prices and monthly allowances for the Cost page (see `.env.example`); without them it shows volumes only. A currency that is not three letters stops the server |
 | `FERRISTRACE_WEB_ROOT` | set in the image | Where the built web application lives |
 | `FERRISTRACE_IMAGE` | built locally | A published image to run instead |
 | `FERRISKEY_DB_PASSWORD` | `ferriskey` | FerrisKey's own database password |

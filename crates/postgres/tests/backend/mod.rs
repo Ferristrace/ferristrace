@@ -250,6 +250,7 @@ forward!(Dashboards: DashboardStore {
 forward!(UsageHistory: UsageHistory {
     fn hours(&self, org: TenantId, window: Window) -> Result<Vec<Consumed>, StoreError>;
     fn included(&self, org: TenantId) -> Result<Option<DecompressedBytes>, StoreError>;
+    fn project_hours(&self, org: TenantId, window: Window) -> Result<Vec<telemetry::ProjectHours>, StoreError>;
 });
 
 forward!(Decisions: IssueDecisions {

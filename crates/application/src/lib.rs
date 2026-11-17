@@ -42,6 +42,7 @@ pub use ferristrace_macros::{repository, transactional};
 pub use ingestion::Ingestion;
 pub use issues::IssueRuling;
 pub use stack::{Adapters, Ferristrace, Stack};
+pub use usage::UsageBackfill;
 
 #[cfg(test)]
 mod fakes;
