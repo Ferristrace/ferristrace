@@ -181,7 +181,8 @@ async fn provision(command: Command, config: &Config) -> anyhow::Result<()> {
     let pool = control_plane_pool(config)
         .await?
         .context("this command needs a control plane, so set database_url")?;
-    let repos = Postgres::new(pool, SystemClock);
+    plans_ready(config, Some(&pool)).await?;
+    let repos = Postgres::new(pool, SystemClock).with_new_org_plan(config.new_org_plan()?);
     let adapters = adapters_of(
         Relay::Unreachable,
         guarded_webhooks(),
@@ -207,7 +208,8 @@ fn control_plane(
     let mailer = relay_of(config)?;
     let repos = Postgres::new(pool.clone(), SystemClock)
         .with_seal(seal)
-        .with_provision_policy(PROVISIONING);
+        .with_provision_policy(PROVISIONING)
+        .with_new_org_plan(config.new_org_plan()?);
     let agents = optional.agents.take();
     let adapters = adapters_of(
         mailer,
@@ -293,6 +295,7 @@ async fn control_plane_pool(config: &Config) -> anyhow::Result<Option<PgPool>> {
 
 async fn plans_ready(config: &Config, pool: Option<&PgPool>) -> anyhow::Result<()> {
     let plans = plans_of(config)?;
+    config.new_org_plan()?;
     match pool {
         Some(pool) if !plans.is_empty() => {
             sync_plans(pool, &plans)

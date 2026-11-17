@@ -4,7 +4,8 @@ use ferristrace_domain::{
 };
 use ferristrace_infra::FixedClock;
 use ferristrace_postgres::{
-    CONTROL_PLANE, PlanSpec, Postgres, SELF_HOSTED_PLAN, billing_plans, load_allowances, sync_plans,
+    CONTROL_PLANE, MembershipError, PlanSpec, Postgres, SELF_HOSTED_PLAN, billing_plans,
+    load_allowances, sync_plans,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{AssertSqlSafe, PgPool, Row};
@@ -91,17 +92,20 @@ async fn hosted(schema: &str) -> Option<PgPool> {
 }
 
 async fn an_org(pool: &PgPool) -> TenantId {
+    founded_on(&backend_of(pool))
+        .await
+        .expect("the organisation is founded")
+}
+
+async fn founded_on(backend: &Postgres<FixedClock>) -> Result<TenantId, MembershipError> {
     let email = format!("{}@example.com", Uuid::new_v4());
     sqlx::query("INSERT INTO accounts (id, email) VALUES ($1, $2)")
         .bind(Uuid::new_v4())
         .bind(&email)
-        .execute(pool)
+        .execute(backend.pool())
         .await
         .expect("inserting an account");
-    backend::memberships(&backend_of(pool))
-        .found("Acme", &email)
-        .await
-        .expect("the organisation is founded")
+    backend::memberships(backend).found("Acme", &email).await
 }
 
 async fn plan_slug(pool: &PgPool, org: TenantId) -> String {
@@ -208,6 +212,41 @@ async fn a_new_organisation_keeps_the_self_hosted_plan_and_reads_it_back() {
     assert_eq!(offers.len(), 1);
     assert_eq!(offers[0].slug.as_str(), "pro");
     assert_eq!(offers[0].price, PriceRef::new("price_pro"));
+}
+
+#[tokio::test]
+async fn a_new_organisation_starts_on_the_configured_default_plan_and_is_capped_by_it() {
+    let Some(pool) = hosted("billing_default_plan").await else {
+        return;
+    };
+
+    let org = founded_on(&backend_of(&pool).with_new_org_plan("free"))
+        .await
+        .expect("the organisation is founded");
+
+    assert_eq!(plan_slug(&pool, org).await, "free");
+    let allowances = load_allowances(&pool).await.expect("the allowances");
+    assert_eq!(
+        allowances.get(&org),
+        Some(&Allowance::Capped(DecompressedBytes::new(30 * GIB)))
+    );
+}
+
+#[tokio::test]
+async fn founding_on_a_default_plan_the_control_plane_lacks_creates_nothing() {
+    let Some(pool) = control_plane("billing_default_missing").await else {
+        return;
+    };
+
+    let refused = founded_on(&backend_of(&pool).with_new_org_plan("free")).await;
+
+    assert!(matches!(refused, Err(MembershipError::NoSuchPlan(slug)) if &*slug == "free"));
+    let orgs: i64 = sqlx::query("SELECT count(*) AS n FROM orgs")
+        .fetch_one(&pool)
+        .await
+        .expect("the count")
+        .get("n");
+    assert_eq!(orgs, 0);
 }
 
 #[tokio::test]

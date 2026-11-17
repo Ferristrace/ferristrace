@@ -312,6 +312,7 @@ stores inside its own network rather than something to choose.
 | `FERRISTRACE_AGENTS__AUDIENCE` | `ferristrace-agents` in this compose file | Required for agents to be on: an agent token must carry this audience. An issuer without it leaves agents off (a warning is logged at startup, sign-in is unaffected) |
 | `FERRISTRACE_BILLING__*` | unset | Prices and monthly allowances for the Cost page (see `.env.example`); without them it shows volumes only. A currency that is not three letters stops the server |
 | `FERRISTRACE_PLANS` | unset | Plans written to the control plane on start, see [Plans and payments](#plans-and-payments) |
+| `FERRISTRACE_DEFAULT_PLAN` | `self-hosted` | The plan a new organisation starts on, one of `FERRISTRACE_PLANS`; required with Stripe |
 | `FERRISTRACE_STRIPE__*` | unset | Stripe keys and meter name; without them nothing is sold, see [Plans and payments](#plans-and-payments) |
 | `FERRISTRACE_WEB_ROOT` | set in the image | Where the built web application lives |
 | `FERRISTRACE_IMAGE` | built locally | A published image to run instead |
@@ -1012,6 +1013,16 @@ price = "price_..."
 organisation between unpriced plans is an `UPDATE orgs SET plan_id = ...`,
 picked up within twenty seconds without a restart.
 
+A new organisation starts on `self-hosted` unless `default_plan` names one
+of the declared plans:
+
+```toml
+default_plan = "free"
+```
+
+It applies to organisations created from then on; existing ones keep their
+plan until moved. A `default_plan` that is not declared stops the server.
+
 Payments are optional and come from one adapter today, Stripe. With a
 `[stripe]` section the server sells every plan that has a `price` (Stripe's
 price id, never an amount: Stripe computes the money and the tax):
@@ -1026,7 +1037,9 @@ meter_event_name = "ingested_bytes"
 Keep the two secrets out of the file: `FERRISTRACE_STRIPE__SECRET_KEY` and
 `FERRISTRACE_STRIPE__WEBHOOK_SECRET`, from a Kubernetes secret through the
 chart's `extraEnv`. The server refuses to start with `[stripe]` and no
-`database_url`, no plan named `free`, or no plan with a `price`.
+`database_url`, no plan named `free`, no plan with a `price`, or no
+`default_plan` (a hosted service would otherwise hand every new
+organisation the unlimited `self-hosted` plan).
 
 In Stripe, point a webhook endpoint at `https://<your host>/api/billing/webhook`
 and subscribe it to `customer.subscription.created`,
