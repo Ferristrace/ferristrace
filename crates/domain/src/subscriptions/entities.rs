@@ -1,4 +1,6 @@
-use super::value_objects::{StripeCustomerId, StripePriceId, StripeSubscriptionId, SubscriptionStatus};
+use super::value_objects::{
+    StripeCustomerId, StripePriceId, StripeSubscriptionId, SubscriptionStatus,
+};
 use crate::telemetry::TenantId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
