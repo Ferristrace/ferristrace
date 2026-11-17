@@ -6,17 +6,21 @@ const SIZES = [10, 25, 50, 100]
 
 const square = 'inline-flex size-[30px] cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent text-control text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent [&_svg]:size-3.5'
 
-export function Pager({ total, page, size, onPage, onSize, noun = 'rows', className }: { total: number; page: number; size: number; onPage: (page: number) => void; onSize?: (size: number) => void; noun?: string; className?: string }) {
+export function Pager({ total, page, size, onPage, onSize, noun = 'rows', className, sizes = SIZES, spread = false, note }: { total: number; page: number; size: number; onPage: (page: number) => void; onSize?: (size: number) => void; noun?: string; className?: string; sizes?: number[]; spread?: boolean; note?: React.ReactNode }) {
   const pages = pagesOf(total, size)
   const first = total === 0 ? 0 : (page - 1) * size + 1
   const last = Math.min(total, page * size)
   return (
-    <nav aria-label="Pages" className={cn('flex flex-wrap items-center justify-center gap-x-4 gap-y-2 px-3 py-3 text-control text-muted-foreground md:justify-end', className)}>
-      <span className="tabular">Showing {first.toLocaleString('en-US')}–{last.toLocaleString('en-US')} of {total.toLocaleString('en-US')} {noun}</span>
+    <nav aria-label="Pages" className={cn('flex flex-wrap items-center justify-center gap-x-4 gap-y-2 px-3 py-3 text-control text-muted-foreground md:justify-end', spread && 'px-3.5 py-2.5', className)}>
+      {spread
+        ? <span className="tabular">Showing <b className="font-medium text-foreground">{first.toLocaleString('en-US')}–{last.toLocaleString('en-US')}</b> of <b className="font-medium text-foreground">{total.toLocaleString('en-US')}</b>{noun ? ` ${noun}` : ''}</span>
+        : <span className="tabular">Showing {first.toLocaleString('en-US')}–{last.toLocaleString('en-US')} of {total.toLocaleString('en-US')} {noun}</span>}
+      {note ? <span className="text-caption text-faint-foreground">{note}</span> : null}
+      {spread ? <span className="flex-1 max-md:hidden" /> : null}
       {onSize ? (
         <label className="flex items-center gap-2">Rows per page
           <select value={size} onChange={(e) => onSize(Number(e.target.value))} className="h-[30px] cursor-pointer rounded-md border border-input bg-card px-2 text-control text-foreground">
-            {SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+            {sizes.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </label>
       ) : null}
