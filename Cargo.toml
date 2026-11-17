@@ -12,6 +12,7 @@ members = [
     "crates/api",
     "crates/mcp-args",
     "crates/env-file",
+    "crates/stripe",
     "apps/server",
     "apps/mcp",
     "apps/mcp-gateway",
@@ -28,6 +29,7 @@ default-members = [
     "crates/api",
     "crates/mcp-args",
     "crates/env-file",
+    "crates/stripe",
     "apps/server",
     "apps/mcp",
     "apps/mcp-gateway",
@@ -47,6 +49,7 @@ ferristrace-otlp = { path = "crates/otlp" }
 ferristrace-clickhouse = { path = "crates/clickhouse" }
 ferristrace-redis = { path = "crates/redis" }
 ferristrace-infra = { path = "crates/infra" }
+ferristrace-stripe = { path = "crates/stripe" }
 ferristrace-api = { path = "crates/api" }
 ferristrace-mcp-args = { path = "crates/mcp-args" }
 ferristrace-env-file = { path = "crates/env-file" }
