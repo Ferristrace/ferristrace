@@ -190,9 +190,9 @@ pub use status::{
 };
 pub use store::StoreError;
 pub use subscriptions::{
-    Applied, BillingGateway, CheckoutUrl, GatewayError, PortalUrl, StripeCustomerId,
-    StripeEventId, StripePriceId, StripeSubscriptionId, StripeSubscriptions, Subscription,
-    SubscriptionStatus, SubscriptionsError, WebhookError, WebhookEvent,
+    Applied, BillingGateway, CheckoutUrl, GatewayError, PortalUrl, StripeCustomerId, StripeEventId,
+    StripePriceId, StripeSubscriptionId, StripeSubscriptions, Subscription, SubscriptionStatus,
+    SubscriptionsError, WebhookError, WebhookEvent,
 };
 pub use telemetry::{
     Admission, Allowance, BadRetention, BadSeverity, BillingHour, BillingMonth, Carried, Consumed,
