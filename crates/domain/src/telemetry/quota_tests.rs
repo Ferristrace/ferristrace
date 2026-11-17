@@ -96,6 +96,48 @@ async fn an_overage_plan_reports_how_far_past_the_limit_it_goes() {
 }
 
 #[tokio::test]
+async fn a_replaced_allowance_is_visible_without_a_restart() {
+    let tenant = TenantId::new(Uuid::from_u128(6));
+    let quota = StaticQuota::new(
+        MemoryMeter::default(),
+        [(tenant, Allowance::Capped(bytes(100)))],
+    );
+
+    assert_eq!(
+        quota.admit(tenant, bytes(200)).await,
+        Admission::Capped {
+            allowance: bytes(100)
+        }
+    );
+
+    quota
+        .allowances()
+        .replace([(tenant, Allowance::Capped(bytes(1000)))]);
+
+    assert_eq!(quota.admit(tenant, bytes(200)).await, Admission::Within);
+}
+
+#[tokio::test]
+async fn two_identical_refreshes_leave_the_decision_unchanged() {
+    let tenant = TenantId::new(Uuid::from_u128(7));
+    let quota = StaticQuota::new(
+        MemoryMeter::default(),
+        [(tenant, Allowance::Capped(bytes(100)))],
+    );
+    let handle = quota.allowances();
+
+    handle.replace([(tenant, Allowance::Capped(bytes(100)))]);
+    handle.replace([(tenant, Allowance::Capped(bytes(100)))]);
+
+    assert_eq!(
+        quota.admit(tenant, bytes(200)).await,
+        Admission::Capped {
+            allowance: bytes(100)
+        }
+    );
+}
+
+#[tokio::test]
 async fn one_tenant_allowance_does_not_bind_another() {
     let capped = TenantId::new(Uuid::from_u128(4));
     let free = TenantId::new(Uuid::from_u128(5));
