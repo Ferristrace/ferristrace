@@ -6,6 +6,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use super::billing::BillingHour;
 use super::entities::{LogRecord, Span};
 use super::errors::{BadRetention, BadSeverity, InvalidId};
+use super::pricing::{Bill, PriceList};
 use crate::catalogue::ProjectId;
 use crate::secret::split_key;
 
@@ -275,11 +276,15 @@ impl DecompressedBytes {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SignalKind {
     Spans,
     Logs,
     Metrics,
+}
+
+impl SignalKind {
+    pub const ALL: [Self; 3] = [Self::Spans, Self::Logs, Self::Metrics];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -326,6 +331,64 @@ pub struct Split {
     pub metrics_points: u64,
 }
 
+impl Split {
+    #[must_use]
+    pub fn at_least(self, other: Self) -> Self {
+        Self {
+            spans_bytes: self.spans_bytes.max(other.spans_bytes),
+            logs_bytes: self.logs_bytes.max(other.logs_bytes),
+            metrics_points: self.metrics_points.max(other.metrics_points),
+        }
+    }
+
+    pub fn of(self, signal: SignalKind) -> u64 {
+        match signal {
+            SignalKind::Spans => self.spans_bytes,
+            SignalKind::Logs => self.logs_bytes,
+            SignalKind::Metrics => self.metrics_points,
+        }
+    }
+
+    #[must_use]
+    pub fn adding(mut self, signal: SignalKind, volume: u64) -> Self {
+        let slot = match signal {
+            SignalKind::Spans => &mut self.spans_bytes,
+            SignalKind::Logs => &mut self.logs_bytes,
+            SignalKind::Metrics => &mut self.metrics_points,
+        };
+        *slot = slot.saturating_add(volume);
+        self
+    }
+
+    #[must_use]
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            spans_bytes: self.spans_bytes.saturating_add(other.spans_bytes),
+            logs_bytes: self.logs_bytes.saturating_add(other.logs_bytes),
+            metrics_points: self.metrics_points.saturating_add(other.metrics_points),
+        }
+    }
+
+    #[must_use]
+    pub fn less(self, other: Self) -> Self {
+        Self {
+            spans_bytes: self.spans_bytes.saturating_sub(other.spans_bytes),
+            logs_bytes: self.logs_bytes.saturating_sub(other.logs_bytes),
+            metrics_points: self.metrics_points.saturating_sub(other.metrics_points),
+        }
+    }
+
+    pub fn is_empty(self) -> bool {
+        self == Self::default()
+    }
+}
+
+impl core::iter::Sum for Split {
+    fn sum<I: Iterator<Item = Self>>(splits: I) -> Self {
+        splits.fold(Self::default(), Self::plus)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Consumed {
     pub started_at_unix_nanos: u64,
@@ -338,14 +401,68 @@ pub struct Consumption {
     pub ingested_bytes: u64,
     pub included_bytes: Option<u64>,
     pub hours: Vec<Consumed>,
+    pub pricing: Option<PriceList>,
+    pub bill: Option<Bill>,
+    pub projects: Vec<ProjectUsage>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectSplit {
+    pub project: ProjectId,
+    pub split: Split,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HourTotal {
     pub tenant: TenantId,
     pub hour: BillingHour,
     pub ingested: DecompressedBytes,
     pub split: Option<Split>,
+    pub projects: Vec<ProjectSplit>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectHourSplit {
+    pub tenant: TenantId,
+    pub project: ProjectId,
+    pub hour: BillingHour,
+    pub split: Split,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProjectHourShare {
+    pub tenant: TenantId,
+    pub project: ProjectId,
+    pub hour: BillingHour,
+    pub stored: Split,
+    pub stored_total: Split,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HourVolume {
+    pub started_at_unix_nanos: u64,
+    pub split: Split,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectHours {
+    pub project: ProjectId,
+    pub name: Option<Box<str>>,
+    pub hours: Vec<HourVolume>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DayVolume {
+    pub day_start_unix_nanos: u64,
+    pub split: Split,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectUsage {
+    pub project: Option<ProjectId>,
+    pub name: Option<Box<str>>,
+    pub total: Split,
+    pub days: Vec<DayVolume>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

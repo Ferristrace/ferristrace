@@ -6,6 +6,8 @@ use ferristrace_domain::{
     WebhookSender,
 };
 
+use ferristrace_domain::telemetry::PriceList;
+
 use crate::registry::UnitOfWork;
 
 pub trait Stack: Send + Sync + 'static {
@@ -57,6 +59,7 @@ pub struct Ferristrace<S: Stack> {
     pub(crate) ack_key: Option<AckKey>,
     pub(crate) status_key: Option<LinkKey>,
     pub(crate) escalate_after_secs: u64,
+    pub(crate) prices: Option<PriceList>,
 }
 
 impl<S: Stack> Ferristrace<S> {
@@ -75,6 +78,12 @@ impl<S: Stack> Ferristrace<S> {
     #[must_use]
     pub fn with_status_key(mut self, key: Option<LinkKey>) -> Self {
         self.status_key = key;
+        self
+    }
+
+    #[must_use]
+    pub fn with_prices(mut self, prices: Option<PriceList>) -> Self {
+        self.prices = prices;
         self
     }
 
@@ -101,6 +110,7 @@ impl<S: Stack> Ferristrace<S> {
             ack_key: None,
             status_key: None,
             escalate_after_secs: ESCALATE_AFTER_SECS,
+            prices: None,
         }
     }
 }

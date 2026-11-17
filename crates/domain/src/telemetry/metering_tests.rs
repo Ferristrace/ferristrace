@@ -3,7 +3,11 @@ use uuid::Uuid;
 
 use super::metering::Metering;
 use super::ports::{UsageHistory, UsageReader};
-use super::value_objects::{Consumed, DecompressedBytes, TenantId};
+use super::pricing::{Currency, PriceList};
+use super::value_objects::{
+    Consumed, DecompressedBytes, HourVolume, ProjectHours, Split, TenantId,
+};
+use crate::catalogue::ProjectId;
 use crate::clock::UnixSeconds;
 use crate::explore::{ExploreError, Window};
 use crate::identity::{AccountId, Email, Session, SessionError, SessionStore};
@@ -81,7 +85,11 @@ impl UsageHistory for &Rolled {
             Consumed {
                 started_at_unix_nanos: AN_HOUR * 2,
                 ingested_bytes: 20,
-                split: None,
+                split: Some(Split {
+                    spans_bytes: 0,
+                    logs_bytes: 2_000_000_000,
+                    metrics_points: 0,
+                }),
             },
         ])
     }
@@ -89,6 +97,43 @@ impl UsageHistory for &Rolled {
     async fn included(&self, _org: TenantId) -> Result<Option<DecompressedBytes>, StoreError> {
         Ok(self.included.map(DecompressedBytes::new))
     }
+
+    async fn project_hours(
+        &self,
+        _org: TenantId,
+        _window: Window,
+    ) -> Result<Vec<ProjectHours>, StoreError> {
+        Ok(vec![ProjectHours {
+            project: ProjectId::new(Uuid::from_u128(7)),
+            name: Some("web".into()),
+            hours: vec![HourVolume {
+                started_at_unix_nanos: AN_HOUR * 2,
+                split: Split {
+                    spans_bytes: 0,
+                    logs_bytes: 500_000_000,
+                    metrics_points: 0,
+                },
+            }],
+        }])
+    }
+}
+
+fn prices() -> PriceList {
+    PriceList {
+        currency: Currency::try_from("EUR").expect("a currency"),
+        spans_gb_micros: 1,
+        logs_gb_micros: 1_000_000,
+        metrics_million_micros: 1,
+        included: Split {
+            spans_bytes: 0,
+            logs_bytes: 1_000_000_000,
+            metrics_points: 0,
+        },
+    }
+}
+
+fn after_the_window() -> UnixSeconds {
+    UnixSeconds::new(AN_HOUR * 900 / 1_000_000_000)
 }
 
 fn metering(live: u64, rolled: &Rolled) -> Metering<OneSession, MemberOfMine, Live, &Rolled> {
@@ -107,7 +152,7 @@ async fn the_month_to_date_total_comes_from_the_live_counter() {
     };
 
     let consumption = metering(999, &rolled)
-        .consumption(&token(), an_org(MINE), a_month())
+        .consumption(&token(), an_org(MINE), a_month(), after_the_window())
         .await
         .expect("a member may read");
 
@@ -129,7 +174,7 @@ async fn a_plan_with_no_ceiling_includes_nothing_rather_than_zero() {
     let rolled = Rolled::default();
 
     let consumption = metering(999, &rolled)
-        .consumption(&token(), an_org(MINE), a_month())
+        .consumption(&token(), an_org(MINE), a_month(), after_the_window())
         .await
         .expect("a member may read");
 
@@ -144,7 +189,7 @@ async fn the_usage_of_another_organisation_is_refused_before_the_store_is_asked(
     let rolled = Rolled::default();
 
     let refused = metering(999, &rolled)
-        .consumption(&token(), an_org(THEIRS), a_month())
+        .consumption(&token(), an_org(THEIRS), a_month(), after_the_window())
         .await;
 
     assert_eq!(refused.err(), Some(ExploreError::NotYours));
@@ -160,8 +205,62 @@ async fn a_token_no_session_carries_reads_nothing() {
             &SessionToken::for_subject("ft_ss_nope"),
             an_org(MINE),
             a_month(),
+            after_the_window(),
         )
         .await;
 
     assert_eq!(refused.err(), Some(ExploreError::NoSession));
+}
+
+#[tokio::test]
+async fn without_prices_there_is_no_pricing_and_no_bill() {
+    let rolled = Rolled::default();
+
+    let consumption = metering(0, &rolled)
+        .consumption(&token(), an_org(MINE), a_month(), after_the_window())
+        .await
+        .expect("a member may read");
+
+    assert_eq!(consumption.pricing, None);
+    assert_eq!(consumption.bill, None);
+}
+
+#[tokio::test]
+async fn the_bill_counts_split_hours_only() {
+    let rolled = Rolled::default();
+
+    let consumption = metering(0, &rolled)
+        .priced(Some(prices()))
+        .consumption(&token(), an_org(MINE), a_month(), after_the_window())
+        .await
+        .expect("a member may read");
+
+    let bill = consumption.bill.expect("a bill");
+    assert_eq!(consumption.pricing, Some(prices()));
+    assert_eq!(bill.logs.used, 2_000_000_000);
+    assert_eq!(bill.value_micros(), 2_000_000);
+    assert_eq!(bill.billable_micros(), 1_000_000);
+}
+
+#[tokio::test]
+async fn the_projects_and_no_project_share_the_split() {
+    let rolled = Rolled::default();
+
+    let consumption = metering(0, &rolled)
+        .consumption(&token(), an_org(MINE), a_month(), after_the_window())
+        .await
+        .expect("a member may read");
+
+    let shares: Vec<_> = consumption
+        .projects
+        .iter()
+        .map(|usage| (usage.project, usage.total.logs_bytes))
+        .collect();
+    assert_eq!(
+        shares,
+        vec![
+            (Some(ProjectId::new(Uuid::from_u128(7))), 500_000_000),
+            (None, 1_500_000_000),
+        ]
+    );
 }

@@ -1,7 +1,7 @@
 use clickhouse::Client;
 use ferristrace_clickhouse::{ClickhouseMigrator, ClickhouseVolumes};
 use ferristrace_domain::UnixSeconds;
-use ferristrace_domain::telemetry::{BillingHour, HourSplit, StoredVolumes};
+use ferristrace_domain::telemetry::{BillingHour, HourSplit, ProjectHourSplit, StoredVolumes};
 use uuid::Uuid;
 
 mod backend;
@@ -10,6 +10,8 @@ const FIRST_HOUR: u64 = 1_700_000_400;
 const NEXT_HOUR: u64 = FIRST_HOUR + 3600;
 const MINE: &str = "00000000-0000-0000-0000-000000000001";
 const OTHER: &str = "00000000-0000-0000-0000-000000000002";
+const NO_PROJECT: &str = "00000000-0000-0000-0000-000000000000";
+const WEB: &str = "00000000-0000-0000-0000-0000000000a1";
 
 fn connected(url: &str) -> Client {
     let mut client = Client::default().with_url(url);
@@ -46,12 +48,16 @@ async fn run(client: &Client, sql: String) {
 }
 
 async fn a_log(client: &Client, tenant: &str, at: u64) {
+    a_project_log(client, tenant, tenant, at).await;
+}
+
+async fn a_project_log(client: &Client, tenant: &str, project: &str, at: u64) {
     run(
         client,
         format!(
             "INSERT INTO logs (tenant_id, project_id, service_name, time, observed_time, severity, \
              severity_number, body, attributes, resource, trace_id, span_id, expire_at) VALUES \
-             ('{tenant}', '{tenant}', 'api', toDateTime64({at}, 9, 'UTC'), toDateTime64({at}, 9, 'UTC'), \
+             ('{tenant}', '{project}', 'api', toDateTime64({at}, 9, 'UTC'), toDateTime64({at}, 9, 'UTC'), \
              'info', 9, 'hello', map(), map(), unhex('00000000000000000000000000000000'), \
              unhex('0000000000000000'), now() + INTERVAL 1 DAY)"
         ),
@@ -60,12 +66,16 @@ async fn a_log(client: &Client, tenant: &str, at: u64) {
 }
 
 async fn a_point(client: &Client, tenant: &str, at: u64) {
+    a_project_point(client, tenant, tenant, at).await;
+}
+
+async fn a_project_point(client: &Client, tenant: &str, project: &str, at: u64) {
     run(
         client,
         format!(
             "INSERT INTO metric_points (tenant_id, project_id, service_name, name, kind, temporality, \
              monotonic, attributes, time, value, expire_at) VALUES \
-             ('{tenant}', '{tenant}', 'api', 'queue.depth', 'gauge', 'unspecified', 0, map(), \
+             ('{tenant}', '{project}', 'api', 'queue.depth', 'gauge', 'unspecified', 0, map(), \
              toDateTime64({at}, 9, 'UTC'), 1.5, now() + INTERVAL 1 DAY)"
         ),
     )
@@ -116,4 +126,35 @@ async fn each_signal_is_totalled_per_tenant_and_per_hour() {
     let other = found(&splits, OTHER, FIRST_HOUR).expect("the other tenant");
     assert_eq!(other.split.metrics_points, 0);
     assert_eq!(splits.len(), 3);
+}
+
+#[tokio::test]
+async fn each_signal_is_totalled_per_project_and_hour_leaving_out_no_project() {
+    let Some(client) = prepared("ferristrace_stored_project_volumes").await else {
+        return;
+    };
+    a_project_log(&client, MINE, WEB, FIRST_HOUR).await;
+    a_project_point(&client, MINE, WEB, FIRST_HOUR).await;
+    a_project_point(&client, MINE, WEB, FIRST_HOUR + 5).await;
+    a_project_log(&client, MINE, NO_PROJECT, FIRST_HOUR).await;
+    a_project_point(&client, MINE, NO_PROJECT, NEXT_HOUR).await;
+
+    let splits = ClickhouseVolumes::new(client)
+        .hourly_by_project()
+        .await
+        .expect("the volumes are read");
+
+    let web = Uuid::parse_str(WEB).expect("a uuid");
+    assert_eq!(splits.len(), 1, "{splits:?}");
+    let ProjectHourSplit {
+        tenant,
+        project,
+        hour: at,
+        split,
+    } = splits[0];
+    assert_eq!(tenant.as_uuid(), Uuid::parse_str(MINE).expect("a uuid"));
+    assert_eq!(project.as_uuid(), web);
+    assert_eq!(at, hour(FIRST_HOUR));
+    assert_eq!(split.metrics_points, 2);
+    assert!(split.logs_bytes > 0);
 }

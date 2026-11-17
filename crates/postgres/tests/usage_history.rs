@@ -1,5 +1,7 @@
+use ferristrace_domain::ProjectId;
 use ferristrace_domain::telemetry::{
-    BillingHour, BillingMonth, HourSplit, HourTotal, Split, UsageLedger,
+    BillingHour, BillingMonth, HourSplit, HourTotal, ProjectHourShare, ProjectHourSplit,
+    ProjectSplit, ProjectUsage, Split, UsageLedger, by_project, project_shares,
 };
 use ferristrace_domain::{DecompressedBytes, TenantId, UnixSeconds, UsageHistory, Window};
 use ferristrace_infra::FixedClock;
@@ -271,6 +273,7 @@ fn an_hour_total(tenant: TenantId, at: u64, bytes: u64) -> HourTotal {
         hour: BillingHour::containing(UnixSeconds::new(at)),
         ingested: DecompressedBytes::new(bytes),
         split: None,
+        projects: Vec::new(),
     }
 }
 
@@ -391,7 +394,7 @@ async fn a_split_is_filled_once_into_an_hour_that_has_none_and_never_overwritten
     });
     let old = an_hour_total(org, 1_699_995_600, 90);
     committed!(pg, |usage: UsageHistory| usage
-        .record_hours(&[counted, old])
+        .record_hours(&[counted.clone(), old.clone()])
         .await
         .expect("rolling the hours"));
     let rebuilt = Split {
@@ -439,4 +442,347 @@ async fn a_split_is_filled_once_into_an_hour_that_has_none_and_never_overwritten
     assert_eq!(hours[0].split, Some(rebuilt));
     assert_eq!(hours[0].ingested_bytes, 90, "the billed total is untouched");
     assert_eq!(hours[1].split, counted.split, "a counted hour is kept");
+}
+
+async fn a_project(pool: &PgPool, org: TenantId, name: &str) -> ProjectId {
+    let id = Uuid::new_v4();
+    sqlx::query("INSERT INTO projects (id, org_id, name) VALUES ($1, $2, $3)")
+        .bind(id)
+        .bind(org.as_uuid())
+        .bind(name)
+        .execute(pool)
+        .await
+        .expect("inserting a project");
+    ProjectId::new(id)
+}
+
+fn volumes(spans: u64, logs: u64, points: u64) -> Split {
+    Split {
+        spans_bytes: spans,
+        logs_bytes: logs,
+        metrics_points: points,
+    }
+}
+
+fn everything() -> Window {
+    Window::new(0, u64::MAX / 2).expect("a window")
+}
+
+#[tokio::test]
+async fn a_rolled_hour_writes_what_each_project_carried() {
+    let Some(pool) = control_plane("usage_projects").await else {
+        return;
+    };
+    let pg = Postgres::new(pool.clone(), FixedClock::at(1_700_000_000));
+    let org = an_org(&pool, "owner@example.com").await;
+    let web = a_project(&pool, org, "web").await;
+    let gone = ProjectId::new(Uuid::new_v4());
+    let mut hour = an_hour_total(org, 1_699_999_200, 800);
+    hour.split = Some(volumes(500, 300, 12));
+    hour.projects = vec![
+        ProjectSplit {
+            project: web,
+            split: volumes(400, 100, 2),
+        },
+        ProjectSplit {
+            project: gone,
+            split: volumes(50, 0, 10),
+        },
+    ];
+
+    let first = committed!(pg, |usage: UsageHistory| usage
+        .record_hours(std::slice::from_ref(&hour))
+        .await
+        .expect("rolling the hour"));
+    let second = committed!(pg, |usage: UsageHistory| usage
+        .record_hours(std::slice::from_ref(&hour))
+        .await
+        .expect("rolling it again"));
+    let read = committed!(pg, |usage: UsageHistory| usage
+        .project_hours(org, everything())
+        .await
+        .expect("reading the projects"));
+
+    assert_eq!((first, second), (1, 0));
+    let rows: i64 = sqlx::query("SELECT count(*) AS value FROM usage_hourly_project")
+        .fetch_one(&pool)
+        .await
+        .expect("counting the project rows")
+        .get("value");
+    assert_eq!(rows, 2, "a second rollup adds no project row");
+    let named = read
+        .iter()
+        .find(|found| found.project == web)
+        .expect("the named project");
+    assert_eq!(named.name.as_deref(), Some("web"));
+    assert_eq!(named.hours.len(), 1);
+    assert_eq!(named.hours[0].split, volumes(400, 100, 2));
+    assert_eq!(
+        named.hours[0].started_at_unix_nanos,
+        1_699_999_200_000_000_000
+    );
+    let deleted = read
+        .iter()
+        .find(|found| found.project == gone)
+        .expect("the deleted project");
+    assert_eq!(deleted.name, None, "a deleted project keeps its history");
+}
+
+#[tokio::test]
+async fn the_projects_of_another_organisation_or_window_are_not_read() {
+    let Some(pool) = control_plane("usage_projects_theirs").await else {
+        return;
+    };
+    let pg = Postgres::new(pool.clone(), FixedClock::at(1_700_000_000));
+    let mine = an_org(&pool, "mine@example.com").await;
+    let theirs = an_org(&pool, "theirs@example.com").await;
+    let project = ProjectId::new(Uuid::new_v4());
+    let mut hours = Vec::new();
+    for (org, at) in [
+        (mine, 1_699_999_200),
+        (theirs, 1_699_999_200),
+        (mine, 1_600_000_000),
+    ] {
+        let mut hour = an_hour_total(org, at, 10);
+        hour.split = Some(volumes(10, 0, 0));
+        hour.projects = vec![ProjectSplit {
+            project,
+            split: volumes(10, 0, 0),
+        }];
+        hours.push(hour);
+    }
+    committed!(pg, |usage: UsageHistory| usage
+        .record_hours(&hours)
+        .await
+        .expect("rolling the hours"));
+
+    let read = committed!(pg, |usage: UsageHistory| usage
+        .project_hours(
+            mine,
+            Window::new(1_699_000_000_000_000_000, 1_701_000_000_000_000_000).expect("a window"),
+        )
+        .await
+        .expect("reading the projects"));
+
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].hours.len(), 1);
+}
+
+#[tokio::test]
+async fn project_rows_are_filled_only_into_split_hours_that_have_none() {
+    let Some(pool) = control_plane("usage_projects_fill").await else {
+        return;
+    };
+    let pg = Postgres::new(pool.clone(), FixedClock::at(1_700_000_000));
+    let org = an_org(&pool, "owner@example.com").await;
+    let web = ProjectId::new(Uuid::new_v4());
+    let api = ProjectId::new(Uuid::new_v4());
+    let mut counted = an_hour_total(org, 1_699_999_200, 800);
+    counted.split = Some(volumes(500, 0, 0));
+    counted.projects = vec![ProjectSplit {
+        project: web,
+        split: volumes(500, 0, 0),
+    }];
+    let mut old = an_hour_total(org, 1_699_995_600, 130);
+    old.split = Some(volumes(80, 40, 10));
+    let unsplit = an_hour_total(org, 1_699_992_000, 90);
+    committed!(pg, |usage: UsageHistory| usage
+        .record_hours(&[counted.clone(), old.clone(), unsplit.clone()])
+        .await
+        .expect("rolling the hours"));
+    let share = |project, hour: BillingHour| ProjectHourShare {
+        tenant: org,
+        project,
+        hour,
+        stored: volumes(7, 8, 9),
+        stored_total: volumes(14, 16, 18),
+    };
+    let found = [
+        share(web, old.hour),
+        share(api, old.hour),
+        share(api, counted.hour),
+        share(web, unsplit.hour),
+        share(
+            web,
+            BillingHour::containing(UnixSeconds::new(1_600_000_000)),
+        ),
+    ];
+
+    let first = committed!(pg, |usage: UsageHistory| usage
+        .fill_project_shares(&found)
+        .await
+        .expect("filling"));
+    let second = committed!(pg, |usage: UsageHistory| usage
+        .fill_project_shares(&found)
+        .await
+        .expect("filling again"));
+
+    assert_eq!(
+        (first, second),
+        (2, 0),
+        "both projects of the split hour without rows, and only once"
+    );
+    let read = committed!(pg, |usage: UsageHistory| usage
+        .project_hours(org, everything())
+        .await
+        .expect("reading the projects"));
+    let of = |project| {
+        read.iter()
+            .find(|found| found.project == project)
+            .map(|found| {
+                found
+                    .hours
+                    .iter()
+                    .map(|hour| hour.split)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(of(web), vec![volumes(40, 20, 5), volumes(500, 0, 0)]);
+    assert_eq!(of(api), vec![volumes(40, 20, 5)]);
+}
+
+async fn backfilled(
+    pg: &Postgres<FixedClock>,
+    org: TenantId,
+    split: Split,
+    stored: &[HourSplit],
+    projects: &[ProjectHourSplit],
+) -> Vec<ProjectUsage> {
+    let mut hour = an_hour_total(org, 1_794_866_400, 0);
+    hour.split = Some(split);
+    committed!(*pg, |usage: UsageHistory| usage
+        .record_hours(std::slice::from_ref(&hour))
+        .await
+        .expect("rolling the hour"));
+    let shares = project_shares(stored, projects);
+    committed!(*pg, |usage: UsageHistory| usage
+        .fill_project_shares(&shares)
+        .await
+        .expect("filling the projects"));
+    let hours = committed!(*pg, |usage: UsageHistory| usage
+        .hours(org, everything())
+        .await
+        .expect("reading the hours"));
+    let read = committed!(*pg, |usage: UsageHistory| usage
+        .project_hours(org, everything())
+        .await
+        .expect("reading the projects"));
+    by_project(&hours, read)
+}
+
+fn spent_by(spent: &[ProjectUsage], project: Option<ProjectId>) -> Split {
+    spent
+        .iter()
+        .find(|usage| usage.project == project)
+        .map(|usage| usage.total)
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn a_backfilled_project_gets_the_metered_split_not_the_stored_bytes() {
+    let Some(pool) = control_plane("usage_projects_apportioned").await else {
+        return;
+    };
+    let pg = Postgres::new(pool.clone(), FixedClock::at(1_700_000_000));
+    let org = an_org(&pool, "owner@example.com").await;
+    let web = a_project(&pool, org, "web").await;
+    let hour = BillingHour::containing(UnixSeconds::new(1_794_866_400));
+    let metered = volumes(99_342_342, 0, 0);
+    let stored = volumes(424_011_797, 0, 0);
+
+    let spent = backfilled(
+        &pg,
+        org,
+        metered,
+        &[HourSplit {
+            tenant: org,
+            hour,
+            split: stored,
+        }],
+        &[ProjectHourSplit {
+            tenant: org,
+            project: web,
+            hour,
+            split: stored,
+        }],
+    )
+    .await;
+
+    assert_eq!(spent_by(&spent, Some(web)), metered);
+    assert_eq!(spent_by(&spent, None), Split::default());
+}
+
+#[tokio::test]
+async fn backfilled_projects_and_no_project_add_up_to_the_metered_split() {
+    let Some(pool) = control_plane("usage_projects_add_up").await else {
+        return;
+    };
+    let pg = Postgres::new(pool.clone(), FixedClock::at(1_700_000_000));
+    let org = an_org(&pool, "owner@example.com").await;
+    let web = a_project(&pool, org, "web").await;
+    let api = a_project(&pool, org, "api").await;
+    let hour = BillingHour::containing(UnixSeconds::new(1_794_866_400));
+    let metered = volumes(1_000, 300, 7);
+    let stored = |project, split| ProjectHourSplit {
+        tenant: org,
+        project,
+        hour,
+        split,
+    };
+
+    let spent = backfilled(
+        &pg,
+        org,
+        metered,
+        &[HourSplit {
+            tenant: org,
+            hour,
+            split: volumes(3_000, 10, 0),
+        }],
+        &[
+            stored(web, volumes(1_500, 3, 0)),
+            stored(api, volumes(999, 3, 0)),
+        ],
+    )
+    .await;
+
+    assert_eq!(spent_by(&spent, Some(web)), volumes(500, 90, 0));
+    assert_eq!(spent_by(&spent, Some(api)), volumes(333, 90, 0));
+    assert_eq!(spent_by(&spent, None), volumes(167, 120, 7));
+    assert_eq!(
+        spent.iter().map(|usage| usage.total).sum::<Split>(),
+        metered
+    );
+}
+
+#[tokio::test]
+async fn deleting_an_organisation_takes_its_project_usage_with_it() {
+    let Some(pool) = control_plane("usage_projects_cascade").await else {
+        return;
+    };
+    let pg = Postgres::new(pool.clone(), FixedClock::at(1_700_000_000));
+    let org = an_org(&pool, "owner@example.com").await;
+    let mut hour = an_hour_total(org, 1_699_999_200, 10);
+    hour.projects = vec![ProjectSplit {
+        project: ProjectId::new(Uuid::new_v4()),
+        split: volumes(10, 0, 0),
+    }];
+    committed!(pg, |usage: UsageHistory| usage
+        .record_hours(std::slice::from_ref(&hour))
+        .await
+        .expect("rolling the hour"));
+
+    sqlx::query("DELETE FROM orgs WHERE id = $1")
+        .bind(org.as_uuid())
+        .execute(&pool)
+        .await
+        .expect("deleting the organisation");
+
+    let left: i64 = sqlx::query("SELECT count(*) AS value FROM usage_hourly_project")
+        .fetch_one(&pool)
+        .await
+        .expect("counting the rows")
+        .get("value");
+    assert_eq!(left, 0);
 }

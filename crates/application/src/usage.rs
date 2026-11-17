@@ -1,8 +1,8 @@
 use core::future::Future;
 
 use ferristrace_domain::telemetry::{
-    BillingHour, BillingMonth, HourSplit, HourTotal, HourlyCounters, MonthTotal, StoredVolumes,
-    UsageLedger, UsageSyncError,
+    BillingHour, BillingMonth, HourSplit, HourTotal, HourlyCounters, MonthTotal, ProjectHourShare,
+    StoredVolumes, UsageLedger, UsageSyncError, project_shares,
 };
 use ferristrace_domain::{
     Clock, Consumption, ExploreError, Metering, SessionToken, StoreError, TenantId, Whoami, Window,
@@ -10,6 +10,12 @@ use ferristrace_domain::{
 
 use crate::registry::{RepoFor, UsageRepos, domain};
 use crate::{Ferristrace, Stack, transactional};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UsageBackfill {
+    pub hours: usize,
+    pub projects: usize,
+}
 
 impl<S: Stack> Ferristrace<S>
 where
@@ -27,7 +33,8 @@ where
             &self.meter,
             usage_history,
         )
-        .consumption(token, org, window)
+        .priced(self.prices)
+        .consumption(token, org, window, self.clock.now())
         .await
     }
 }
@@ -36,17 +43,28 @@ impl<S: Stack> Ferristrace<S>
 where
     S::Repos: RepoFor<domain::UsageHistory, Repo: UsageLedger>,
 {
-    pub async fn backfill_usage_split<V: StoredVolumes + Sync>(
+    pub async fn backfill_usage<V: StoredVolumes + Sync>(
         &self,
         volumes: &V,
-    ) -> Result<usize, UsageSyncError> {
-        let found = volumes.hourly().await?;
-        self.fill_splits(&found).await
+    ) -> Result<UsageBackfill, UsageSyncError> {
+        let stored = volumes.hourly().await?;
+        let hours = self.fill_splits(&stored).await?;
+        let shares = project_shares(&stored, &volumes.hourly_by_project().await?);
+        let projects = self.fill_project_shares(&shares).await?;
+        Ok(UsageBackfill { hours, projects })
     }
 
     #[transactional(usage_history, unavailable = UsageSyncError::Store(StoreError::Unreachable))]
     async fn fill_splits(&self, splits: &[HourSplit]) -> Result<usize, UsageSyncError> {
         Ok(usage_history.fill_splits(splits).await?)
+    }
+
+    #[transactional(usage_history, unavailable = UsageSyncError::Store(StoreError::Unreachable))]
+    async fn fill_project_shares(
+        &self,
+        shares: &[ProjectHourShare],
+    ) -> Result<usize, UsageSyncError> {
+        Ok(usage_history.fill_project_shares(shares).await?)
     }
 }
 

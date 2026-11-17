@@ -115,10 +115,17 @@ where
         .context("this command reads the span store, so set spans.url")?;
     let volumes = SpanStoreSettings::from(spans).volumes();
     let filled = app
-        .backfill_usage_split(&volumes)
+        .backfill_usage(&volumes)
         .await
-        .context("filling the split of the rolled hours")?;
-    eprintln!("{filled} rolled hours now carry what the span store holds, by signal.");
+        .context("filling the split of the rolled hours and of their projects")?;
+    eprintln!(
+        "{} rolled hours now carry what the span store holds, by signal.",
+        filled.hours
+    );
+    eprintln!(
+        "{} project hours now carry their share of the metered split.",
+        filled.projects
+    );
     Ok(())
 }
 

@@ -6,6 +6,7 @@ use uuid::Uuid;
 use super::ports::{QuotaPolicy, UsageMeter, UsageReader};
 use super::quota::{Allowance, StaticQuota};
 use super::value_objects::{Admission, Carried, DecompressedBytes, TenantId};
+use crate::catalogue::ProjectId;
 
 #[derive(Debug, Default)]
 struct MemoryMeter(Mutex<BTreeMap<TenantId, u64>>);
@@ -14,6 +15,7 @@ impl UsageMeter for MemoryMeter {
     fn record_ingest(
         &self,
         tenant: TenantId,
+        _project: Option<ProjectId>,
         decompressed: DecompressedBytes,
         _carried: Carried,
     ) -> impl core::future::Future<Output = ()> + Send {
@@ -63,7 +65,7 @@ async fn a_hard_cap_refuses_the_payload_that_crosses_it() {
     let tenant = TenantId::new(Uuid::from_u128(2));
     let meter = MemoryMeter::default();
     meter
-        .record_ingest(tenant, bytes(900), Carried::spans(900))
+        .record_ingest(tenant, None, bytes(900), Carried::spans(900))
         .await;
     let quota = StaticQuota::new(&meter, [(tenant, Allowance::Capped(bytes(1000)))]);
 
@@ -81,7 +83,7 @@ async fn an_overage_plan_reports_how_far_past_the_limit_it_goes() {
     let tenant = TenantId::new(Uuid::from_u128(3));
     let meter = MemoryMeter::default();
     meter
-        .record_ingest(tenant, bytes(900), Carried::spans(900))
+        .record_ingest(tenant, None, bytes(900), Carried::spans(900))
         .await;
     let quota = StaticQuota::new(&meter, [(tenant, Allowance::Overage(bytes(1000)))]);
 

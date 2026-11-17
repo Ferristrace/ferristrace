@@ -16,6 +16,7 @@ Context
   the quota. Decided with the maintainer on 2026-11-17: prices and
   allowances per signal in the server config, a split per project, no
   budget.
+  Decision: [ADR 0038](../adr/0038-prices-live-in-the-server-config-and-projects-in-the-hourly-hash.md).
 
 Out of scope
   - A budget per organisation and the "budget pace" line.
@@ -63,9 +64,12 @@ Decisions
       dev keys) is the org split minus the project rows, shown as
       "No project".
   P5  History. `ferristrace backfill-usage` also fills
-      `usage_hourly_project` from ClickHouse (`project_id` of spans, logs,
-      metric_points, metric_histograms), only for hours that have a
-      rolled-up org row and no project row. Same caveat as ADR 0037.
+      `usage_hourly_project`, only for hours that have a rolled-up org
+      row with a split and no project row. Each project gets the hour's
+      metered split apportioned by its share of the stored ClickHouse
+      volume of that hour (`project_id` of spans, logs, metric_points,
+      metric_histograms), per signal, rounded down; the rest is
+      "No project". Same caveat as ADR 0037.
   P6  API. `GET /api/orgs/{org}/usage?from&to` keeps every field and adds:
         pricing: null | {
           currency: "EUR",

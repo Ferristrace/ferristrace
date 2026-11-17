@@ -12,8 +12,8 @@ use ferristrace_domain::telemetry::{
 use ferristrace_domain::{
     AlertMailer, Carried, DecompressedBytes, DeliveryError, Dispatch, Email, EmailList, IngestKey,
     Letter, LogRecord, LogSink, Metric, MetricSink, NoPhotos, PageDispatch, Photo, PhotoError,
-    Photos, Pictured, Portrait, Scope, SinkError, Span, SpanSink, StatusMailer, TenantDirectory,
-    TenantId, UnknownKey, UsageMeter, UsageReader,
+    Photos, Pictured, Portrait, ProjectId, Scope, SinkError, Span, SpanSink, StatusMailer,
+    TenantDirectory, TenantId, UnknownKey, UsageMeter, UsageReader,
 };
 use ferristrace_infra::{
     HttpWebhooks, JwksVerifier, MemoryMeter, MemorySink, S3Photos, SmtpMailer, StaticDirectory,
@@ -176,12 +176,21 @@ impl UsageMeter for Meter {
     async fn record_ingest(
         &self,
         tenant: TenantId,
+        project: Option<ProjectId>,
         decompressed: DecompressedBytes,
         carried: Carried,
     ) {
         match self {
-            Self::Memory(meter) => meter.record_ingest(tenant, decompressed, carried).await,
-            Self::Redis(meter) => meter.record_ingest(tenant, decompressed, carried).await,
+            Self::Memory(meter) => {
+                meter
+                    .record_ingest(tenant, project, decompressed, carried)
+                    .await;
+            }
+            Self::Redis(meter) => {
+                meter
+                    .record_ingest(tenant, project, decompressed, carried)
+                    .await;
+            }
         }
     }
 }

@@ -1,10 +1,13 @@
 use core::fmt;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ferristrace_domain::telemetry::{
-    BillingHour, BillingMonth, CounterUnreachable, HourTotal, HourlyCounters, SignalKind, Split,
+    BillingHour, BillingMonth, CounterUnreachable, HourTotal, HourlyCounters, ProjectSplit,
+    SignalKind, Split,
 };
-use ferristrace_domain::{Carried, Clock, DecompressedBytes, TenantId, UsageMeter, UsageReader};
+use ferristrace_domain::{
+    Carried, Clock, DecompressedBytes, ProjectId, TenantId, UsageMeter, UsageReader,
+};
 use redis::AsyncCommands;
 use redis::aio::ConnectionManager;
 
@@ -16,11 +19,58 @@ const SPANS_BYTES: &str = "spans_bytes";
 const LOGS_BYTES: &str = "logs_bytes";
 const METRICS_POINTS: &str = "metrics_points";
 
+const PROJECT_MARK: char = '@';
+
 fn field_of(signal: SignalKind) -> &'static str {
     match signal {
         SignalKind::Spans => SPANS_BYTES,
         SignalKind::Logs => LOGS_BYTES,
         SignalKind::Metrics => METRICS_POINTS,
+    }
+}
+
+fn signal_of(field: &str) -> Option<SignalKind> {
+    SignalKind::ALL
+        .into_iter()
+        .find(|signal| field_of(*signal) == field)
+}
+
+fn project_field(signal: SignalKind, project: ProjectId) -> String {
+    format!("{}{PROJECT_MARK}{project}", field_of(signal))
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct HourFields {
+    split: Option<Split>,
+    projects: Vec<ProjectSplit>,
+}
+
+fn read_fields(fields: HashMap<String, u64>) -> HourFields {
+    let mut split: Option<Split> = None;
+    let mut projects: BTreeMap<ProjectId, Split> = BTreeMap::new();
+    for (field, volume) in fields {
+        let (name, project) = match field.split_once(PROJECT_MARK) {
+            Some((name, project)) => (name, Some(project)),
+            None => (field.as_str(), None),
+        };
+        let Some(signal) = signal_of(name) else {
+            continue;
+        };
+        let slot = match project {
+            None => split.get_or_insert_default(),
+            Some(project) => match project.parse::<uuid::Uuid>() {
+                Ok(id) => projects.entry(ProjectId::new(id)).or_default(),
+                Err(_) => continue,
+            },
+        };
+        *slot = slot.adding(signal, volume);
+    }
+    HourFields {
+        split,
+        projects: projects
+            .into_iter()
+            .map(|(project, split)| ProjectSplit { project, split })
+            .collect(),
     }
 }
 
@@ -79,25 +129,17 @@ impl<C: Clock> RedisMeter<C> {
 }
 
 impl<C: Clock + Send + Sync> RedisMeter<C> {
-    async fn split_of(
+    async fn fields_of(
         &self,
         connection: &mut ConnectionManager,
         tenant: TenantId,
         hour: BillingHour,
-    ) -> Result<Option<Split>, CounterUnreachable> {
+    ) -> Result<HourFields, CounterUnreachable> {
         let fields: HashMap<String, u64> = connection
             .hgetall(self.split_key(tenant, hour))
             .await
             .map_err(|error| refused(&error))?;
-        if fields.is_empty() {
-            return Ok(None);
-        }
-        let field = |name: &str| fields.get(name).copied().unwrap_or_default();
-        Ok(Some(Split {
-            spans_bytes: field(SPANS_BYTES),
-            logs_bytes: field(LOGS_BYTES),
-            metrics_points: field(METRICS_POINTS),
-        }))
+        Ok(read_fields(fields))
     }
 }
 
@@ -130,12 +172,13 @@ impl<C: Clock + Send + Sync> HourlyCounters for RedisMeter<C> {
                 else {
                     continue;
                 };
-                let split = self.split_of(&mut connection, tenant, hour).await?;
+                let fields = self.fields_of(&mut connection, tenant, hour).await?;
                 totals.push(HourTotal {
                     tenant,
                     hour,
                     ingested: DecompressedBytes::new(total),
-                    split,
+                    split: fields.split,
+                    projects: fields.projects,
                 });
             }
 
@@ -188,6 +231,7 @@ impl<C: Clock + Send + Sync> UsageMeter for RedisMeter<C> {
     async fn record_ingest(
         &self,
         tenant: TenantId,
+        project: Option<ProjectId>,
         decompressed: DecompressedBytes,
         carried: Carried,
     ) {
@@ -197,17 +241,25 @@ impl<C: Clock + Send + Sync> UsageMeter for RedisMeter<C> {
         let hour = self.hour_key(tenant);
         let split = self.current_split_key(tenant);
 
-        let replies: Result<(u64, u64, u64, bool), _> = redis::pipe()
-            .atomic()
+        let mut pipe = redis::pipe();
+        pipe.atomic()
             .incr(&month, bytes)
             .incr(&hour, bytes)
             .hincr(&split, field_of(carried.signal()), carried.volume())
-            .expire(&split, HOUR_TTL_SECONDS)
-            .query_async(&mut connection)
-            .await;
+            .ignore();
+        if let Some(project) = project {
+            pipe.hincr(
+                &split,
+                project_field(carried.signal(), project),
+                carried.volume(),
+            )
+            .ignore();
+        }
+        pipe.expire(&split, HOUR_TTL_SECONDS).ignore();
+        let replies: Result<(u64, u64), _> = pipe.query_async(&mut connection).await;
 
         match replies {
-            Ok((month_total, hour_total, _, _)) => {
+            Ok((month_total, hour_total)) => {
                 expire_if_new(&mut connection, &month, month_total, bytes, KEY_TTL_SECONDS).await;
                 expire_if_new(&mut connection, &hour, hour_total, bytes, HOUR_TTL_SECONDS).await;
             }
@@ -262,7 +314,62 @@ impl<C: Clock + Send + Sync> UsageReader for RedisMeter<C> {
 
 #[cfg(test)]
 mod tests {
-    use super::tenant_of;
+    use std::collections::HashMap;
+
+    use ferristrace_domain::telemetry::{ProjectSplit, Split};
+    use ferristrace_domain::{ProjectId, SignalKind};
+    use uuid::Uuid;
+
+    use super::{HourFields, project_field, read_fields, tenant_of};
+
+    #[test]
+    fn the_project_fields_of_an_hour_add_up_per_project_beside_the_split() {
+        let web = ProjectId::new(Uuid::from_u128(1));
+        let api = ProjectId::new(Uuid::from_u128(2));
+        let fields = HashMap::from([
+            ("spans_bytes".to_owned(), 30),
+            ("logs_bytes".to_owned(), 5),
+            (project_field(SignalKind::Spans, web), 20),
+            (project_field(SignalKind::Logs, web), 5),
+            (project_field(SignalKind::Spans, api), 10),
+            ("total".to_owned(), 99),
+            ("spans_bytes@not-a-uuid".to_owned(), 7),
+        ]);
+
+        assert_eq!(
+            read_fields(fields),
+            HourFields {
+                split: Some(Split {
+                    spans_bytes: 30,
+                    logs_bytes: 5,
+                    metrics_points: 0,
+                }),
+                projects: vec![
+                    ProjectSplit {
+                        project: web,
+                        split: Split {
+                            spans_bytes: 20,
+                            logs_bytes: 5,
+                            metrics_points: 0,
+                        },
+                    },
+                    ProjectSplit {
+                        project: api,
+                        split: Split {
+                            spans_bytes: 10,
+                            logs_bytes: 0,
+                            metrics_points: 0,
+                        },
+                    },
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn an_empty_hash_is_an_hour_without_a_split() {
+        assert_eq!(read_fields(HashMap::new()), HourFields::default());
+    }
 
     #[test]
     fn a_key_names_its_tenant_whatever_the_prefix() {

@@ -55,3 +55,7 @@ pub enum UsageSyncError {
     #[error("the control plane refused the usage query")]
     Store(#[from] StoreError),
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("a currency is an ISO 4217 code of three ASCII letters")]
+pub struct BadCurrency;

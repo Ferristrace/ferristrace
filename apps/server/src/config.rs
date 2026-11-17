@@ -3,7 +3,9 @@ use std::num::NonZeroU16;
 
 use ferristrace_clickhouse::SpanStoreSettings;
 use ferristrace_domain::DecompressedBytes;
-use ferristrace_domain::telemetry::Allowance;
+use ferristrace_domain::telemetry::{
+    Allowance, BYTES_PER_GB, BadCurrency, Currency, POINTS_PER_MILLION, PriceList, Split,
+};
 use ferristrace_env_file::EnvFile;
 use ferristrace_infra::PhotoStoreSettings;
 use figment::Figment;
@@ -42,6 +44,8 @@ pub struct Config {
     pub secrets: Option<SecretsConfig>,
     #[serde(default)]
     pub alerts: AlertsConfig,
+    #[serde(default)]
+    pub billing: Option<BillingConfig>,
 }
 
 fn a_month() -> u64 {
@@ -107,6 +111,56 @@ impl From<ObjectsConfig> for PhotoStoreSettings {
             region: objects.region,
             access_key_id: objects.access_key_id,
             secret_access_key: objects.secret_access_key,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct CurrencyCode(Currency);
+
+impl TryFrom<String> for CurrencyCode {
+    type Error = BadCurrency;
+
+    fn try_from(code: String) -> Result<Self, BadCurrency> {
+        Currency::try_from(code.as_str()).map(Self)
+    }
+}
+
+impl From<CurrencyCode> for String {
+    fn from(code: CurrencyCode) -> Self {
+        code.0.code().to_owned()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BillingConfig {
+    pub currency: CurrencyCode,
+    pub spans_gb_micros: u64,
+    pub logs_gb_micros: u64,
+    pub metrics_million_micros: u64,
+    #[serde(default)]
+    pub included_spans_gb: u64,
+    #[serde(default)]
+    pub included_logs_gb: u64,
+    #[serde(default)]
+    pub included_metrics_million: u64,
+}
+
+impl From<BillingConfig> for PriceList {
+    fn from(billing: BillingConfig) -> Self {
+        Self {
+            currency: billing.currency.0,
+            spans_gb_micros: billing.spans_gb_micros,
+            logs_gb_micros: billing.logs_gb_micros,
+            metrics_million_micros: billing.metrics_million_micros,
+            included: Split {
+                spans_bytes: billing.included_spans_gb.saturating_mul(BYTES_PER_GB),
+                logs_bytes: billing.included_logs_gb.saturating_mul(BYTES_PER_GB),
+                metrics_points: billing
+                    .included_metrics_million
+                    .saturating_mul(POINTS_PER_MILLION),
+            },
         }
     }
 }
@@ -245,6 +299,7 @@ impl Default for Config {
             objects: None,
             secrets: None,
             alerts: AlertsConfig::default(),
+            billing: None,
         }
     }
 }
@@ -264,6 +319,8 @@ pub fn load() -> anyhow::Result<Config> {
 #[allow(clippy::result_large_err)]
 mod tests {
     use std::num::NonZeroU16;
+
+    use ferristrace_domain::telemetry::{PriceList, Split};
 
     use super::{AgentSetup, Config, FILE, McpConfig, OidcConfig, TenantAllowance, figment};
 
@@ -739,6 +796,84 @@ mod tests {
                     client_id: "ferristrace-web".to_owned(),
                 })
             );
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn a_server_without_a_billing_section_has_no_prices() {
+        figment::Jail::expect_with(|_jail| {
+            let config: Config = figment().extract()?;
+
+            assert_eq!(config.billing, None);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn a_billing_section_prices_each_signal_and_includes_nothing_by_default() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(
+                FILE,
+                r#"
+                [billing]
+                currency = "eur"
+                spans_gb_micros = 250000
+                logs_gb_micros = 500000
+                metrics_million_micros = 100000
+                "#,
+            )?;
+
+            let config: Config = figment().extract()?;
+            let prices = PriceList::from(config.billing.expect("prices"));
+
+            assert_eq!(prices.currency.code(), "EUR");
+            assert_eq!(prices.spans_gb_micros, 250_000);
+            assert_eq!(prices.logs_gb_micros, 500_000);
+            assert_eq!(prices.metrics_million_micros, 100_000);
+            assert_eq!(prices.included, Split::default());
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn the_environment_sets_prices_and_allowances_in_decimal_units() {
+        figment::Jail::expect_with(|jail| {
+            jail.set_env("FERRISTRACE_BILLING__CURRENCY", "USD");
+            jail.set_env("FERRISTRACE_BILLING__SPANS_GB_MICROS", "300000");
+            jail.set_env("FERRISTRACE_BILLING__LOGS_GB_MICROS", "400000");
+            jail.set_env("FERRISTRACE_BILLING__METRICS_MILLION_MICROS", "50000");
+            jail.set_env("FERRISTRACE_BILLING__INCLUDED_SPANS_GB", "10");
+            jail.set_env("FERRISTRACE_BILLING__INCLUDED_LOGS_GB", "5");
+            jail.set_env("FERRISTRACE_BILLING__INCLUDED_METRICS_MILLION", "2");
+
+            let config: Config = figment().extract()?;
+            let prices = PriceList::from(config.billing.expect("prices"));
+
+            assert_eq!(prices.currency.code(), "USD");
+            assert_eq!(
+                prices.included,
+                Split {
+                    spans_bytes: 10_000_000_000,
+                    logs_bytes: 5_000_000_000,
+                    metrics_points: 2_000_000,
+                }
+            );
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn a_currency_that_is_not_three_letters_stops_the_start() {
+        figment::Jail::expect_with(|jail| {
+            for refused in ["EURO", "E1", "€"] {
+                jail.set_env("FERRISTRACE_BILLING__CURRENCY", refused);
+                jail.set_env("FERRISTRACE_BILLING__SPANS_GB_MICROS", "1");
+                jail.set_env("FERRISTRACE_BILLING__LOGS_GB_MICROS", "1");
+                jail.set_env("FERRISTRACE_BILLING__METRICS_MILLION_MICROS", "1");
+
+                assert!(figment().extract::<Config>().is_err(), "{refused}");
+            }
             Ok(())
         });
     }
