@@ -8,6 +8,7 @@ use ferristrace_domain::telemetry::{
 };
 use ferristrace_env_file::EnvFile;
 use ferristrace_infra::PhotoStoreSettings;
+use ferristrace_postgres::SELF_HOSTED_PLAN;
 use figment::Figment;
 use figment::providers::{Env, Format, Serialized, Toml};
 use serde::{Deserialize, Serialize};
@@ -50,6 +51,8 @@ pub struct Config {
     pub stripe: Option<StripeConfig>,
     #[serde(default)]
     pub plans: Vec<PlanConfig>,
+    #[serde(default)]
+    pub default_plan: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -273,6 +276,22 @@ impl Config {
     pub fn reserved_client_id(&self) -> Option<&str> {
         self.oidc.as_ref().map(|oidc| oidc.client_id.as_str())
     }
+
+    pub fn new_org_plan(&self) -> anyhow::Result<&str> {
+        let slug = self.default_plan.as_deref().unwrap_or(SELF_HOSTED_PLAN);
+        if slug == SELF_HOSTED_PLAN {
+            anyhow::ensure!(
+                self.stripe.is_none(),
+                "[stripe] needs default_plan, the plan a new organisation starts on, set to one of the [[plans]] (usually `free`)"
+            );
+            return Ok(slug);
+        }
+        anyhow::ensure!(
+            self.plans.iter().any(|plan| plan.slug == slug),
+            "default_plan `{slug}` is not one of the [[plans]]"
+        );
+        Ok(slug)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -327,6 +346,7 @@ impl Default for Config {
             billing: None,
             stripe: None,
             plans: Vec::new(),
+            default_plan: None,
         }
     }
 }
@@ -349,7 +369,10 @@ mod tests {
 
     use ferristrace_domain::telemetry::{PriceList, Split};
 
-    use super::{AgentSetup, Config, FILE, McpConfig, OidcConfig, TenantAllowance, figment};
+    use super::{
+        AgentSetup, Config, FILE, McpConfig, OidcConfig, PlanConfig, StripeConfig, TenantAllowance,
+        figment,
+    };
 
     #[test]
     fn the_default_ports_are_the_otlp_ones() {
@@ -957,6 +980,83 @@ mod tests {
                 config.stripe.map(|stripe| stripe.secret_key).as_deref(),
                 Some("sk_test")
             );
+            Ok(())
+        });
+    }
+
+    fn plan(slug: &str) -> PlanConfig {
+        PlanConfig {
+            slug: slug.to_owned(),
+            name: slug.to_owned(),
+            ingest_gb: None,
+            retention_days: None,
+            overage: false,
+            price: None,
+        }
+    }
+
+    fn stripe() -> StripeConfig {
+        StripeConfig {
+            secret_key: "sk_test".to_owned(),
+            webhook_secret: "whsec_test".to_owned(),
+            meter_event_name: "ingested_bytes".to_owned(),
+        }
+    }
+
+    #[test]
+    fn a_new_organisation_starts_self_hosted_when_nothing_is_configured() {
+        let config = Config::default();
+
+        assert_eq!(config.new_org_plan().expect("a plan"), "self-hosted");
+    }
+
+    #[test]
+    fn a_new_organisation_starts_on_the_configured_default_plan() {
+        let config = Config {
+            plans: vec![plan("free"), plan("pro")],
+            default_plan: Some("free".to_owned()),
+            stripe: Some(stripe()),
+            ..Config::default()
+        };
+
+        assert_eq!(config.new_org_plan().expect("a plan"), "free");
+    }
+
+    #[test]
+    fn a_default_plan_outside_the_declared_plans_is_refused() {
+        let config = Config {
+            plans: vec![plan("free")],
+            default_plan: Some("starter".to_owned()),
+            ..Config::default()
+        };
+
+        assert!(config.new_org_plan().is_err());
+    }
+
+    #[test]
+    fn stripe_without_a_default_plan_is_refused() {
+        for default_plan in [None, Some("self-hosted".to_owned())] {
+            let config = Config {
+                plans: vec![plan("free"), plan("pro")],
+                default_plan,
+                stripe: Some(stripe()),
+                ..Config::default()
+            };
+
+            assert!(config.new_org_plan().is_err());
+        }
+    }
+
+    #[test]
+    fn the_default_plan_comes_from_the_file_or_the_environment() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(FILE, r#"default_plan = "free""#)?;
+            let config: Config = figment().extract()?;
+            assert_eq!(config.default_plan.as_deref(), Some("free"));
+
+            jail.set_env("FERRISTRACE_DEFAULT_PLAN", "pro");
+            let config: Config = figment().extract()?;
+            assert_eq!(config.default_plan.as_deref(), Some("pro"));
             Ok(())
         });
     }

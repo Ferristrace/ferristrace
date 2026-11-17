@@ -1,9 +1,10 @@
+use std::sync::Arc;
+
 use ferristrace_application::repository;
 use ferristrace_domain::{AccountId, Membership, Memberships, OrgRole, TenantId, WhoamiError};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::postgres::SELF_HOSTED_PLAN;
 use crate::unit_of_work::{Postgres, SharedTx};
 
 #[derive(Debug, thiserror::Error)]
@@ -13,18 +14,22 @@ pub enum MembershipError {
     #[error("no account carries the address {0}")]
     NoSuchAccount(String),
     #[error("this control plane holds no {0} plan")]
-    NoSuchPlan(&'static str),
+    NoSuchPlan(Arc<str>),
 }
 
 #[repository(domain = Memberships, backend = Postgres<C>, generics = <C: Send + Sync + 'static>)]
 #[derive(Debug)]
 pub struct PostgresMemberships {
     tx: SharedTx,
+    new_org_plan: Arc<str>,
 }
 
 impl PostgresMemberships {
-    pub fn new<C>(_backend: &Postgres<C>, tx: &SharedTx) -> Self {
-        Self { tx: tx.clone() }
+    pub fn new<C>(backend: &Postgres<C>, tx: &SharedTx) -> Self {
+        Self {
+            tx: tx.clone(),
+            new_org_plan: Arc::clone(&backend.new_org_plan),
+        }
     }
 
     pub async fn founded(&self) -> Result<Option<TenantId>, MembershipError> {
@@ -46,11 +51,11 @@ impl PostgresMemberships {
             .ok_or_else(|| MembershipError::NoSuchAccount(owner.to_owned()))?;
 
         let plan: Uuid = sqlx::query("SELECT id AS id FROM plans WHERE slug = $1")
-            .bind(SELF_HOSTED_PLAN)
+            .bind(&*self.new_org_plan)
             .fetch_optional(&mut **tx)
             .await?
             .map(|row| row.get("id"))
-            .ok_or_else(|| MembershipError::NoSuchPlan(SELF_HOSTED_PLAN))?;
+            .ok_or_else(|| MembershipError::NoSuchPlan(Arc::clone(&self.new_org_plan)))?;
 
         let org = Uuid::new_v4();
         sqlx::query("INSERT INTO orgs (id, name, plan_id) VALUES ($1, $2, $3)")

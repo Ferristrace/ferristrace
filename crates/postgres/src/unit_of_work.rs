@@ -7,6 +7,8 @@ use ferristrace_infra::SecretSeal;
 use sqlx::{PgPool, Transaction};
 use tokio::sync::{Mutex, MutexGuard};
 
+use crate::postgres::SELF_HOSTED_PLAN;
+
 #[derive(Debug, Clone)]
 pub struct SharedTx(Arc<Mutex<Transaction<'static, sqlx::Postgres>>>);
 
@@ -26,6 +28,7 @@ pub struct Postgres<C> {
     clock: C,
     pub(crate) policy: ProvisionPolicy,
     pub(crate) seal: Option<SecretSeal>,
+    pub(crate) new_org_plan: Arc<str>,
 }
 
 impl<C> Postgres<C> {
@@ -35,7 +38,14 @@ impl<C> Postgres<C> {
             clock,
             policy: ProvisionPolicy::default(),
             seal: None,
+            new_org_plan: Arc::from(SELF_HOSTED_PLAN),
         }
+    }
+
+    #[must_use]
+    pub fn with_new_org_plan(mut self, slug: &str) -> Self {
+        self.new_org_plan = Arc::from(slug);
+        self
     }
 
     #[must_use]
