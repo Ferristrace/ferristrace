@@ -1,5 +1,5 @@
 use ferristrace_domain::{
-    StripeCustomerId, StripeEventId, StripePriceId, StripeSubscriptionId, SubscriptionStatus,
+    BillingEventId, CustomerRef, PriceRef, SubscriptionChange, SubscriptionRef, SubscriptionStatus,
     TenantId, WebhookError, WebhookEvent,
 };
 use hmac::{Hmac, KeyInit, Mac};
@@ -64,74 +64,110 @@ fn parse_event(body: &[u8]) -> Result<WebhookEvent, WebhookError> {
     let event = envelope
         .get("id")
         .and_then(Value::as_str)
+        .map(BillingEventId::new)
         .ok_or(WebhookError::Malformed)?;
-    let event = StripeEventId::new(event);
     let kind = envelope
         .get("type")
         .and_then(Value::as_str)
+        .ok_or(WebhookError::Malformed)?;
+    if !SUBSCRIPTION_EVENTS.contains(&kind) {
+        return Ok(WebhookEvent::Ignored { event });
+    }
+    let at = envelope
+        .get("created")
+        .and_then(Value::as_i64)
         .ok_or(WebhookError::Malformed)?;
     let object = envelope
         .get("data")
         .and_then(|data| data.get("object"))
         .ok_or(WebhookError::Malformed)?;
-    match kind {
-        "checkout.session.completed" => activated(event, object),
-        "customer.subscription.deleted" => retries_exhausted(event, object),
-        _ => Ok(WebhookEvent::Ignored { event }),
-    }
-}
-
-fn activated(event: StripeEventId, object: &Value) -> Result<WebhookEvent, WebhookError> {
-    let org = object
-        .get("client_reference_id")
+    let spelling = object
+        .get("status")
         .and_then(Value::as_str)
         .ok_or(WebhookError::Malformed)?;
-    let org = Uuid::parse_str(org).map_err(|_| WebhookError::Malformed)?;
-    let customer = object
-        .get("customer")
-        .and_then(Value::as_str)
-        .ok_or(WebhookError::Malformed)?;
-    let subscription = object
-        .get("subscription")
-        .and_then(Value::as_str)
-        .ok_or(WebhookError::Malformed)?;
-    let period_end = object
-        .get("expires_at")
-        .and_then(Value::as_i64)
-        .unwrap_or(0);
-    let price = object
-        .get("metadata")
-        .and_then(|metadata| metadata.get("price_id"))
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    Ok(WebhookEvent::Activated {
+    let status = if kind == SUBSCRIPTION_DELETED {
+        Some(SubscriptionStatus::Canceled)
+    } else {
+        status_of(spelling)
+    };
+    let Some(status) = status else {
+        return Ok(WebhookEvent::Ignored { event });
+    };
+    Ok(WebhookEvent::Changed {
         event,
-        org: TenantId::new(org),
-        customer: StripeCustomerId::new(customer),
-        subscription: StripeSubscriptionId::new(subscription),
-        price: StripePriceId::new(price),
-        status: SubscriptionStatus::Active,
-        period_end,
+        change: change_of(at, status, object)?,
     })
 }
 
-fn retries_exhausted(event: StripeEventId, object: &Value) -> Result<WebhookEvent, WebhookError> {
-    let customer = object
-        .get("customer")
+const SUBSCRIPTION_DELETED: &str = "customer.subscription.deleted";
+
+const SUBSCRIPTION_EVENTS: [&str; 3] = [
+    "customer.subscription.created",
+    "customer.subscription.updated",
+    SUBSCRIPTION_DELETED,
+];
+
+fn status_of(spelling: &str) -> Option<SubscriptionStatus> {
+    match spelling {
+        "active" | "trialing" => Some(SubscriptionStatus::Active),
+        "past_due" => Some(SubscriptionStatus::PastDue),
+        "unpaid" | "canceled" | "incomplete_expired" | "paused" => {
+            Some(SubscriptionStatus::Canceled)
+        }
+        _ => None,
+    }
+}
+
+fn change_of(
+    at: i64,
+    status: SubscriptionStatus,
+    object: &Value,
+) -> Result<SubscriptionChange, WebhookError> {
+    let subscription = object
+        .get("id")
         .and_then(Value::as_str)
         .ok_or(WebhookError::Malformed)?;
-    Ok(WebhookEvent::RetriesExhausted {
-        event,
-        customer: StripeCustomerId::new(customer),
+    let customer = object
+        .get("customer")
+        .and_then(|customer| customer.as_str().or_else(|| customer.get("id")?.as_str()))
+        .ok_or(WebhookError::Malformed)?;
+    let org = object
+        .get("metadata")
+        .and_then(|metadata| metadata.get("org"))
+        .and_then(Value::as_str)
+        .and_then(|org| Uuid::parse_str(org).ok())
+        .map(TenantId::new);
+    let item = object
+        .get("items")
+        .and_then(|items| items.get("data"))
+        .and_then(|data| data.get(0));
+    let price = item
+        .and_then(|item| item.get("price"))
+        .and_then(|price| price.get("id"))
+        .and_then(Value::as_str)
+        .map(PriceRef::new);
+    let period_end = object
+        .get("current_period_end")
+        .or_else(|| item?.get("current_period_end"))
+        .and_then(Value::as_i64);
+    Ok(SubscriptionChange {
+        at,
+        org,
+        customer: CustomerRef::new(customer),
+        subscription: SubscriptionRef::new(subscription),
+        price,
+        status,
+        period_end,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use ferristrace_domain::{
-        StripeCustomerId, StripeEventId, StripePriceId, StripeSubscriptionId, SubscriptionStatus,
-        TenantId, WebhookError, WebhookEvent,
+        BillingEventId, CustomerRef, PriceRef, SubscriptionChange, SubscriptionRef,
+        SubscriptionStatus, TenantId, WebhookError, WebhookEvent,
     };
+    use serde_json::{Value, json};
     use time::OffsetDateTime;
     use uuid::Uuid;
 
@@ -147,51 +183,167 @@ mod tests {
         format!("t={timestamp},v1={}", sign(secret, timestamp, body))
     }
 
-    fn checkout_completed(org: Uuid) -> Vec<u8> {
-        serde_json::json!({
+    fn event(kind: &str, object: Value) -> Vec<u8> {
+        json!({
             "id": "evt_1",
-            "type": "checkout.session.completed",
-            "data": {
-                "object": {
-                    "client_reference_id": org.to_string(),
-                    "customer": "cus_1",
-                    "subscription": "sub_1",
-                    "expires_at": 1_700_000_000,
-                }
-            }
+            "type": kind,
+            "created": 1_700_000_100,
+            "data": {"object": object}
         })
         .to_string()
         .into_bytes()
     }
 
-    #[test]
-    fn a_correctly_signed_recent_header_is_accepted_and_mapped_to_activated() {
-        let org = Uuid::from_u128(42);
-        let body = checkout_completed(org);
-        let timestamp = now();
-        let signature = header(SECRET, timestamp, &body);
+    fn subscription(status: &str, org: Option<Uuid>) -> Value {
+        let metadata = org.map_or_else(|| json!({}), |org| json!({"org": org.to_string()}));
+        json!({
+            "id": "sub_1",
+            "object": "subscription",
+            "customer": "cus_1",
+            "status": status,
+            "metadata": metadata,
+            "items": {"data": [{
+                "price": {"id": "price_pro"},
+                "current_period_end": 1_702_592_000
+            }]}
+        })
+    }
 
-        let event = verify(SECRET, &signature, &body).expect("a valid signature verifies");
+    fn signed(body: &[u8]) -> Result<WebhookEvent, WebhookError> {
+        verify(SECRET, &header(SECRET, now(), body), body)
+    }
+
+    fn change(status: SubscriptionStatus, org: Option<Uuid>) -> WebhookEvent {
+        WebhookEvent::Changed {
+            event: BillingEventId::new("evt_1"),
+            change: SubscriptionChange {
+                at: 1_700_000_100,
+                org: org.map(TenantId::new),
+                customer: CustomerRef::new("cus_1"),
+                subscription: SubscriptionRef::new("sub_1"),
+                price: Some(PriceRef::new("price_pro")),
+                status,
+                period_end: Some(1_702_592_000),
+            },
+        }
+    }
+
+    #[test]
+    fn a_created_subscription_carries_its_org_price_and_period() {
+        let org = Uuid::from_u128(42);
+        let body = event(
+            "customer.subscription.created",
+            subscription("active", Some(org)),
+        );
 
         assert_eq!(
-            event,
-            WebhookEvent::Activated {
-                event: StripeEventId::new("evt_1"),
-                org: TenantId::new(org),
-                customer: StripeCustomerId::new("cus_1"),
-                subscription: StripeSubscriptionId::new("sub_1"),
-                price: StripePriceId::new(""),
-                status: SubscriptionStatus::Active,
-                period_end: 1_700_000_000,
+            signed(&body).expect("verifies"),
+            change(SubscriptionStatus::Active, Some(org))
+        );
+    }
+
+    #[test]
+    fn the_period_end_is_read_from_the_subscription_on_older_api_versions() {
+        let mut object = subscription("active", None);
+        object["current_period_end"] = json!(1_702_000_000);
+        let body = event("customer.subscription.updated", object);
+
+        let WebhookEvent::Changed { change, .. } = signed(&body).expect("verifies") else {
+            panic!("a subscription update is a change");
+        };
+
+        assert_eq!(change.period_end, Some(1_702_000_000));
+    }
+
+    #[test]
+    fn an_expanded_customer_object_is_read_by_its_id() {
+        let mut object = subscription("active", None);
+        object["customer"] = json!({"id": "cus_1", "object": "customer"});
+        let body = event("customer.subscription.updated", object);
+
+        assert_eq!(
+            signed(&body).expect("verifies"),
+            change(SubscriptionStatus::Active, None)
+        );
+    }
+
+    #[test]
+    fn statuses_map_to_keep_or_end_the_paid_plan() {
+        for (spelling, expected) in [
+            ("trialing", SubscriptionStatus::Active),
+            ("past_due", SubscriptionStatus::PastDue),
+            ("unpaid", SubscriptionStatus::Canceled),
+            ("canceled", SubscriptionStatus::Canceled),
+            ("incomplete_expired", SubscriptionStatus::Canceled),
+            ("paused", SubscriptionStatus::Canceled),
+        ] {
+            let body = event(
+                "customer.subscription.updated",
+                subscription(spelling, None),
+            );
+            assert_eq!(signed(&body).expect("verifies"), change(expected, None));
+        }
+    }
+
+    #[test]
+    fn an_incomplete_subscription_changes_nothing_yet() {
+        let body = event(
+            "customer.subscription.created",
+            subscription("incomplete", None),
+        );
+
+        assert_eq!(
+            signed(&body).expect("verifies"),
+            WebhookEvent::Ignored {
+                event: BillingEventId::new("evt_1"),
             }
         );
     }
 
     #[test]
+    fn a_deleted_subscription_ends_the_paid_plan() {
+        let body = event(
+            "customer.subscription.deleted",
+            subscription("active", None),
+        );
+
+        assert_eq!(
+            signed(&body).expect("verifies"),
+            change(SubscriptionStatus::Canceled, None)
+        );
+    }
+
+    #[test]
+    fn an_unrecognised_type_is_ignored() {
+        let body = event("invoice.paid", json!({}));
+
+        assert_eq!(
+            signed(&body).expect("verifies"),
+            WebhookEvent::Ignored {
+                event: BillingEventId::new("evt_1"),
+            }
+        );
+    }
+
+    #[test]
+    fn a_subscription_event_without_a_customer_is_malformed() {
+        let mut object = subscription("active", None);
+        object
+            .as_object_mut()
+            .expect("an object")
+            .remove("customer");
+        let body = event("customer.subscription.updated", object);
+
+        assert!(matches!(signed(&body), Err(WebhookError::Malformed)));
+    }
+
+    #[test]
     fn a_tampered_body_is_rejected() {
-        let body = checkout_completed(Uuid::from_u128(1));
-        let timestamp = now();
-        let signature = header(SECRET, timestamp, &body);
+        let body = event(
+            "customer.subscription.created",
+            subscription("active", None),
+        );
+        let signature = header(SECRET, now(), &body);
         let mut tampered = body.clone();
         tampered.push(b' ');
 
@@ -203,9 +355,11 @@ mod tests {
 
     #[test]
     fn a_stale_timestamp_is_rejected() {
-        let body = checkout_completed(Uuid::from_u128(1));
-        let timestamp = now() - 301;
-        let signature = header(SECRET, timestamp, &body);
+        let body = event(
+            "customer.subscription.created",
+            subscription("active", None),
+        );
+        let signature = header(SECRET, now() - 301, &body);
 
         assert!(matches!(
             verify(SECRET, &signature, &body),
@@ -215,7 +369,10 @@ mod tests {
 
     #[test]
     fn a_malformed_header_is_rejected() {
-        let body = checkout_completed(Uuid::from_u128(1));
+        let body = event(
+            "customer.subscription.created",
+            subscription("active", None),
+        );
 
         assert!(matches!(
             verify(SECRET, "not-a-signature", &body),
@@ -233,56 +390,14 @@ mod tests {
 
     #[test]
     fn any_matching_v1_in_a_rotated_header_is_accepted() {
-        let body = checkout_completed(Uuid::from_u128(1));
+        let body = event(
+            "customer.subscription.created",
+            subscription("active", None),
+        );
         let timestamp = now();
         let correct = sign(SECRET, timestamp, &body);
         let signature = format!("t={timestamp},v1=deadbeef,v1={correct}");
 
         assert!(verify(SECRET, &signature, &body).is_ok());
-    }
-
-    #[test]
-    fn a_subscription_deletion_reports_retries_exhausted() {
-        let body = serde_json::json!({
-            "id": "evt_2",
-            "type": "customer.subscription.deleted",
-            "data": {"object": {"customer": "cus_2"}}
-        })
-        .to_string()
-        .into_bytes();
-        let timestamp = now();
-        let signature = header(SECRET, timestamp, &body);
-
-        let event = verify(SECRET, &signature, &body).expect("verifies");
-
-        assert_eq!(
-            event,
-            WebhookEvent::RetriesExhausted {
-                event: StripeEventId::new("evt_2"),
-                customer: StripeCustomerId::new("cus_2"),
-            }
-        );
-    }
-
-    #[test]
-    fn an_unrecognised_type_is_ignored() {
-        let body = serde_json::json!({
-            "id": "evt_3",
-            "type": "invoice.paid",
-            "data": {"object": {}}
-        })
-        .to_string()
-        .into_bytes();
-        let timestamp = now();
-        let signature = header(SECRET, timestamp, &body);
-
-        let event = verify(SECRET, &signature, &body).expect("verifies");
-
-        assert_eq!(
-            event,
-            WebhookEvent::Ignored {
-                event: StripeEventId::new("evt_3"),
-            }
-        );
     }
 }

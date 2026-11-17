@@ -3,11 +3,27 @@ import { get, json, post } from '@/auth/client'
 import { useOrganisations } from '@/auth/session'
 import { nothingYet } from './orgs'
 
-export type Plan = 'free' | 'pro'
+export type Plan = {
+  slug: string
+  name: string
+  ingest_gb: number | null
+  retention_days: number | null
+  overage: boolean
+}
+
+export type Offer = { slug: string; name: string }
 
 export type Status = 'active' | 'past_due' | 'canceled' | null
 
-export type Billing = { plan: Plan; status: Status; period_end_ms: number | null }
+export type Billing = {
+  plan: Plan
+  payments: boolean
+  upgrade: Offer | null
+  portal: boolean
+  owner: boolean
+  status: Status
+  period_end_ms: number | null
+}
 
 export type Checkout = { url: string }
 
@@ -17,7 +33,7 @@ const checkoutPath = (org: string) => `/api/orgs/${org}/billing/checkout`
 
 const portalPath = (org: string) => `/api/orgs/${org}/billing/portal`
 
-export const checkoutBody = (url: string): { success_url: string; cancel_url: string } => ({ success_url: url, cancel_url: url })
+export const checkoutBody = (plan: string, url: string): { plan: string; success_url: string; cancel_url: string } => ({ plan, success_url: url, cancel_url: url })
 
 export const portalBody = (url: string): { return_url: string } => ({ return_url: url })
 
@@ -40,7 +56,7 @@ export function useBilling() {
 export function useStartCheckout() {
   const { active } = useOrganisations()
   return useMutation({
-    mutationFn: async () => json<Checkout>(await post(checkoutPath(active?.org ?? ''), checkoutBody(currentUrl()))),
+    mutationFn: async (plan: string) => json<Checkout>(await post(checkoutPath(active?.org ?? ''), checkoutBody(plan, currentUrl()))),
   })
 }
 
@@ -51,14 +67,17 @@ export function useOpenPortal() {
   })
 }
 
-export const PLAN_COPY: Record<Plan, string> = {
-  free: '30 GB ingest per month, 7-day retention.',
-  pro: '100 GB ingest per month, 30-day retention, pay-as-you-go beyond that.',
+export function planCopy(plan: Plan): string {
+  const ingest = plan.ingest_gb === null ? 'No ingest limit' : `${plan.ingest_gb} GB ingest per month`
+  const retention = plan.retention_days === null ? '' : `, ${plan.retention_days}-day retention`
+  const beyond = plan.overage && plan.ingest_gb !== null ? ', pay-as-you-go beyond that' : ''
+  return `${ingest}${retention}${beyond}.`
 }
 
 export const periodEndLabel = (ms: number): string => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
 export function planSub(billing: Billing): string {
-  if (billing.plan === 'pro' && billing.period_end_ms !== null) return `Pro plan · renews ${periodEndLabel(billing.period_end_ms)}`
-  return billing.plan === 'pro' ? 'Pro plan' : 'Free plan'
+  const name = `${billing.plan.name} plan`
+  if (billing.payments && billing.plan.overage && billing.period_end_ms !== null) return `${name} · renews ${periodEndLabel(billing.period_end_ms)}`
+  return name
 }

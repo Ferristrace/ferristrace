@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU32};
 
 use ferristrace_clickhouse::SpanStoreSettings;
 use ferristrace_domain::DecompressedBytes;
@@ -48,6 +48,8 @@ pub struct Config {
     pub billing: Option<BillingConfig>,
     #[serde(default)]
     pub stripe: Option<StripeConfig>,
+    #[serde(default)]
+    pub plans: Vec<PlanConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -55,7 +57,20 @@ pub struct StripeConfig {
     pub secret_key: String,
     pub webhook_secret: String,
     pub meter_event_name: String,
-    pub pro_price_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanConfig {
+    pub slug: String,
+    pub name: String,
+    #[serde(default)]
+    pub ingest_gb: Option<NonZeroU32>,
+    #[serde(default)]
+    pub retention_days: Option<NonZeroU32>,
+    #[serde(default)]
+    pub overage: bool,
+    #[serde(default)]
+    pub price: Option<String>,
 }
 
 fn a_month() -> u64 {
@@ -311,6 +326,7 @@ impl Default for Config {
             alerts: AlertsConfig::default(),
             billing: None,
             stripe: None,
+            plans: Vec::new(),
         }
     }
 }
@@ -885,6 +901,62 @@ mod tests {
 
                 assert!(figment().extract::<Config>().is_err(), "{refused}");
             }
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn plans_are_declared_in_the_file() {
+        figment::Jail::expect_with(|jail| {
+            jail.create_file(
+                FILE,
+                r#"
+                [[plans]]
+                slug = "free"
+                name = "Free"
+                ingest_gb = 30
+                retention_days = 7
+
+                [[plans]]
+                slug = "pro"
+                name = "Pro"
+                ingest_gb = 100
+                retention_days = 30
+                overage = true
+                price = "price_test"
+                "#,
+            )?;
+
+            let config: Config = figment().extract()?;
+
+            assert_eq!(config.plans.len(), 2);
+            assert!(!config.plans[0].overage);
+            assert_eq!(config.plans[0].price, None);
+            assert!(config.plans[1].overage);
+            assert_eq!(config.plans[1].price.as_deref(), Some("price_test"));
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn plans_and_stripe_secrets_come_from_the_environment() {
+        figment::Jail::expect_with(|jail| {
+            jail.set_env(
+                "FERRISTRACE_PLANS",
+                r#"[{slug="free",name="Free",ingest_gb=30,retention_days=7},{slug="pro",name="Pro",ingest_gb=100,overage=true,price="price_test"}]"#,
+            );
+            jail.set_env("FERRISTRACE_STRIPE__SECRET_KEY", "sk_test");
+            jail.set_env("FERRISTRACE_STRIPE__WEBHOOK_SECRET", "whsec_test");
+            jail.set_env("FERRISTRACE_STRIPE__METER_EVENT_NAME", "ingested_bytes");
+
+            let config: Config = figment().extract()?;
+
+            assert_eq!(config.plans.len(), 2);
+            assert_eq!(config.plans[1].price.as_deref(), Some("price_test"));
+            assert_eq!(
+                config.stripe.map(|stripe| stripe.secret_key).as_deref(),
+                Some("sk_test")
+            );
             Ok(())
         });
     }

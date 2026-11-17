@@ -1,8 +1,8 @@
 use core::fmt;
 
 use ferristrace_domain::{
-    BillingGateway, BillingHour, CheckoutUrl, DecompressedBytes, GatewayError, PortalUrl,
-    StripeCustomerId, TenantId, WebhookError, WebhookEvent,
+    BillingGateway, BillingHour, CheckoutUrl, CustomerRef, DecompressedBytes, GatewayError,
+    PortalUrl, PriceRef, TenantId, WebhookError, WebhookEvent,
 };
 use serde::Deserialize;
 
@@ -16,7 +16,6 @@ pub struct StripeGatewaySettings {
     pub secret_key: String,
     pub webhook_secret: String,
     pub meter_event_name: String,
-    pub pro_price_id: String,
 }
 
 impl fmt::Debug for StripeGatewaySettings {
@@ -26,7 +25,6 @@ impl fmt::Debug for StripeGatewaySettings {
             .field("secret_key", &"redacted")
             .field("webhook_secret", &"redacted")
             .field("meter_event_name", &self.meter_event_name)
-            .field("pro_price_id", &self.pro_price_id)
             .finish()
     }
 }
@@ -37,7 +35,6 @@ pub struct StripeGateway {
     secret_key: StripeSecretKey,
     webhook_secret: WebhookSigningSecret,
     meter_event_name: Box<str>,
-    pro_price_id: Box<str>,
 }
 
 impl fmt::Debug for StripeGateway {
@@ -47,9 +44,13 @@ impl fmt::Debug for StripeGateway {
 }
 
 #[derive(Deserialize)]
+struct CustomerResponse {
+    id: String,
+}
+
+#[derive(Deserialize)]
 struct CheckoutSessionResponse {
     url: String,
-    customer: String,
 }
 
 #[derive(Deserialize)]
@@ -69,7 +70,6 @@ impl StripeGateway {
             secret_key: StripeSecretKey::new(settings.secret_key),
             webhook_secret: WebhookSigningSecret::new(settings.webhook_secret),
             meter_event_name: settings.meter_event_name.into(),
-            pro_price_id: settings.pro_price_id.into(),
         }
     }
 
@@ -114,36 +114,46 @@ impl StripeGateway {
     }
 }
 
+impl StripeGateway {
+    async fn create_customer(&self, org: &str) -> Result<CustomerRef, GatewayError> {
+        let form = [("metadata[org]", org)];
+        let response: CustomerResponse = self.post_json("/v1/customers", &form).await?;
+        Ok(CustomerRef::new(response.id))
+    }
+}
+
 impl BillingGateway for StripeGateway {
     async fn checkout_url(
         &self,
         org: TenantId,
-        customer: Option<&StripeCustomerId>,
+        customer: Option<&CustomerRef>,
+        price: &PriceRef,
         success_url: &str,
         cancel_url: &str,
-    ) -> Result<(CheckoutUrl, StripeCustomerId), GatewayError> {
+    ) -> Result<(CheckoutUrl, CustomerRef), GatewayError> {
         let org = org.as_uuid().to_string();
-        let mut form: Vec<(&str, &str)> = vec![
+        let customer = match customer {
+            Some(customer) => customer.clone(),
+            None => self.create_customer(&org).await?,
+        };
+        let form = [
             ("mode", "subscription"),
-            ("line_items[0][price]", &self.pro_price_id),
-            ("client_reference_id", &org),
+            ("customer", customer.as_str()),
+            ("line_items[0][price]", price.as_str()),
+            ("line_items[0][quantity]", "1"),
+            ("client_reference_id", org.as_str()),
+            ("subscription_data[metadata][org]", org.as_str()),
             ("success_url", success_url),
             ("cancel_url", cancel_url),
         ];
-        if let Some(customer) = customer {
-            form.push(("customer", customer.as_str()));
-        }
         let response: CheckoutSessionResponse =
             self.post_json("/v1/checkout/sessions", &form).await?;
-        Ok((
-            CheckoutUrl::new(response.url),
-            StripeCustomerId::new(response.customer),
-        ))
+        Ok((CheckoutUrl::new(response.url), customer))
     }
 
     async fn portal_url(
         &self,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
         return_url: &str,
     ) -> Result<PortalUrl, GatewayError> {
         let form = [("customer", customer.as_str()), ("return_url", return_url)];
@@ -154,7 +164,7 @@ impl BillingGateway for StripeGateway {
 
     async fn report_usage(
         &self,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
         hour: BillingHour,
         over_by: DecompressedBytes,
     ) -> Result<(), GatewayError> {
@@ -180,11 +190,11 @@ impl BillingGateway for StripeGateway {
 #[cfg(test)]
 mod tests {
     use ferristrace_domain::{
-        BillingGateway, BillingHour, DecompressedBytes, GatewayError, StripeCustomerId, TenantId,
-        UnixSeconds,
+        BillingGateway, BillingHour, CustomerRef, DecompressedBytes, GatewayError, PriceRef,
+        TenantId, UnixSeconds,
     };
     use uuid::Uuid;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_string_contains, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::{StripeGateway, StripeGatewaySettings};
@@ -194,19 +204,35 @@ mod tests {
             secret_key: "sk_test".into(),
             webhook_secret: "whsec_test".into(),
             meter_event_name: "decompressed_bytes".into(),
-            pro_price_id: "price_pro".into(),
         }
     }
 
     #[tokio::test]
-    async fn checkout_url_parses_the_session_url_and_customer() {
+    async fn a_first_checkout_creates_the_customer_and_buys_the_given_price() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
+            .and(path("/v1/customers"))
+            .and(body_string_contains("metadata%5Borg%5D="))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "cus_new"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
             .and(path("/v1/checkout/sessions"))
+            .and(body_string_contains("customer=cus_new"))
+            .and(body_string_contains(
+                "line_items%5B0%5D%5Bprice%5D=price_pro",
+            ))
+            .and(body_string_contains(
+                "subscription_data%5Bmetadata%5D%5Borg%5D=",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "url": "https://checkout.stripe.com/pay/cs_test",
-                "customer": "cus_new",
+                "customer": null,
             })))
+            .expect(1)
             .mount(&server)
             .await;
         let gateway = StripeGateway::at(settings(), &server.uri());
@@ -215,6 +241,7 @@ mod tests {
             .checkout_url(
                 TenantId::new(Uuid::from_u128(1)),
                 None,
+                &PriceRef::new("price_pro"),
                 "https://app.test/success",
                 "https://app.test/cancel",
             )
@@ -222,7 +249,41 @@ mod tests {
             .expect("checkout session created");
 
         assert_eq!(url.as_str(), "https://checkout.stripe.com/pay/cs_test");
-        assert_eq!(customer, StripeCustomerId::new("cus_new"));
+        assert_eq!(customer, CustomerRef::new("cus_new"));
+    }
+
+    #[tokio::test]
+    async fn a_known_customer_is_reused_without_creating_another() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/customers"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/checkout/sessions"))
+            .and(body_string_contains("customer=cus_known"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": "https://checkout.stripe.com/pay/cs_again",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let gateway = StripeGateway::at(settings(), &server.uri());
+
+        let (_, customer) = gateway
+            .checkout_url(
+                TenantId::new(Uuid::from_u128(1)),
+                Some(&CustomerRef::new("cus_known")),
+                &PriceRef::new("price_pro"),
+                "https://app.test/success",
+                "https://app.test/cancel",
+            )
+            .await
+            .expect("checkout session created");
+
+        assert_eq!(customer, CustomerRef::new("cus_known"));
     }
 
     #[tokio::test]
@@ -238,7 +299,7 @@ mod tests {
         let gateway = StripeGateway::at(settings(), &server.uri());
 
         let url = gateway
-            .portal_url(&StripeCustomerId::new("cus_1"), "https://app.test/account")
+            .portal_url(&CustomerRef::new("cus_1"), "https://app.test/account")
             .await
             .expect("portal session created");
 
@@ -259,7 +320,7 @@ mod tests {
 
         gateway
             .report_usage(
-                &StripeCustomerId::new("cus_1"),
+                &CustomerRef::new("cus_1"),
                 BillingHour::containing(UnixSeconds::new(1_700_000_000)),
                 DecompressedBytes::new(1024),
             )
@@ -272,7 +333,7 @@ mod tests {
         let gateway = StripeGateway::at(settings(), "http://127.0.0.1:1");
 
         let result = gateway
-            .portal_url(&StripeCustomerId::new("cus_1"), "https://app.test/account")
+            .portal_url(&CustomerRef::new("cus_1"), "https://app.test/account")
             .await;
 
         assert!(matches!(result, Err(GatewayError::Unreachable)));

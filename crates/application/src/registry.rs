@@ -2,11 +2,11 @@ use core::future::Future;
 
 use ferristrace_domain::{
     AccountDirectory, Accounts, Agents as AgentBook, AlertChannels, AlertDuty, AlertEvents,
-    AlertOutbox, AlertRules, AlertStates, ApiKeys, AuditTrail, ControlPlane, DashboardStore,
-    DeployMarks, ExplorerViews, ExportSource, InboxStore, IncidentAttachments, IncidentOutbox,
-    IncidentTimeline, Incidents, IssueDecisions, Memberships, ModelPrices as ModelPriceBook,
-    NotificationSettings, Orgs, Pages, Postmortems, Projects, Roll, Schedules, SessionStore,
-    SessionSwitch, Squads, StatusOutbox, StatusPages, StatusSubscribers, StripeSubscriptions,
+    AlertOutbox, AlertRules, AlertStates, ApiKeys, AuditTrail, BillingAccounts, ControlPlane,
+    DashboardStore, DeployMarks, ExplorerViews, ExportSource, InboxStore, IncidentAttachments,
+    IncidentOutbox, IncidentTimeline, Incidents, IssueDecisions, Memberships,
+    ModelPrices as ModelPriceBook, NotificationSettings, Orgs, Pages, Postmortems, Projects, Roll,
+    Schedules, SessionStore, SessionSwitch, Squads, StatusOutbox, StatusPages, StatusSubscribers,
     UsageHistory,
 };
 
@@ -104,7 +104,7 @@ pub mod domain {
     #[derive(Debug)]
     pub struct StatusSubscribers;
     #[derive(Debug)]
-    pub struct StripeSubscriptions;
+    pub struct BillingAccounts;
     #[derive(Debug)]
     pub struct Teams;
     #[derive(Debug)]
@@ -189,13 +189,13 @@ pub trait OrgRepos: StandingRepos + RecordingRepos + RepoFor<domain::Orgs, Repo:
 
 impl<R> OrgRepos for R where R: StandingRepos + RecordingRepos + RepoFor<domain::Orgs, Repo: Orgs> {}
 
-pub trait SubscriptionsRepos:
-    StandingRepos + RepoFor<domain::StripeSubscriptions, Repo: StripeSubscriptions>
+pub trait BillingRepos:
+    StandingRepos + RepoFor<domain::BillingAccounts, Repo: BillingAccounts>
 {
 }
 
-impl<R> SubscriptionsRepos for R where
-    R: StandingRepos + RepoFor<domain::StripeSubscriptions, Repo: StripeSubscriptions>
+impl<R> BillingRepos for R where
+    R: StandingRepos + RepoFor<domain::BillingAccounts, Repo: BillingAccounts>
 {
 }
 

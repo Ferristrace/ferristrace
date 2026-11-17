@@ -1,39 +1,39 @@
 use core::future::Future;
 
-use super::entities::Subscription;
+use super::entities::{CurrentPlan, PlanOffer, Subscription};
 use super::errors::{GatewayError, SubscriptionsError, WebhookError};
 use super::value_objects::{
-    CheckoutUrl, PortalUrl, StripeCustomerId, StripeEventId, StripePriceId, StripeSubscriptionId,
+    BillingEventId, CheckoutUrl, CustomerRef, PortalUrl, PriceRef, SubscriptionRef,
     SubscriptionStatus,
 };
 use crate::telemetry::{BillingHour, DecompressedBytes, TenantId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubscriptionChange {
+    pub at: i64,
+    pub org: Option<TenantId>,
+    pub customer: CustomerRef,
+    pub subscription: SubscriptionRef,
+    pub price: Option<PriceRef>,
+    pub status: SubscriptionStatus,
+    pub period_end: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WebhookEvent {
-    Activated {
-        event: StripeEventId,
-        org: TenantId,
-        customer: StripeCustomerId,
-        subscription: StripeSubscriptionId,
-        price: StripePriceId,
-        status: SubscriptionStatus,
-        period_end: i64,
-    },
-    RetriesExhausted {
-        event: StripeEventId,
-        customer: StripeCustomerId,
+    Changed {
+        event: BillingEventId,
+        change: SubscriptionChange,
     },
     Ignored {
-        event: StripeEventId,
+        event: BillingEventId,
     },
 }
 
 impl WebhookEvent {
-    pub fn id(&self) -> &StripeEventId {
+    pub fn id(&self) -> &BillingEventId {
         match self {
-            Self::Activated { event, .. }
-            | Self::RetriesExhausted { event, .. }
-            | Self::Ignored { event } => event,
+            Self::Changed { event, .. } | Self::Ignored { event } => event,
         }
     }
 }
@@ -42,20 +42,21 @@ pub trait BillingGateway {
     fn checkout_url(
         &self,
         org: TenantId,
-        customer: Option<&StripeCustomerId>,
+        customer: Option<&CustomerRef>,
+        price: &PriceRef,
         success_url: &str,
         cancel_url: &str,
-    ) -> impl Future<Output = Result<(CheckoutUrl, StripeCustomerId), GatewayError>> + Send;
+    ) -> impl Future<Output = Result<(CheckoutUrl, CustomerRef), GatewayError>> + Send;
 
     fn portal_url(
         &self,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
         return_url: &str,
     ) -> impl Future<Output = Result<PortalUrl, GatewayError>> + Send;
 
     fn report_usage(
         &self,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
         hour: BillingHour,
         over_by: DecompressedBytes,
     ) -> impl Future<Output = Result<(), GatewayError>> + Send;
@@ -67,16 +68,17 @@ impl<T: BillingGateway + Sync> BillingGateway for &T {
     fn checkout_url(
         &self,
         org: TenantId,
-        customer: Option<&StripeCustomerId>,
+        customer: Option<&CustomerRef>,
+        price: &PriceRef,
         success_url: &str,
         cancel_url: &str,
-    ) -> impl Future<Output = Result<(CheckoutUrl, StripeCustomerId), GatewayError>> + Send {
-        (*self).checkout_url(org, customer, success_url, cancel_url)
+    ) -> impl Future<Output = Result<(CheckoutUrl, CustomerRef), GatewayError>> + Send {
+        (*self).checkout_url(org, customer, price, success_url, cancel_url)
     }
 
     fn portal_url(
         &self,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
         return_url: &str,
     ) -> impl Future<Output = Result<PortalUrl, GatewayError>> + Send {
         (*self).portal_url(customer, return_url)
@@ -84,7 +86,7 @@ impl<T: BillingGateway + Sync> BillingGateway for &T {
 
     fn report_usage(
         &self,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
         hour: BillingHour,
         over_by: DecompressedBytes,
     ) -> impl Future<Output = Result<(), GatewayError>> + Send {
@@ -100,17 +102,18 @@ impl<T: BillingGateway + Send + Sync> BillingGateway for std::sync::Arc<T> {
     fn checkout_url(
         &self,
         org: TenantId,
-        customer: Option<&StripeCustomerId>,
+        customer: Option<&CustomerRef>,
+        price: &PriceRef,
         success_url: &str,
         cancel_url: &str,
-    ) -> impl Future<Output = Result<(CheckoutUrl, StripeCustomerId), GatewayError>> + Send {
+    ) -> impl Future<Output = Result<(CheckoutUrl, CustomerRef), GatewayError>> + Send {
         self.as_ref()
-            .checkout_url(org, customer, success_url, cancel_url)
+            .checkout_url(org, customer, price, success_url, cancel_url)
     }
 
     fn portal_url(
         &self,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
         return_url: &str,
     ) -> impl Future<Output = Result<PortalUrl, GatewayError>> + Send {
         self.as_ref().portal_url(customer, return_url)
@@ -118,7 +121,7 @@ impl<T: BillingGateway + Send + Sync> BillingGateway for std::sync::Arc<T> {
 
     fn report_usage(
         &self,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
         hour: BillingHour,
         over_by: DecompressedBytes,
     ) -> impl Future<Output = Result<(), GatewayError>> + Send {
@@ -136,16 +139,23 @@ pub enum Applied {
     AlreadyApplied,
 }
 
-pub trait StripeSubscriptions {
+pub trait BillingAccounts {
     fn of(
         &self,
         org: TenantId,
     ) -> impl Future<Output = Result<Option<Subscription>, SubscriptionsError>> + Send;
 
+    fn plan_of(
+        &self,
+        org: TenantId,
+    ) -> impl Future<Output = Result<Option<CurrentPlan>, SubscriptionsError>> + Send;
+
+    fn offers(&self) -> impl Future<Output = Result<Vec<PlanOffer>, SubscriptionsError>> + Send;
+
     fn link_customer(
         &self,
         org: TenantId,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
     ) -> impl Future<Output = Result<(), SubscriptionsError>> + Send;
 
     fn apply(
@@ -154,7 +164,7 @@ pub trait StripeSubscriptions {
     ) -> impl Future<Output = Result<Applied, SubscriptionsError>> + Send;
 }
 
-impl<T: StripeSubscriptions + Sync> StripeSubscriptions for &T {
+impl<T: BillingAccounts + Sync> BillingAccounts for &T {
     fn of(
         &self,
         org: TenantId,
@@ -162,10 +172,21 @@ impl<T: StripeSubscriptions + Sync> StripeSubscriptions for &T {
         (*self).of(org)
     }
 
+    fn plan_of(
+        &self,
+        org: TenantId,
+    ) -> impl Future<Output = Result<Option<CurrentPlan>, SubscriptionsError>> + Send {
+        (*self).plan_of(org)
+    }
+
+    fn offers(&self) -> impl Future<Output = Result<Vec<PlanOffer>, SubscriptionsError>> + Send {
+        (*self).offers()
+    }
+
     fn link_customer(
         &self,
         org: TenantId,
-        customer: &StripeCustomerId,
+        customer: &CustomerRef,
     ) -> impl Future<Output = Result<(), SubscriptionsError>> + Send {
         (*self).link_customer(org, customer)
     }

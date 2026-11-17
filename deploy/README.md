@@ -311,6 +311,8 @@ stores inside its own network rather than something to choose.
 | `FERRISTRACE_AGENTS__ISSUER` | the OIDC issuer | Issuer of the access tokens AI agents present; without it (and without OIDC) or without the audience every agent token is refused with 401 |
 | `FERRISTRACE_AGENTS__AUDIENCE` | `ferristrace-agents` in this compose file | Required for agents to be on: an agent token must carry this audience. An issuer without it leaves agents off (a warning is logged at startup, sign-in is unaffected) |
 | `FERRISTRACE_BILLING__*` | unset | Prices and monthly allowances for the Cost page (see `.env.example`); without them it shows volumes only. A currency that is not three letters stops the server |
+| `FERRISTRACE_PLANS` | unset | Plans written to the control plane on start, see [Plans and payments](#plans-and-payments) |
+| `FERRISTRACE_STRIPE__*` | unset | Stripe keys and meter name; without them nothing is sold, see [Plans and payments](#plans-and-payments) |
 | `FERRISTRACE_WEB_ROOT` | set in the image | Where the built web application lives |
 | `FERRISTRACE_IMAGE` | built locally | A published image to run instead |
 | `FERRISKEY_DB_PASSWORD` | `ferriskey` | FerrisKey's own database password |
@@ -976,6 +978,67 @@ service:
 
 When nothing reports, the route answers empty lists and the page shows
 this configuration. Docker hosts have no view yet.
+
+## Plans and payments
+
+Nothing here is needed to self-host. Out of the box every organisation is
+on the `self-hosted` plan: no ingest limit, retention set by
+`spans.retention_days`, and the Billing settings page shows that plan with
+no payment action.
+
+A plan is a row in the control plane's `plans` table: an ingest volume per
+month, a retention cap, and whether volume past it is refused or counted as
+overage. Declare your own in `ferristrace.toml` and the server writes them
+on every start, updating a plan of the same slug in place and never
+deleting one:
+
+```toml
+[[plans]]
+slug = "free"
+name = "Free"
+ingest_gb = 30
+retention_days = 7
+
+[[plans]]
+slug = "pro"
+name = "Pro"
+ingest_gb = 100
+retention_days = 30
+overage = true
+price = "price_..."
+```
+
+`self-hosted` cannot be declared there; the migrations own it. Moving an
+organisation between unpriced plans is an `UPDATE orgs SET plan_id = ...`,
+picked up within twenty seconds without a restart.
+
+Payments are optional and come from one adapter today, Stripe. With a
+`[stripe]` section the server sells every plan that has a `price` (Stripe's
+price id, never an amount: Stripe computes the money and the tax):
+
+```toml
+[stripe]
+secret_key = "sk_live_..."
+webhook_secret = "whsec_..."
+meter_event_name = "ingested_bytes"
+```
+
+Keep the two secrets out of the file: `FERRISTRACE_STRIPE__SECRET_KEY` and
+`FERRISTRACE_STRIPE__WEBHOOK_SECRET`, from a Kubernetes secret through the
+chart's `extraEnv`. The server refuses to start with `[stripe]` and no
+`database_url`, no plan named `free`, or no plan with a `price`.
+
+In Stripe, point a webhook endpoint at `https://<your host>/api/billing/webhook`
+and subscribe it to `customer.subscription.created`,
+`customer.subscription.updated` and `customer.subscription.deleted`. A
+subscription that is active or trialing moves the organisation to the plan
+carrying its price; past due keeps that plan while Stripe retries; unpaid,
+canceled, paused or expired moves it to `free`. Retention is stamped on each
+row at ingest, so moving to `free` shortens it for new data only and deletes
+nothing at once.
+
+Only an owner opens checkout or the Stripe customer portal; any member sees
+the plan.
 
 ## Multi-tenancy
 

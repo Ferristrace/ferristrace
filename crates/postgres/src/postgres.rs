@@ -9,6 +9,65 @@ pub static CONTROL_PLANE: Migrator = sqlx::migrate!("migrations/postgres");
 
 pub const SELF_HOSTED_PLAN: &str = "self-hosted";
 pub const OVERAGE_FEATURE: &str = "overage";
+pub const FALLBACK_PLAN: &str = "free";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanSpec {
+    pub slug: String,
+    pub name: String,
+    pub ingest_gb: Option<i32>,
+    pub retention_days: Option<i32>,
+    pub overage: bool,
+    pub price_ref: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BillingPlans {
+    pub fallback: bool,
+    pub priced: i64,
+}
+
+pub async fn sync_plans(pool: &PgPool, plans: &[PlanSpec]) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for plan in plans {
+        let features: Vec<&str> = if plan.overage {
+            vec![OVERAGE_FEATURE]
+        } else {
+            Vec::new()
+        };
+        sqlx::query(
+            "INSERT INTO plans (id, slug, name, ingest_gb, retention_days, features, price_ref) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+             ON CONFLICT (slug) DO UPDATE SET name = excluded.name, \
+               ingest_gb = excluded.ingest_gb, retention_days = excluded.retention_days, \
+               features = excluded.features, price_ref = excluded.price_ref",
+        )
+        .bind(uuid::Uuid::new_v4())
+        .bind(&plan.slug)
+        .bind(&plan.name)
+        .bind(plan.ingest_gb)
+        .bind(plan.retention_days)
+        .bind(&features)
+        .bind(plan.price_ref.as_deref())
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await
+}
+
+pub async fn billing_plans(pool: &PgPool) -> Result<BillingPlans, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT EXISTS (SELECT 1 FROM plans WHERE slug = $1) AS fallback, \
+         (SELECT count(*) FROM plans WHERE price_ref IS NOT NULL) AS priced",
+    )
+    .bind(FALLBACK_PLAN)
+    .fetch_one(pool)
+    .await?;
+    Ok(BillingPlans {
+        fallback: row.get("fallback"),
+        priced: row.get("priced"),
+    })
+}
 
 const BYTES_PER_GIGABYTE: u64 = 1024 * 1024 * 1024;
 

@@ -1,80 +1,33 @@
 use core::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StripeCustomerId(Box<str>);
+macro_rules! opaque_ref {
+    ($name:ident) => {
+        #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub struct $name(Box<str>);
 
-impl StripeCustomerId {
-    pub fn new(id: impl Into<Box<str>>) -> Self {
-        Self(id.into())
-    }
+        impl $name {
+            pub fn new(id: impl Into<Box<str>>) -> Self {
+                Self(id.into())
+            }
 
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
+            pub fn as_str(&self) -> &str {
+                &self.0
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(&self.0)
+            }
+        }
+    };
 }
 
-impl fmt::Display for StripeCustomerId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StripeSubscriptionId(Box<str>);
-
-impl StripeSubscriptionId {
-    pub fn new(id: impl Into<Box<str>>) -> Self {
-        Self(id.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for StripeSubscriptionId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StripePriceId(Box<str>);
-
-impl StripePriceId {
-    pub fn new(id: impl Into<Box<str>>) -> Self {
-        Self(id.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for StripePriceId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StripeEventId(Box<str>);
-
-impl StripeEventId {
-    pub fn new(id: impl Into<Box<str>>) -> Self {
-        Self(id.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl fmt::Display for StripeEventId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
+opaque_ref!(CustomerRef);
+opaque_ref!(SubscriptionRef);
+opaque_ref!(PriceRef);
+opaque_ref!(BillingEventId);
+opaque_ref!(PlanSlug);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SubscriptionStatus {
@@ -99,6 +52,10 @@ impl SubscriptionStatus {
             "canceled" => Some(Self::Canceled),
             _ => None,
         }
+    }
+
+    pub fn keeps_the_paid_plan(self) -> bool {
+        !matches!(self, Self::Canceled)
     }
 }
 

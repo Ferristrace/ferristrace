@@ -5,9 +5,9 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, http::header::HeaderValue};
-use ferristrace_application::registry::{OrgRepos, SubscriptionsRepos};
+use ferristrace_application::registry::BillingRepos;
 use ferristrace_application::{BillingError, BillingRead, Stack, WebhookApplyError};
-use ferristrace_domain::{SubscriptionStatus, TenantId};
+use ferristrace_domain::{CurrentPlan, PlanOffer, SubscriptionStatus, TenantId};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -18,15 +18,59 @@ const STRIPE_SIGNATURE: &str = "stripe-signature";
 
 #[derive(Debug, Serialize)]
 pub struct Billing {
-    plan: &'static str,
+    plan: PlanView,
+    payments: bool,
+    upgrade: Option<OfferView>,
+    portal: bool,
+    owner: bool,
     status: Option<&'static str>,
     period_end_ms: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlanView {
+    slug: String,
+    name: String,
+    ingest_gb: Option<u32>,
+    retention_days: Option<u32>,
+    overage: bool,
+}
+
+impl From<CurrentPlan> for PlanView {
+    fn from(plan: CurrentPlan) -> Self {
+        Self {
+            slug: plan.slug.as_str().to_owned(),
+            name: plan.name.into(),
+            ingest_gb: plan.ingest_gb,
+            retention_days: plan.retention_days,
+            overage: plan.overage,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct OfferView {
+    slug: String,
+    name: String,
+}
+
+impl From<PlanOffer> for OfferView {
+    fn from(offer: PlanOffer) -> Self {
+        Self {
+            slug: offer.slug.as_str().to_owned(),
+            name: offer.name.into(),
+        }
+    }
 }
 
 impl From<BillingRead> for Billing {
     fn from(read: BillingRead) -> Self {
         Self {
-            plan: read.plan,
+            plan: read.plan.into(),
+            payments: read.payments,
+            upgrade: read.upgrade.map(OfferView::from),
+            portal: read.portal,
+            owner: read.owner,
             status: read.status.map(SubscriptionStatus::as_str),
             period_end_ms: read.period_end.map(|seconds| seconds.saturating_mul(1000)),
         }
@@ -35,6 +79,7 @@ impl From<BillingRead> for Billing {
 
 #[derive(Debug, Deserialize)]
 pub struct Checkout {
+    plan: String,
     success_url: String,
     cancel_url: String,
 }
@@ -51,7 +96,7 @@ pub struct Url {
 
 pub fn billing_router<S: Stack>(state: AppState<S>) -> Router
 where
-    S::Repos: SubscriptionsRepos + OrgRepos,
+    S::Repos: BillingRepos,
 {
     Router::new()
         .route("/api/orgs/{org}/billing", get(billing::<S>))
@@ -67,7 +112,7 @@ async fn billing<S: Stack>(
     headers: HeaderMap,
 ) -> Result<Json<Billing>, BillingRefused>
 where
-    S::Repos: SubscriptionsRepos + OrgRepos,
+    S::Repos: BillingRepos,
 {
     let token = carried(&state, &headers).await?;
     let read = state.app.billing_status(&token, TenantId::new(org)).await?;
@@ -81,7 +126,7 @@ async fn checkout<S: Stack>(
     Json(asked): Json<Checkout>,
 ) -> Result<Json<Url>, BillingRefused>
 where
-    S::Repos: SubscriptionsRepos,
+    S::Repos: BillingRepos,
 {
     let token = carried(&state, &headers).await?;
     let url = state
@@ -89,6 +134,7 @@ where
         .start_checkout(
             &token,
             TenantId::new(org),
+            &asked.plan,
             &asked.success_url,
             &asked.cancel_url,
         )
@@ -105,7 +151,7 @@ async fn portal<S: Stack>(
     Json(asked): Json<Portal>,
 ) -> Result<Json<Url>, BillingRefused>
 where
-    S::Repos: SubscriptionsRepos,
+    S::Repos: BillingRepos,
 {
     let token = carried(&state, &headers).await?;
     let url = state
@@ -123,7 +169,7 @@ async fn webhook<S: Stack>(
     body: Bytes,
 ) -> Result<StatusCode, WebhookRefused>
 where
-    S::Repos: SubscriptionsRepos,
+    S::Repos: BillingRepos,
 {
     if !state.app.billing_enabled() {
         return Err(WebhookRefused::NotConfigured);
@@ -148,8 +194,12 @@ pub enum BillingRefused {
     NotConfigured,
     #[error("this organisation has never started checkout")]
     NoSubscription,
+    #[error("no plan with this slug can be bought")]
+    NoSuchOffer,
     #[error("no such organisation")]
     NoSuchOrg,
+    #[error("only an owner manages billing")]
+    NotOwner,
     #[error("the billing gateway could not be reached")]
     Unreachable,
 }
@@ -161,6 +211,8 @@ impl From<BillingError> for BillingRefused {
             BillingError::NotYours | BillingError::NoSuchOrg => Self::NoSuchOrg,
             BillingError::NotConfigured => Self::NotConfigured,
             BillingError::NoSubscription => Self::NoSubscription,
+            BillingError::NoSuchOffer => Self::NoSuchOffer,
+            BillingError::NotOwner => Self::NotOwner,
             BillingError::Gateway(_) | BillingError::StoreUnreachable => Self::Unreachable,
         }
     }
@@ -170,7 +222,10 @@ impl IntoResponse for BillingRefused {
     fn into_response(self) -> Response {
         let status = match self {
             Self::Reaching(refused) => return refused.into_response(),
-            Self::NotConfigured | Self::NoSuchOrg | Self::NoSubscription => StatusCode::NOT_FOUND,
+            Self::NotConfigured | Self::NoSuchOrg | Self::NoSubscription | Self::NoSuchOffer => {
+                StatusCode::NOT_FOUND
+            }
+            Self::NotOwner => StatusCode::FORBIDDEN,
             Self::Unreachable => StatusCode::SERVICE_UNAVAILABLE,
         };
         if status.is_server_error() {
