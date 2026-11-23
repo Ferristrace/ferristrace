@@ -246,6 +246,7 @@ export function Issues() {
                       key={issue.fingerprint}
                       issue={issue}
                       owner={owner(issue.owner)}
+                      photo={members?.find((one) => one.account === issue.owner)?.photo}
                       chosen={sel.includes(issue.fingerprint)}
                       onChoose={() =>
                         setSel((held) =>
@@ -287,12 +288,14 @@ export function Issues() {
 function Row({
   issue,
   owner,
+  photo,
   chosen,
   onChoose,
   onOpen,
 }: {
   issue: Issue
   owner: string | null
+  photo?: string | null
   chosen: boolean
   onChoose: () => void
   onOpen: () => void
@@ -346,7 +349,7 @@ function Row({
       <Td>
         {owner ? (
           <span title={owner}>
-            <Avatar initials={initialsOf(owner)} className="size-6 text-[10px]" />
+            <Avatar initials={initialsOf(owner)} src={photo} className="size-6 text-[10px]" />
           </span>
         ) : (
           <span className="text-caption text-faint-foreground">—</span>

@@ -37,12 +37,14 @@ function usePalette() {
         const member = members?.find((one) => one.account === account)
         return member ? (member.name ?? member.email) : 'a former member'
       },
+      photo: (account: string) => members?.find((one) => one.account === account)?.photo ?? null,
     }
   }, [members])
 }
 
 function NowCard({ schedule }: { schedule: Named }) {
   const { now, failed } = useOnCallNow(schedule.id)
+  const palette = usePalette()
   const who: Person | null = now?.account ?? null
   return (
     <div className="flex min-w-0 flex-col gap-2.5 rounded-md border bg-card px-4 py-3.5">
@@ -53,7 +55,7 @@ function NowCard({ schedule }: { schedule: Named }) {
         {who ? <span className="ml-auto flex shrink-0 items-center gap-1.5 font-medium text-success-text"><span className="size-1.5 rounded-full bg-status-ok" aria-hidden />On call</span> : null}
       </span>
       <span className="flex items-center gap-2.5">
-        <Avatar initials={who ? initialsOf(personOf(who)) : '—'} className="size-8" />
+        <Avatar initials={who ? initialsOf(personOf(who)) : '—'} src={who ? palette.photo(who.id) : null} className="size-8" />
         <span className="flex min-w-0 flex-col">
           <span className="truncate text-[15px] font-semibold">{failed ? 'Could not read' : now === undefined ? '…' : personOf(who)}</span>
           <span className="text-caption text-faint-foreground">{now?.until_ms ? `until ${when.format(now.until_ms)}` : who ? 'no handoff planned' : 'nobody holds the pager'}</span>
@@ -92,7 +94,7 @@ function Lane({ schedule, fromMs, toMs, nowMs, first }: { schedule: Named; fromM
                 borderColor: stint.cover ? colour : undefined,
               }}
             >
-              {stint.width > 0.025 ? <Avatar initials={initialsOf(personOf(stint.account))} className="size-[18px] text-[9px]" /> : null}
+              {stint.width > 0.025 ? <Avatar initials={initialsOf(personOf(stint.account))} src={palette.photo(stint.account.id)} className="size-[18px] text-[9px]" /> : null}
               {wide ? <span className="truncate">{personOf(stint.account)}</span> : null}
             </span>
           )
