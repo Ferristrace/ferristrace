@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from 'react'
+import { useState, type ComponentProps, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { useAuthorisedUrl } from '@/auth/blob'
 import { cn } from '@/lib/utils'
@@ -51,10 +51,12 @@ export const Tr = ({ className, ...p }: ComponentProps<'tr'>) => <tr className={
 
 export const Avatar = ({ initials, src, className }: { initials: string; src?: string | null; className?: string }) => {
   const shown = useAuthorisedUrl(src)
+  const [loaded, setLoaded] = useState<string | null>(null)
+  const pictured = shown != null && loaded === shown
   return (
-  <span aria-hidden className={cn('relative inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-subtle text-[12px] font-bold text-accent-text', className)}>
-    {initials}
-    {shown ? <img src={shown} alt="" className="absolute inset-0 size-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} /> : null}
+  <span aria-hidden className={cn('relative inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-[12px] font-bold text-accent-text', !pictured && 'bg-accent-subtle', className)}>
+    {pictured ? null : initials}
+    {shown ? <img src={shown} alt="" className={cn('absolute inset-0 size-full object-cover', !pictured && 'invisible')} onLoad={() => setLoaded(shown)} /> : null}
   </span>
   )
 }
