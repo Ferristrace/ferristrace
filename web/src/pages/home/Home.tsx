@@ -10,8 +10,9 @@ import { isPlaced, placementSearch, usePlacement } from '@/data/placement'
 import { useProjects } from '@/data/projects'
 import { useReleases } from '@/data/releases'
 import { since, useServiceSeries, useServiceTable } from '@/data/services'
+import { useSearchParam } from '@/lib/router'
 import { useScope } from '@/lib/scope'
-import { useWindow } from '@/lib/window'
+import { WINDOWS, openOn, openingWindow, useWindow } from '@/lib/window'
 import { RuleEditor } from '@/pages/alerts/RuleEditor'
 import { DeclareIncident } from '@/pages/Incidents'
 import { Attention } from './AttentionList'
@@ -27,6 +28,7 @@ import { ISSUE_LIMIT, SEEN_MS, alertItems, incidentItems, issueItems, lastSpan, 
 const TICK_MS = 15_000
 const POLL = { refetchInterval: 30_000 }
 const CHANGES_FLOOR_MS = 24 * 60 * 60 * 1000
+const WIDEST_MS = WINDOWS[WINDOWS.length - 1].ms
 
 function useNow(): number {
   const [now, setNow] = useState(() => Date.now())
@@ -39,6 +41,7 @@ function useNow(): number {
 
 export function Home() {
   const { ms: windowMs, label, short } = useWindow()
+  const asked = useSearchParam('window')
   const { project } = useScope()
   const projects = useProjects()
   const { placement, place } = usePlacement()
@@ -59,6 +62,16 @@ export function Home() {
 
   const scope = projects.find((p) => p.id === project)?.name ?? 'all projects'
   const servicesFailed = inWindow.failed ?? lately.failed
+  const quiet = !inWindow.pending && !lately.pending && !servicesFailed && !inWindow.services.length && !lately.services.length
+  const older = useServiceTable('', WIDEST_MS, placement, { enabled: quiet })
+
+  useEffect(() => {
+    if (asked !== undefined || isPlaced(placement) || inWindow.pending || lately.pending || servicesFailed) return
+    if (inWindow.services.length) openOn(null)
+    else if (lately.services.length) openOn(openingWindow(lastSpan(lately.services), Date.now()))
+    else if (!older.pending) openOn(older.failed ? null : openingWindow(lastSpan(older.services), Date.now()))
+  })
+
   const cut = issues.issues.length >= ISSUE_LIMIT
   const issuesState = stateOf(!issues.pending, issues.failed)
   const sources: Source[] = [
@@ -70,8 +83,8 @@ export function Home() {
   ]
   const missing = unchecked(sources)
 
-  const answered = !inWindow.pending && !lately.pending && !servicesFailed && !series.pending && !series.failed
-  if (answered && !lately.services.length && !inWindow.services.length && !series.series?.requests && !isPlaced(placement)) return <EmptyProject />
+  const neverSeen = quiet && !older.pending && !older.failed && !older.services.length
+  if (neverSeen && !series.pending && !series.failed && !series.series?.requests && !isPlaced(placement)) return <EmptyProject />
 
   const fetchedAt = lately.updatedAt || now
   const open = incidentItems(incidents.incidents ?? [])
