@@ -137,6 +137,17 @@ describe('@spec-l17-10 the home states', () => {
     assert.match(out, /Connect your first service/)
   })
 
+  it('opens on the shortest window that holds the last span', async () => {
+    const { openingWindow } = await load<typeof import('../src/lib/window')>('lib/window.ts')
+    const HOUR = 60 * MIN
+    assert.equal(openingWindow(null, NOW), null)
+    assert.equal(openingWindow(NOW - 10 * MIN, NOW), '6h')
+    assert.equal(openingWindow(NOW - 3 * HOUR, NOW), '6h')
+    assert.equal(openingWindow(NOW - 20 * HOUR, NOW), '24h')
+    assert.equal(openingWindow(NOW - 72 * HOUR, NOW), '7d')
+    assert.equal(openingWindow(NOW - 8 * 24 * HOUR, NOW), null)
+  })
+
   it('changes says when there is no release and does not hide a failed read', () => {
     const none = html(createElement(changes.Changes, { releases: [], pending: false, failed: false, windowMs: 86_400_000, now: NOW }))
     assert.match(none, /No release in the last 24 hours/)

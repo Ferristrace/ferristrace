@@ -1,4 +1,5 @@
 import { useNavigate as useRouterNavigate } from '@tanstack/react-router'
+import { useSyncExternalStore } from 'react'
 import { useSearchParam } from './router'
 
 const MINUTE = 60 * 1000
@@ -27,14 +28,49 @@ function unzoomed(f: unknown): string | undefined {
   return p.toString() || undefined
 }
 
+export function openingWindow(lastSeenMs: number | null, now: number): Window['key'] | null {
+  if (lastSeenMs === null) return null
+  return WINDOWS.find((w) => w.ms > DEFAULT_WINDOW.ms && now - lastSeenMs <= w.ms)?.key ?? null
+}
+
+let opening: Window | null = null
+let settled = false
+const listeners = new Set<() => void>()
+
+function settle(next: Window | null) {
+  settled = true
+  if (next === opening) return
+  opening = next
+  for (const listener of listeners) listener()
+}
+
+export function openOn(key: Window['key'] | null) {
+  if (!settled) settle(key ? windowOf(key) : null)
+}
+
+function useOpening(): Window | null {
+  return useSyncExternalStore(
+    (notify) => {
+      listeners.add(notify)
+      return () => listeners.delete(notify)
+    },
+    () => opening,
+    () => null,
+  )
+}
+
 export function useWindow(): Window & { choose: (key: Window['key']) => void } {
-  const current = windowOf(useSearchParam('window'))
+  const asked = useSearchParam('window')
+  const opened = useOpening()
+  const current = asked === undefined ? (opened ?? DEFAULT_WINDOW) : windowOf(asked)
   const navigate = useRouterNavigate()
-  const choose = (key: Window['key']) =>
+  const choose = (key: Window['key']) => {
+    settle(null)
     void navigate({
       to: '.' as never,
       search: ((was: Record<string, unknown>) => ({ ...was, f: unzoomed(was.f), from: undefined, to: undefined, window: key === DEFAULT_WINDOW.key ? undefined : key })) as never,
       replace: true,
     })
+  }
   return { ...current, choose }
 }

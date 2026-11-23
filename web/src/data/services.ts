@@ -171,14 +171,14 @@ export function useServices(environment = '', windowMs = WINDOW_MS): Service[] {
   return useServiceTable(environment, windowMs).services
 }
 
-export type Polling = { refetchInterval?: number | false }
+export type Polling = { refetchInterval?: number | false; enabled?: boolean }
 
 export function useServiceTable(environment = '', windowMs = WINDOW_MS, placement: Placement = NOWHERE, polling: Polling = {}) {
   const { active } = useOrganisations()
   const { project } = useScope()
   const { data, isPending, error, dataUpdatedAt } = useQuery({
     queryKey: ['services', active?.org, project, environment.trim(), windowMs, placement],
-    enabled: Boolean(active),
+    enabled: Boolean(active) && polling.enabled !== false,
     staleTime: FRESH_MS,
     refetchInterval: polling.refetchInterval ?? false,
     queryFn: async () => {
