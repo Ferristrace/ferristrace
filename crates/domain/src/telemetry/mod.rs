@@ -25,7 +25,7 @@ mod value_objects;
 #[cfg(test)]
 mod value_objects_tests;
 
-pub use billing::{BillingHour, BillingMonth};
+pub use billing::{BillingHour, BillingMonth, PendingOverageHour};
 pub use entities::{LogRecord, Span};
 pub use errors::{
     BadCurrency, BadRetention, BadSeverity, CounterUnreachable, IngestError, InvalidId, SinkError,

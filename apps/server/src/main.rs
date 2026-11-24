@@ -90,12 +90,13 @@ async fn main() -> anyhow::Result<()> {
     let allowances = allowances_of(&config, pool.as_ref()).await?;
     let meter = Arc::new(meter_of(&config).await?);
     if let (Some(pool), Meter::Redis(_)) = (pool.as_ref(), meter.as_ref()) {
-        let usage = Arc::new(usage_of(pool, Arc::clone(&meter)));
+        let usage = Arc::new(usage_of(pool, Arc::clone(&meter), billing_of(&config)));
         let seeded = usage
             .rehydrate_usage()
             .await
             .context("rehydrating the usage counters")?;
         tracing::info!(tenants = seeded, "usage counters rehydrated");
+        flush_pending_overages(&usage).await;
         tokio::spawn(roll_up_hourly(usage));
     }
     let Opened {
@@ -353,6 +354,10 @@ fn plans_of(config: &Config) -> anyhow::Result<Vec<PlanSpec>> {
                 retention_days: plan.retention_days.map(whole).transpose()?,
                 overage: plan.overage,
                 price_ref: plan.price.clone(),
+                overage_price_ref: plan.overage_price.clone(),
+                overage_grace_gb: i32::try_from(plan.overage_grace_gb)
+                    .context("a plan figure does not fit the control plane")?,
+                overage_cap_gb: plan.overage_cap_gb.map(whole).transpose()?,
             })
         })
         .collect()
@@ -394,7 +399,11 @@ async fn meter_of(config: &Config) -> anyhow::Result<Meter> {
     Ok(Meter::Redis(meter))
 }
 
-fn usage_of(pool: &PgPool, meter: Arc<Meter>) -> Ferristrace<Production> {
+fn usage_of(
+    pool: &PgPool,
+    meter: Arc<Meter>,
+    billing: Option<Arc<StripeGateway>>,
+) -> Ferristrace<Production> {
     let repos = Postgres::new(pool.clone(), SystemClock);
     let adapters = adapters_of(
         Relay::Unreachable,
@@ -402,7 +411,7 @@ fn usage_of(pool: &PgPool, meter: Arc<Meter>) -> Ferristrace<Production> {
         Gallery::Nowhere,
         meter,
         Optional::default(),
-        None,
+        billing,
     );
     Ferristrace::new(repos, adapters)
 }
@@ -998,6 +1007,27 @@ async fn roll_up_hourly(usage: Arc<Ferristrace<Production>>) {
             Ok(tenants) => tracing::info!(tenants, "the finished hour was rolled up"),
             Err(error) => tracing::error!(%error, "the usage rollup failed"),
         }
+        flush_pending_overages(&usage).await;
+    }
+}
+
+async fn flush_pending_overages(usage: &Ferristrace<Production>) {
+    match usage.report_overages().await {
+        Ok(report) => {
+            if report.reported > 0 {
+                tracing::info!(
+                    reported = report.reported,
+                    "overage hours were reported to stripe"
+                );
+            }
+            if report.failed > 0 {
+                tracing::warn!(
+                    failed = report.failed,
+                    "some overage hours could not be reported to stripe and will retry next hour"
+                );
+            }
+        }
+        Err(error) => tracing::error!(%error, "the overage report failed"),
     }
 }
 

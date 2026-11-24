@@ -1006,7 +1006,10 @@ name = "Pro"
 ingest_gb = 100
 retention_days = 30
 overage = true
+overage_grace_gb = 8
+overage_cap_gb = 66
 price = "price_..."
+overage_price = "price_..."
 ```
 
 `self-hosted` cannot be declared there; the migrations own it. Moving an

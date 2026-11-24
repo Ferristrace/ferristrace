@@ -128,6 +128,7 @@ impl BillingGateway for StripeGateway {
         org: TenantId,
         customer: Option<&CustomerRef>,
         price: &PriceRef,
+        overage_price: Option<&PriceRef>,
         success_url: &str,
         cancel_url: &str,
     ) -> Result<(CheckoutUrl, CustomerRef), GatewayError> {
@@ -136,7 +137,7 @@ impl BillingGateway for StripeGateway {
             Some(customer) => customer.clone(),
             None => self.create_customer(&org).await?,
         };
-        let form = [
+        let mut form = vec![
             ("mode", "subscription"),
             ("customer", customer.as_str()),
             ("line_items[0][price]", price.as_str()),
@@ -146,6 +147,9 @@ impl BillingGateway for StripeGateway {
             ("success_url", success_url),
             ("cancel_url", cancel_url),
         ];
+        if let Some(overage) = overage_price {
+            form.push(("line_items[1][price]", overage.as_str()));
+        }
         let response: CheckoutSessionResponse =
             self.post_json("/v1/checkout/sessions", &form).await?;
         Ok((CheckoutUrl::new(response.url), customer))
@@ -170,7 +174,7 @@ impl BillingGateway for StripeGateway {
     ) -> Result<(), GatewayError> {
         let value = over_by.get().to_string();
         let timestamp = (hour.start_nanos() / NANOS_PER_SECOND).to_string();
-        let identifier = hour.key();
+        let identifier = format!("{}:{}", customer.as_str(), hour.key());
         let form = [
             ("event_name", &*self.meter_event_name),
             ("payload[stripe_customer_id]", customer.as_str()),
@@ -242,6 +246,7 @@ mod tests {
                 TenantId::new(Uuid::from_u128(1)),
                 None,
                 &PriceRef::new("price_pro"),
+                None,
                 "https://app.test/success",
                 "https://app.test/cancel",
             )
@@ -264,6 +269,9 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/checkout/sessions"))
             .and(body_string_contains("customer=cus_known"))
+            .and(body_string_contains(
+                "line_items%5B1%5D%5Bprice%5D=price_overage",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "url": "https://checkout.stripe.com/pay/cs_again",
             })))
@@ -277,6 +285,7 @@ mod tests {
                 TenantId::new(Uuid::from_u128(1)),
                 Some(&CustomerRef::new("cus_known")),
                 &PriceRef::new("price_pro"),
+                Some(&PriceRef::new("price_overage")),
                 "https://app.test/success",
                 "https://app.test/cancel",
             )
@@ -311,9 +320,11 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/billing/meter_events"))
+            .and(body_string_contains("identifier=cus_1%3A2023111422"))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(serde_json::json!({"id": "me_1"})),
             )
+            .expect(1)
             .mount(&server)
             .await;
         let gateway = StripeGateway::at(settings(), &server.uri());

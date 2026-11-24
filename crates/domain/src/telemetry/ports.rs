@@ -1,6 +1,6 @@
 use core::future::Future;
 
-use super::billing::{BillingHour, BillingMonth};
+use super::billing::{BillingHour, BillingMonth, PendingOverageHour};
 use super::entities::{LogRecord, Span};
 use super::errors::{CounterUnreachable, SinkError, UnknownKey};
 use super::value_objects::{
@@ -317,6 +317,18 @@ pub trait UsageLedger {
         month: BillingMonth,
     ) -> impl Future<Output = Result<Vec<MonthTotal>, StoreError>> + Send;
 
+    fn pending_overages(
+        &self,
+        month: BillingMonth,
+    ) -> impl Future<Output = Result<Vec<PendingOverageHour>, StoreError>> + Send;
+
+    fn mark_overage_reported(
+        &self,
+        org: TenantId,
+        hour: BillingHour,
+        reported: DecompressedBytes,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
     fn fill_splits(
         &self,
         splits: &[HourSplit],
@@ -351,6 +363,22 @@ impl<T: UsageLedger + Sync> UsageLedger for &T {
         (*self).billed_since(month)
     }
 
+    fn pending_overages(
+        &self,
+        month: BillingMonth,
+    ) -> impl Future<Output = Result<Vec<PendingOverageHour>, StoreError>> + Send {
+        (*self).pending_overages(month)
+    }
+
+    fn mark_overage_reported(
+        &self,
+        org: TenantId,
+        hour: BillingHour,
+        reported: DecompressedBytes,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        (*self).mark_overage_reported(org, hour, reported)
+    }
+
     fn fill_splits(
         &self,
         splits: &[HourSplit],
@@ -379,6 +407,22 @@ impl<T: UsageLedger + Send + Sync> UsageLedger for std::sync::Arc<T> {
         month: BillingMonth,
     ) -> impl Future<Output = Result<Vec<MonthTotal>, StoreError>> + Send {
         self.as_ref().billed_since(month)
+    }
+
+    fn pending_overages(
+        &self,
+        month: BillingMonth,
+    ) -> impl Future<Output = Result<Vec<PendingOverageHour>, StoreError>> + Send {
+        self.as_ref().pending_overages(month)
+    }
+
+    fn mark_overage_reported(
+        &self,
+        org: TenantId,
+        hour: BillingHour,
+        reported: DecompressedBytes,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        self.as_ref().mark_overage_reported(org, hour, reported)
     }
 
     fn fill_splits(

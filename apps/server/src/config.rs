@@ -74,6 +74,12 @@ pub struct PlanConfig {
     pub overage: bool,
     #[serde(default)]
     pub price: Option<String>,
+    #[serde(default)]
+    pub overage_price: Option<String>,
+    #[serde(default)]
+    pub overage_grace_gb: u32,
+    #[serde(default)]
+    pub overage_cap_gb: Option<NonZeroU32>,
 }
 
 fn a_month() -> u64 {
@@ -992,6 +998,9 @@ mod tests {
             retention_days: None,
             overage: false,
             price: None,
+            overage_price: None,
+            overage_grace_gb: 0,
+            overage_cap_gb: None,
         }
     }
 

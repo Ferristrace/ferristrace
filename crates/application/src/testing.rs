@@ -403,6 +403,7 @@ impl BillingGateway for Inert {
         _org: TenantId,
         _customer: Option<&CustomerRef>,
         _price: &PriceRef,
+        _overage_price: Option<&PriceRef>,
         _success_url: &str,
         _cancel_url: &str,
     ) -> Result<(CheckoutUrl, CustomerRef), GatewayError> {
