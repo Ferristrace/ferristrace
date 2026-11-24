@@ -19,6 +19,9 @@ pub struct PlanSpec {
     pub retention_days: Option<i32>,
     pub overage: bool,
     pub price_ref: Option<String>,
+    pub overage_price_ref: Option<String>,
+    pub overage_grace_gb: i32,
+    pub overage_cap_gb: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,11 +39,16 @@ pub async fn sync_plans(pool: &PgPool, plans: &[PlanSpec]) -> Result<(), sqlx::E
             Vec::new()
         };
         sqlx::query(
-            "INSERT INTO plans (id, slug, name, ingest_gb, retention_days, features, price_ref) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) \
+            "INSERT INTO plans \
+               (id, slug, name, ingest_gb, retention_days, features, price_ref, \
+                overage_price_ref, overage_grace_gb, overage_cap_gb) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
              ON CONFLICT (slug) DO UPDATE SET name = excluded.name, \
                ingest_gb = excluded.ingest_gb, retention_days = excluded.retention_days, \
-               features = excluded.features, price_ref = excluded.price_ref",
+               features = excluded.features, price_ref = excluded.price_ref, \
+               overage_price_ref = excluded.overage_price_ref, \
+               overage_grace_gb = excluded.overage_grace_gb, \
+               overage_cap_gb = excluded.overage_cap_gb",
         )
         .bind(uuid::Uuid::new_v4())
         .bind(&plan.slug)
@@ -49,6 +57,9 @@ pub async fn sync_plans(pool: &PgPool, plans: &[PlanSpec]) -> Result<(), sqlx::E
         .bind(plan.retention_days)
         .bind(&features)
         .bind(plan.price_ref.as_deref())
+        .bind(plan.overage_price_ref.as_deref())
+        .bind(plan.overage_grace_gb)
+        .bind(plan.overage_cap_gb)
         .execute(&mut *tx)
         .await?;
     }

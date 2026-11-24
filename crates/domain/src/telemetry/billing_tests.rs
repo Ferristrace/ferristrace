@@ -1,5 +1,8 @@
-use super::billing::{BillingHour, BillingMonth};
+use super::billing::{BillingHour, BillingMonth, PendingOverageHour};
+use super::value_objects::{DecompressedBytes, TenantId};
 use crate::clock::UnixSeconds;
+use crate::subscriptions::CustomerRef;
+use uuid::Uuid;
 
 #[test]
 fn a_known_instant_lands_in_its_calendar_month() {
@@ -79,4 +82,34 @@ fn an_hour_starts_on_a_whole_hour() {
     let hour = BillingHour::containing(UnixSeconds::new(1_700_000_000));
 
     assert_eq!(hour.start_nanos() % (3600 * 1_000_000_000), 0);
+    assert_eq!(BillingHour::from_start_nanos(hour.start_nanos()), hour);
+}
+
+fn slice(prior: u64, hour_bytes: u64, free: u64, cap: Option<u64>) -> PendingOverageHour {
+    PendingOverageHour {
+        org: TenantId::new(Uuid::nil()),
+        customer: CustomerRef::new("cus_test"),
+        hour: BillingHour::containing(UnixSeconds::new(1_700_000_000)),
+        prior_month_bytes: DecompressedBytes::new(prior),
+        hour_bytes: DecompressedBytes::new(hour_bytes),
+        free_allowance: DecompressedBytes::new(free),
+        cap_bytes: cap.map(DecompressedBytes::new),
+    }
+}
+
+#[test]
+fn an_hour_within_the_grace_threshold_bills_nothing() {
+    assert_eq!(slice(90, 15, 108, Some(66)).billable().get(), 0);
+}
+
+#[test]
+fn an_hour_crossing_the_grace_threshold_bills_only_the_excess() {
+    assert_eq!(slice(105, 10, 108, Some(66)).billable().get(), 7);
+}
+
+#[test]
+fn an_hour_past_the_monthly_cap_clamps_to_the_remaining_cap() {
+    // Free allowance = 108, cap = 66 => ceiling = 174
+    assert_eq!(slice(170, 10, 108, Some(66)).billable().get(), 4);
+    assert_eq!(slice(175, 10, 108, Some(66)).billable().get(), 0);
 }

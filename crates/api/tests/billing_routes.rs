@@ -87,6 +87,7 @@ impl BillingAccounts for Accounts {
             slug: PlanSlug::new("pro"),
             name: "Pro".into(),
             price: PriceRef::new("price_pro"),
+            overage_price: None,
         }])
     }
 
@@ -113,6 +114,7 @@ impl BillingGateway for Gateway {
         _org: TenantId,
         customer: Option<&CustomerRef>,
         price: &PriceRef,
+        _overage_price: Option<&PriceRef>,
         _success_url: &str,
         _cancel_url: &str,
     ) -> Result<(CheckoutUrl, CustomerRef), GatewayError> {

@@ -1,4 +1,6 @@
+use super::value_objects::{DecompressedBytes, TenantId};
 use crate::clock::UnixSeconds;
+use crate::subscriptions::CustomerRef;
 use time::{Date, Month, OffsetDateTime};
 
 const NANOS_PER_SECOND: i64 = 1_000_000_000;
@@ -52,6 +54,13 @@ impl BillingHour {
         }
     }
 
+    pub fn from_start_nanos(nanos: i64) -> Self {
+        let seconds = nanos.div_euclid(NANOS_PER_SECOND);
+        Self {
+            start: seconds - seconds.rem_euclid(SECONDS_PER_HOUR),
+        }
+    }
+
     pub fn start_nanos(self) -> i64 {
         self.start.saturating_mul(NANOS_PER_SECOND)
     }
@@ -66,5 +75,29 @@ impl BillingHour {
             moment.day(),
             moment.hour()
         )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingOverageHour {
+    pub org: TenantId,
+    pub customer: CustomerRef,
+    pub hour: BillingHour,
+    pub prior_month_bytes: DecompressedBytes,
+    pub hour_bytes: DecompressedBytes,
+    pub free_allowance: DecompressedBytes,
+    pub cap_bytes: Option<DecompressedBytes>,
+}
+
+impl PendingOverageHour {
+    pub fn billable(&self) -> DecompressedBytes {
+        let before = self.prior_month_bytes.get();
+        let after = before.saturating_add(self.hour_bytes.get());
+        let start = before.max(self.free_allowance.get());
+        let end = match self.cap_bytes {
+            Some(cap) => after.min(self.free_allowance.get().saturating_add(cap.get())),
+            None => after,
+        };
+        DecompressedBytes::new(end.saturating_sub(start))
     }
 }

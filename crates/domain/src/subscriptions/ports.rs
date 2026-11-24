@@ -44,6 +44,7 @@ pub trait BillingGateway {
         org: TenantId,
         customer: Option<&CustomerRef>,
         price: &PriceRef,
+        overage_price: Option<&PriceRef>,
         success_url: &str,
         cancel_url: &str,
     ) -> impl Future<Output = Result<(CheckoutUrl, CustomerRef), GatewayError>> + Send;
@@ -70,10 +71,11 @@ impl<T: BillingGateway + Sync> BillingGateway for &T {
         org: TenantId,
         customer: Option<&CustomerRef>,
         price: &PriceRef,
+        overage_price: Option<&PriceRef>,
         success_url: &str,
         cancel_url: &str,
     ) -> impl Future<Output = Result<(CheckoutUrl, CustomerRef), GatewayError>> + Send {
-        (*self).checkout_url(org, customer, price, success_url, cancel_url)
+        (*self).checkout_url(org, customer, price, overage_price, success_url, cancel_url)
     }
 
     fn portal_url(
@@ -104,11 +106,12 @@ impl<T: BillingGateway + Send + Sync> BillingGateway for std::sync::Arc<T> {
         org: TenantId,
         customer: Option<&CustomerRef>,
         price: &PriceRef,
+        overage_price: Option<&PriceRef>,
         success_url: &str,
         cancel_url: &str,
     ) -> impl Future<Output = Result<(CheckoutUrl, CustomerRef), GatewayError>> + Send {
         self.as_ref()
-            .checkout_url(org, customer, price, success_url, cancel_url)
+            .checkout_url(org, customer, price, overage_price, success_url, cancel_url)
     }
 
     fn portal_url(

@@ -137,10 +137,20 @@ fn change_of(
         .and_then(Value::as_str)
         .and_then(|org| Uuid::parse_str(org).ok())
         .map(TenantId::new);
-    let item = object
+    let items = object
         .get("items")
         .and_then(|items| items.get("data"))
-        .and_then(|data| data.get(0));
+        .and_then(Value::as_array);
+    let item = items.and_then(|data| {
+        data.iter()
+            .find(|entry| {
+                entry
+                    .pointer("/price/recurring/usage_type")
+                    .and_then(Value::as_str)
+                    != Some("metered")
+            })
+            .or_else(|| data.first())
+    });
     let price = item
         .and_then(|item| item.get("price"))
         .and_then(|price| price.get("id"))
@@ -399,5 +409,43 @@ mod tests {
         let signature = format!("t={timestamp},v1=deadbeef,v1={correct}");
 
         assert!(verify(SECRET, &signature, &body).is_ok());
+    }
+
+    #[test]
+    fn a_hybrid_subscription_picks_the_licensed_plan_price_over_the_metered_item() {
+        let payload = json!({
+            "id": "sub_hybrid",
+            "object": "subscription",
+            "customer": "cus_1",
+            "status": "active",
+            "metadata": {},
+            "items": {"data": [
+                {
+                    "price": {
+                        "id": "price_overage",
+                        "recurring": {"usage_type": "metered"}
+                    },
+                    "current_period_end": 1_702_592_000
+                },
+                {
+                    "price": {
+                        "id": "price_pro",
+                        "recurring": {"usage_type": "licensed"}
+                    },
+                    "current_period_end": 1_702_592_000
+                }
+            ]}
+        });
+        let body = event("customer.subscription.updated", payload);
+        let timestamp = now();
+        let signature = header(SECRET, timestamp, &body);
+
+        let parsed = verify(SECRET, &signature, &body).expect("valid webhook");
+        match parsed {
+            WebhookEvent::Changed { change, .. } => {
+                assert_eq!(change.price, Some(PriceRef::new("price_pro")));
+            }
+            WebhookEvent::Ignored { .. } => panic!("expected subscription change"),
+        }
     }
 }

@@ -44,7 +44,7 @@ pub use ingestion::Ingestion;
 pub use issues::IssueRuling;
 pub use stack::{Adapters, Ferristrace, Stack};
 pub use subscriptions::{BillingError, BillingRead, WebhookApplyError};
-pub use usage::UsageBackfill;
+pub use usage::{OverageReport, UsageBackfill};
 
 #[cfg(test)]
 mod fakes;

@@ -2,16 +2,16 @@ use ferristrace_application::repository;
 use std::collections::BTreeMap;
 
 use ferristrace_domain::telemetry::{
-    BillingMonth, HourSplit, HourTotal, HourVolume, MonthTotal, ProjectHourShare, ProjectHours,
-    ProjectSplit, Split, UsageLedger,
+    BillingHour, BillingMonth, HourSplit, HourTotal, HourVolume, MonthTotal, PendingOverageHour,
+    ProjectHourShare, ProjectHours, ProjectSplit, Split, UsageLedger,
 };
 use ferristrace_domain::{
-    Consumed, DecompressedBytes, ProjectId, StoreError, TenantId, UsageHistory, Window,
+    Consumed, CustomerRef, DecompressedBytes, ProjectId, StoreError, TenantId, UsageHistory, Window,
 };
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::postgres::gigabytes_to_bytes;
+use crate::postgres::{OVERAGE_FEATURE, gigabytes_to_bytes};
 use crate::unit_of_work::{Postgres, SharedTx};
 
 #[repository(domain = UsageHistory, backend = Postgres<C>, generics = <C: Send + Sync + 'static>)]
@@ -230,6 +230,78 @@ impl UsageLedger for PostgresUsage {
                 ),
             })
             .collect())
+    }
+
+    async fn pending_overages(
+        &self,
+        month: BillingMonth,
+    ) -> Result<Vec<PendingOverageHour>, StoreError> {
+        let mut tx = self.tx.lock().await;
+        let rows = sqlx::query(
+            "SELECT u.org_id AS org_id, s.customer_ref AS customer_ref, \
+             u.hour_start AS hour_start, u.ingested_bytes AS hour_bytes, \
+             COALESCE((SELECT sum(prev.ingested_bytes)::bigint FROM usage_hourly prev \
+               WHERE prev.org_id = u.org_id AND prev.hour_start >= $1 \
+               AND prev.hour_start < u.hour_start), 0) AS prior_bytes, \
+             p.ingest_gb AS ingest_gb, p.overage_grace_gb AS grace_gb, \
+             p.overage_cap_gb AS cap_gb \
+             FROM usage_hourly u \
+             JOIN orgs o ON o.id = u.org_id \
+             JOIN plans p ON p.id = o.plan_id \
+             JOIN billing_subscriptions s ON s.org_id = u.org_id \
+             WHERE u.hour_start >= $1 \
+               AND u.overage_reported_bytes IS NULL \
+               AND $2 = ANY (p.features) \
+               AND p.ingest_gb IS NOT NULL \
+               AND s.status IN ('active', 'trialing', 'past_due') \
+             ORDER BY u.hour_start, u.org_id",
+        )
+        .bind(month.start_nanos())
+        .bind(OVERAGE_FEATURE)
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(|error| unreachable(&error, "read pending overage hours"))?;
+
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                let ingest_gb: i32 = row.get("ingest_gb");
+                let grace_gb: i32 = row.get("grace_gb");
+                let free_allowance = gigabytes_to_bytes(ingest_gb.saturating_add(grace_gb.max(0)))?;
+                let cap_bytes = row
+                    .get::<Option<i32>, _>("cap_gb")
+                    .and_then(gigabytes_to_bytes);
+                Some(PendingOverageHour {
+                    org: TenantId::new(row.get("org_id")),
+                    customer: CustomerRef::new(row.get::<String, _>("customer_ref")),
+                    hour: BillingHour::from_start_nanos(row.get("hour_start")),
+                    prior_month_bytes: DecompressedBytes::new(unsigned(row.get("prior_bytes"))),
+                    hour_bytes: DecompressedBytes::new(unsigned(row.get("hour_bytes"))),
+                    free_allowance,
+                    cap_bytes,
+                })
+            })
+            .collect())
+    }
+
+    async fn mark_overage_reported(
+        &self,
+        org: TenantId,
+        hour: BillingHour,
+        reported: DecompressedBytes,
+    ) -> Result<(), StoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query(
+            "UPDATE usage_hourly SET overage_reported_bytes = $3 \
+             WHERE org_id = $1 AND hour_start = $2 AND overage_reported_bytes IS NULL",
+        )
+        .bind(org.as_uuid())
+        .bind(hour.start_nanos())
+        .bind(as_nanos(reported.get()))
+        .execute(&mut **tx)
+        .await
+        .map_err(|error| unreachable(&error, "mark an overage hour reported"))?;
+        Ok(())
     }
 }
 

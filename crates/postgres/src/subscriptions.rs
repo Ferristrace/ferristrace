@@ -19,7 +19,7 @@ const PLAN_OF: &str = "SELECT p.slug AS slug, p.name AS name, p.price_ref IS NOT
        $2 = ANY (p.features) AS overage \
      FROM orgs o JOIN plans p ON p.id = o.plan_id WHERE o.id = $1";
 
-const OFFERS: &str = "SELECT slug, name, price_ref FROM plans \
+const OFFERS: &str = "SELECT slug, name, price_ref, overage_price_ref FROM plans \
      WHERE price_ref IS NOT NULL ORDER BY ingest_gb NULLS LAST, slug";
 
 const LINK_CUSTOMER: &str = "INSERT INTO billing_subscriptions (org_id, customer_ref) \
@@ -113,6 +113,9 @@ impl BillingAccounts for PostgresBillingAccounts {
                 slug: PlanSlug::new(row.get::<String, _>("slug")),
                 name: row.get::<String, _>("name").into(),
                 price: PriceRef::new(row.get::<String, _>("price_ref")),
+                overage_price: row
+                    .get::<Option<String>, _>("overage_price_ref")
+                    .map(PriceRef::new),
             })
             .collect())
     }

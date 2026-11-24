@@ -25,4 +25,5 @@ pub struct PlanOffer {
     pub slug: PlanSlug,
     pub name: Box<str>,
     pub price: PriceRef,
+    pub overage_price: Option<PriceRef>,
 }

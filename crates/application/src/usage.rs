@@ -1,11 +1,13 @@
 use core::future::Future;
 
 use ferristrace_domain::telemetry::{
-    BillingHour, BillingMonth, HourSplit, HourTotal, HourlyCounters, MonthTotal, ProjectHourShare,
-    StoredVolumes, UsageLedger, UsageSyncError, project_shares,
+    BillingHour, BillingMonth, HourSplit, HourTotal, HourlyCounters, MonthTotal,
+    PendingOverageHour, ProjectHourShare, StoredVolumes, UsageLedger, UsageSyncError,
+    project_shares,
 };
 use ferristrace_domain::{
-    Clock, Consumption, ExploreError, Metering, SessionToken, StoreError, TenantId, Whoami, Window,
+    BillingGateway, Clock, Consumption, DecompressedBytes, ExploreError, Metering, SessionToken,
+    StoreError, TenantId, Whoami, Window,
 };
 
 use crate::registry::{RepoFor, UsageRepos, domain};
@@ -15,6 +17,12 @@ use crate::{Ferristrace, Stack, transactional};
 pub struct UsageBackfill {
     pub hours: usize,
     pub projects: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OverageReport {
+    pub reported: usize,
+    pub failed: usize,
 }
 
 impl<S: Stack> Ferristrace<S>
@@ -109,5 +117,70 @@ where
     #[transactional(usage_history, unavailable = UsageSyncError::Store(StoreError::Unreachable))]
     async fn billed_since(&self, month: BillingMonth) -> Result<Vec<MonthTotal>, UsageSyncError> {
         Ok(usage_history.billed_since(month).await?)
+    }
+}
+
+impl<S: Stack> Ferristrace<S>
+where
+    S::Repos: RepoFor<domain::UsageHistory, Repo: UsageLedger>,
+{
+    #[transactional(usage_history, unavailable = UsageSyncError::Store(StoreError::Unreachable))]
+    async fn pending_overages(
+        &self,
+        month: BillingMonth,
+    ) -> Result<Vec<PendingOverageHour>, UsageSyncError> {
+        Ok(usage_history.pending_overages(month).await?)
+    }
+
+    #[transactional(usage_history, unavailable = UsageSyncError::Store(StoreError::Unreachable))]
+    async fn mark_overage_reported(
+        &self,
+        org: TenantId,
+        hour: BillingHour,
+        reported: DecompressedBytes,
+    ) -> Result<(), UsageSyncError> {
+        Ok(usage_history
+            .mark_overage_reported(org, hour, reported)
+            .await?)
+    }
+}
+
+impl<S: Stack> Ferristrace<S>
+where
+    S::Repos: RepoFor<domain::UsageHistory, Repo: UsageLedger>,
+    S::Billing: BillingGateway,
+{
+    #[allow(clippy::manual_async_fn)]
+    pub fn report_overages(
+        &self,
+    ) -> impl Future<Output = Result<OverageReport, UsageSyncError>> + Send {
+        async move {
+            let Some(billing) = &self.billing else {
+                return Ok(OverageReport::default());
+            };
+            let month = BillingMonth::containing(self.clock.now());
+            let pending = self.pending_overages(month).await?;
+            let mut outcome = OverageReport::default();
+            for entry in pending {
+                let billable = entry.billable();
+                if billable.get() > 0 {
+                    if billing
+                        .report_usage(&entry.customer, entry.hour, billable)
+                        .await
+                        .is_ok()
+                    {
+                        self.mark_overage_reported(entry.org, entry.hour, billable)
+                            .await?;
+                        outcome.reported += 1;
+                    } else {
+                        outcome.failed += 1;
+                    }
+                } else {
+                    self.mark_overage_reported(entry.org, entry.hour, DecompressedBytes::new(0))
+                        .await?;
+                }
+            }
+            Ok(outcome)
+        }
     }
 }
