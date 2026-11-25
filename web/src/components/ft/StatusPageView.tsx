@@ -87,7 +87,14 @@ export function StatusPageView({ view, compact, subscribe }: { view: PublicStatu
   const rangeStartLabel = formatShortDate(nowMs - (UPTIME_DAYS - 1) * DAY_MS)
 
   return (
-    <div className={cn(page.theme.accent !== 'indigo' && `accent-${page.theme.accent}`, 'min-h-full bg-background text-foreground')}>
+    <div
+      className={cn(
+        !compact && page.theme.mode === 'dark' && 'dark',
+        !compact && page.theme.mode === 'light' && 'light',
+        page.theme.accent !== 'indigo' && `accent-${page.theme.accent}`,
+        'min-h-full bg-background text-foreground',
+      )}
+    >
       <header className="mx-auto flex max-w-[720px] flex-wrap items-center gap-x-3 gap-y-3 px-4 pt-8 md:px-0">
         <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-accent-subtle text-[16px] font-semibold text-accent-text" aria-hidden>{page.name.slice(0, 1).toUpperCase()}</span>
         <div className="flex min-w-0 flex-1 flex-col max-md:flex-[1_1_60%]">

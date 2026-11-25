@@ -85,6 +85,9 @@ const RESERVED_SLUGS = ['confirm', 'unsubscribe', 'subscribe']
 export const statusPagePath = (page: { org_slug?: string; slug: string }): string =>
   page.org_slug ? `/status/${page.org_slug}/${page.slug}` : `/status/${page.slug}`
 
+export const resolveStatusDark = (mode: Mode | undefined, systemDark: boolean): boolean =>
+  mode === 'dark' || (mode !== 'light' && systemDark)
+
 export const slugProblem = (slug: string): string | null =>
   !SLUG_PATTERN.test(slug)
     ? 'Use 3 to 48 lowercase letters, digits or hyphens.'

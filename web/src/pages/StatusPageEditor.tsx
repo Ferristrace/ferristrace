@@ -17,7 +17,7 @@ import { useAlerts } from '@/data/alerts'
 import { useProjects } from '@/data/projects'
 import { useServiceNames } from '@/data/services'
 import {
-  ACCENTS, COMPONENT_STATUSES, MODES, STATUS_WORDS, slugProblem, statusPagePath, useAddComponent, useChangeComponent, useChangeStatusPage, useCreateStatusPage,
+  ACCENTS, COMPONENT_STATUSES, MODES, STATUS_WORDS, resolveStatusDark, slugProblem, statusPagePath, useAddComponent, useChangeComponent, useChangeStatusPage, useCreateStatusPage,
   useDeleteStatusPage, useOrderComponents, useRemoveComponent, useStatusPage, useStatusPages, useStatusPreview,
   type ComponentLink, type ComponentStatus, type Mode, type StatusSheet,
 } from '@/data/status-page'
@@ -290,7 +290,10 @@ const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').
 
 function Preview({ sheet }: { sheet: StatusSheet }) {
   const { preview, failed } = useStatusPreview(sheet.id)
-  const [dark, setDark] = useState(sheet.theme.mode === 'dark')
+  const [dark, setDark] = useState(() => resolveStatusDark(sheet.theme.mode, matchMedia('(prefers-color-scheme: dark)').matches))
+  useEffect(() => {
+    setDark(resolveStatusDark(sheet.theme.mode, matchMedia('(prefers-color-scheme: dark)').matches))
+  }, [sheet.theme.mode])
   const path = statusPagePath(sheet)
   return (
     <Card className="min-w-0 overflow-hidden">
