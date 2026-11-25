@@ -137,6 +137,30 @@ fn a_service_link_reads_the_load_of_its_own_project() {
 }
 
 #[test]
+fn a_silent_service_degrades_the_component_and_marks_today_without_touching_idle_ones() {
+    let observed = Observed {
+        silent_services: vec![("checkout".into(), None)],
+        ..Observed::default()
+    };
+
+    let current = derive(&service("checkout", None), None, &observed);
+    let days = derive_days(
+        &service("checkout", None),
+        current,
+        &observed,
+        NOW_MS - 5 * DAY_MS,
+        NOW_MS,
+    );
+
+    assert_eq!(current, ComponentStatus::Degraded);
+    assert_eq!(days[UPTIME_DAYS - 1], Some(ComponentStatus::Degraded));
+    assert_eq!(
+        derive(&service("billing", None), None, &observed),
+        ComponentStatus::Operational
+    );
+}
+
+#[test]
 fn a_manual_link_shows_its_manual_status_or_operational() {
     for status in ComponentStatus::ALL {
         assert_eq!(

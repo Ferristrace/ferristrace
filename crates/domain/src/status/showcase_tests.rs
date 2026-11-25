@@ -48,6 +48,7 @@ fn project() -> ProjectId {
 #[derive(Default)]
 struct Loads {
     held: Vec<(Option<ProjectId>, &'static str, u64, u64)>,
+    series: Vec<(Option<ProjectId>, &'static str, u64, ServiceSeries)>,
     asked: Mutex<Vec<ServiceFilter>>,
 }
 
@@ -94,10 +95,20 @@ impl SpanReader for Loads {
     async fn series(
         &self,
         _tenant: TenantId,
-        _service: Option<&str>,
-        _filter: &ServiceFilter,
+        service: Option<&str>,
+        filter: &ServiceFilter,
     ) -> Result<ServiceSeries, StoreError> {
-        Ok(ServiceSeries::default())
+        let span = filter
+            .window
+            .to_unix_nanos()
+            .saturating_sub(filter.window.from_unix_nanos());
+        Ok(self
+            .series
+            .iter()
+            .find(|(project, name, window_span, _)| {
+                *project == filter.project && Some(*name) == service && *window_span == span
+            })
+            .map_or_else(ServiceSeries::default, |(_, _, _, series)| series.clone()))
     }
 
     async fn traces(
@@ -686,4 +697,73 @@ async fn view_in_org_isolates_pages_sharing_the_same_slug_and_populates_thirty_d
         globex.components[0].days[29],
         Some(ComponentStatus::Operational)
     );
+}
+
+#[tokio::test]
+async fn a_service_that_reported_within_a_day_and_went_silent_over_ten_minutes_shows_degraded() {
+    use crate::explore::ServicePoint;
+
+    let mut world = World::new();
+    let thirty_days_nanos = 30 * 86_400 * 1_000_000_000_u64;
+    let ten_minutes_nanos = 600 * 1_000_000_000_u64;
+    let step_nanos = 12 * 3_600 * 1_000_000_000_u64;
+    world.loads.series = vec![
+        (
+            None,
+            "checkout",
+            thirty_days_nanos,
+            ServiceSeries {
+                step_nanos,
+                requests: 50,
+                errors: 0,
+                p50_nanos: None,
+                p95_nanos: None,
+                p99_nanos: None,
+                points: vec![ServicePoint {
+                    start_unix_nanos: (NOW - 3_600) * 1_000_000_000,
+                    requests: 50,
+                    errors: 0,
+                    p95_nanos: None,
+                    p50_nanos: None,
+                    p99_nanos: None,
+                }],
+            },
+        ),
+        (
+            None,
+            "checkout",
+            ten_minutes_nanos,
+            ServiceSeries::default(),
+        ),
+    ];
+    let page = world.page("acme", true);
+    world.component(
+        page,
+        "Checkout",
+        Link::Service {
+            name: ServiceName::try_from("checkout").expect("a service"),
+            project: None,
+        },
+        true,
+    );
+    world.component(
+        page,
+        "NeverSeen",
+        Link::Service {
+            name: ServiceName::try_from("never-seen").expect("a service"),
+            project: None,
+        },
+        true,
+    );
+
+    let view = world
+        .showcase()
+        .view(&slug("acme"), now())
+        .await
+        .expect("shown");
+
+    assert_eq!(view.components[0].status, ComponentStatus::Degraded);
+    assert_eq!(view.components[0].days[29], Some(ComponentStatus::Degraded));
+    assert_eq!(view.components[1].status, ComponentStatus::Operational);
+    assert_eq!(view.overall, ComponentStatus::Degraded);
 }

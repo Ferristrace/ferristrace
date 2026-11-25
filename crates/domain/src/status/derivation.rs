@@ -24,11 +24,11 @@ pub fn derive(
             Some(AlertSeverity::Warning | AlertSeverity::Info) => ComponentStatus::Degraded,
             None => ComponentStatus::Operational,
         },
-        Link::Service { name, project } => observed
-            .load(name, *project)
-            .map_or(ComponentStatus::Operational, |load| {
-                by_error_rate(load.requests, load.errors)
-            }),
+        Link::Service { name, project } => match observed.load(name, *project) {
+            Some(load) if load.requests > 0 => by_error_rate(load.requests, load.errors),
+            _ if observed.is_silent(name, *project) => ComponentStatus::Degraded,
+            _ => ComponentStatus::Operational,
+        },
     }
 }
 
