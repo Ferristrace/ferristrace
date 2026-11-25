@@ -220,3 +220,53 @@ async fn a_failed_letter_is_retried_and_without_a_key_it_is_abandoned() {
     );
     assert_eq!(ledger.letters()[0].status, DeliveryStatus::Abandoned);
 }
+
+#[tokio::test]
+async fn herald_forwards_the_organisation_slug_onto_each_letter_path() {
+    let ledger = StatusLedger::default();
+    let theirs = TenantId::new(Uuid::from_u128(2));
+    ledger.put_org_slug(theirs, Slug::try_from("mercato").expect("an org slug"));
+    let page = StatusPageId::fresh();
+    ledger.put_page(StatusPage {
+        id: page,
+        org: theirs,
+        name: PageName::try_from("Mercato").expect("a name"),
+        slug: Slug::try_from("prod").expect("a slug"),
+        public: true,
+        hide_from_search: false,
+        theme: Theme::default(),
+        intro: None,
+        created_ms: 1,
+        updated_ms: 1,
+    });
+    a_subscriber(&ledger, page, "ada@example.com");
+    ledger
+        .announce(&Announcement {
+            org: theirs,
+            incident: IncidentId::fresh(),
+            title: IncidentTitle::try_from("Ingest lag").expect("a title"),
+            kind: UpdateKind::Opened,
+            status: IncidentStatus::Investigating,
+            text: "investigating".into(),
+            at_ms: NOW * 1_000,
+        })
+        .await
+        .expect("announced");
+    let courier = Couriered::default();
+    let held = key();
+
+    Herald::new(
+        ledger.clone(),
+        AlertLedger::default(),
+        &courier,
+        Some(&held),
+    )
+    .tick(UnixSeconds::new(NOW))
+    .await
+    .expect("worked");
+
+    let lettered = courier.lettered();
+    assert_eq!(lettered.len(), 1);
+    assert_eq!(lettered[0].1.org_slug.as_str(), "mercato");
+    assert_eq!(lettered[0].1.page_path(), "/status/mercato/prod");
+}

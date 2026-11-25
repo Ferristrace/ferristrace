@@ -4,7 +4,7 @@ use ferristrace_domain::{
     AlertMailer, AlertStatus, Culprits, DeliveryError, Dispatch, Email, EmailList, Letter,
     LetterBody, PageDispatch, PageSource, StatusMailer, UpdateKind,
 };
-use lettre::message::{Mailbox, header::ContentType};
+use lettre::message::{Mailbox, MultiPart, header::ContentType};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 
@@ -247,6 +247,39 @@ pub fn status_subject(letter: &Letter) -> String {
     }
 }
 
+pub fn utc_timestamp(at_ms: u64) -> String {
+    let Ok(seconds) = i64::try_from(at_ms / 1_000) else {
+        return format!("{at_ms} ms");
+    };
+    let Ok(at) = time::OffsetDateTime::from_unix_timestamp(seconds) else {
+        return format!("{at_ms} ms");
+    };
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
+        at.year(),
+        u8::from(at.month()),
+        at.day(),
+        at.hour(),
+        at.minute(),
+        at.second()
+    )
+}
+
+fn escape_html(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 pub fn status_text(letter: &Letter, links: &StatusLinks) -> String {
     let page = letter.page_name.as_str();
     let mut text = match &letter.body {
@@ -259,7 +292,7 @@ pub fn status_text(letter: &Letter, links: &StatusLinks) -> String {
             if bulletin.kind == UpdateKind::Comment {
                 let _ = write!(text, "\n{}\n", bulletin.text);
             }
-            let _ = writeln!(text, "\nAt: {} ms since the epoch", bulletin.at_ms);
+            let _ = writeln!(text, "\nAt: {}", utc_timestamp(bulletin.at_ms));
             text
         }
     };
@@ -278,10 +311,86 @@ pub fn status_text(letter: &Letter, links: &StatusLinks) -> String {
     text
 }
 
+pub fn status_html(letter: &Letter, links: &StatusLinks) -> String {
+    let page = escape_html(letter.page_name.as_str());
+    let page_href = escape_html(&links.page);
+    let unsubscribe_href = escape_html(&links.unsubscribe);
+    let mut html = String::from(
+        "<!doctype html><html lang=\"en\"><body style=\"margin:0;padding:24px;background:#f4f5f7;\
+         font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#1a1c21;\">\
+         <div style=\"max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e4ea;\
+         border-radius:6px;padding:24px;\">",
+    );
+    let _ = write!(
+        html,
+        "<div style=\"font-size:13px;font-weight:600;color:#4d525d;margin-bottom:12px;\">\
+         {page} status</div>"
+    );
+    match &letter.body {
+        LetterBody::Confirm => {
+            let _ = write!(
+                html,
+                "<h1 style=\"margin:0 0 12px;font-size:18px;line-height:24px;\">\
+                 Confirm your subscription</h1>\
+                 <p style=\"margin:0 0 16px;font-size:14px;line-height:20px;color:#4d525d;\">\
+                 Someone, hopefully you, asked to receive incident updates from the {page} status \
+                 page at this address.</p>"
+            );
+            if let Some(confirm) = &links.confirm {
+                let href = escape_html(confirm);
+                let _ = write!(
+                    html,
+                    "<p style=\"margin:0 0 16px;\"><a href=\"{href}\" style=\"display:inline-block;\
+                     background:#3556d4;color:#ffffff;text-decoration:none;font-size:13px;\
+                     font-weight:600;padding:8px 14px;border-radius:4px;\">\
+                     Confirm subscription</a></p>\
+                     <p style=\"margin:0;font-size:12px;line-height:18px;color:#636875;\">\
+                     This link expires in seven days. If you did not ask for this, ignore this \
+                     message.</p>"
+                );
+            }
+        }
+        LetterBody::Update(bulletin) => {
+            let title = escape_html(bulletin.title.as_str());
+            let status = escape_html(bulletin.status.as_str());
+            let stamp = escape_html(&utc_timestamp(bulletin.at_ms));
+            let _ = write!(
+                html,
+                "<h1 style=\"margin:0 0 8px;font-size:18px;line-height:24px;\">{title}</h1>\
+                 <p style=\"margin:0 0 14px;font-size:13px;color:#4d525d;\">\
+                 Status: <strong>{status}</strong> &middot; {stamp}</p>"
+            );
+            if bulletin.kind == UpdateKind::Comment {
+                let body = escape_html(&bulletin.text);
+                let _ = write!(
+                    html,
+                    "<div style=\"margin:0 0 16px;padding:12px 14px;background:#f4f5f7;\
+                     border-radius:4px;font-size:14px;line-height:20px;white-space:pre-wrap;\">\
+                     {body}</div>"
+                );
+            }
+            let _ = write!(
+                html,
+                "<p style=\"margin:0;\"><a href=\"{page_href}\" style=\"color:#3556d4;\
+                 font-size:13px;font-weight:600;text-decoration:none;\">Open status page</a></p>"
+            );
+        }
+    }
+    let _ = write!(
+        html,
+        "<hr style=\"border:none;border-top:1px solid #eceef2;margin:20px 0 12px;\"/>\
+         <div style=\"font-size:12px;line-height:18px;color:#636875;\">\
+         <a href=\"{page_href}\" style=\"color:#4d525d;\">{page} status page</a> &middot; \
+         <a href=\"{unsubscribe_href}\" style=\"color:#4d525d;\">Unsubscribe</a></div>\
+         </div></body></html>"
+    );
+    html
+}
+
 impl SmtpMailer {
     pub fn status_links(&self, letter: &Letter) -> StatusLinks {
         StatusLinks {
-            page: format!("{}/status/{}", self.base_url, letter.slug),
+            page: format!("{}{}", self.base_url, letter.page_path()),
             confirm: letter
                 .confirm
                 .as_deref()
@@ -295,12 +404,15 @@ impl SmtpMailer {
 
     fn compose_status(&self, to: &Email, letter: &Letter) -> Result<Message, MailError> {
         let recipient: Mailbox = to.as_str().parse().map_err(|_| MailError::Settings)?;
+        let links = self.status_links(letter);
         Message::builder()
             .from(self.from.clone())
             .to(recipient)
             .subject(status_subject(letter))
-            .header(ContentType::TEXT_PLAIN)
-            .body(status_text(letter, &self.status_links(letter)))
+            .multipart(MultiPart::alternative_plain_html(
+                status_text(letter, &links),
+                status_html(letter, &links),
+            ))
             .map_err(|_| MailError::Settings)
     }
 }
@@ -518,6 +630,7 @@ mod tests {
         use ferristrace_domain::{Letter, LetterBody, PageName, Slug};
 
         let letter = Letter {
+            org_slug: Slug::try_from("acme").expect("an org slug"),
             page_name: PageName::try_from("Acme").expect("a name"),
             slug: Slug::try_from("acme").expect("a slug"),
             body: LetterBody::Confirm,
@@ -532,9 +645,12 @@ mod tests {
             )
             .expect("it composes");
         let rendered = String::from_utf8(message.formatted()).expect("text");
-        let text = super::status_text(&letter, &mailer().status_links(&letter));
+        let links = mailer().status_links(&letter);
+        let text = super::status_text(&letter, &links);
+        let html = super::status_html(&letter, &links);
 
         assert!(rendered.contains("ada@example.com"), "{rendered}");
+        assert!(rendered.contains("multipart/alternative"), "{rendered}");
         assert_eq!(
             super::status_subject(&letter),
             "[Acme status] Confirm your subscription"
@@ -547,38 +663,47 @@ mod tests {
             text.contains("https://app.example.com/api/status/unsubscribe?token=v1.u.abc.ghi"),
             "{text}"
         );
+        assert!(
+            html.contains("https://app.example.com/api/status/confirm?token=v1.c.abc.def"),
+            "{html}"
+        );
     }
 
     #[test]
-    fn a_status_update_names_the_incident_its_status_and_the_page() {
+    fn a_status_update_names_the_incident_its_status_readable_utc_time_and_the_page() {
         use ferristrace_domain::{
             Bulletin, IncidentStatus, IncidentTitle, Letter, LetterBody, PageName, Slug, UpdateKind,
         };
 
         let letter = Letter {
+            org_slug: Slug::try_from("acme").expect("an org slug"),
             page_name: PageName::try_from("Acme").expect("a name"),
             slug: Slug::try_from("acme").expect("a slug"),
             body: LetterBody::Update(Bulletin {
                 title: IncidentTitle::try_from("Payments fail").expect("a title"),
                 kind: UpdateKind::Comment,
                 status: IncidentStatus::Identified,
-                text: "A provider is down; we are switching.".into(),
+                text: "A provider <edge & core> is down; we are switching.".into(),
                 at_ms: 1_700_000_000_000,
             }),
             confirm: None,
             unsubscribe: "v1.u.abc.ghi".into(),
         };
 
-        let text = super::status_text(&letter, &mailer().status_links(&letter));
+        let links = mailer().status_links(&letter);
+        let text = super::status_text(&letter, &links);
+        let html = super::status_html(&letter, &links);
 
         assert_eq!(
             super::status_subject(&letter),
             "[Acme status] Payments fail: identified"
         );
         assert!(
-            text.contains("A provider is down; we are switching."),
+            text.contains("A provider <edge & core> is down; we are switching."),
             "{text}"
         );
+        assert!(text.contains("At: 2023-11-14 22:13:20 UTC"), "{text}");
+        assert!(!text.contains("since the epoch"), "{text}");
         assert!(
             text.contains("https://app.example.com/status/acme"),
             "{text}"
@@ -588,6 +713,29 @@ mod tests {
             "{text}"
         );
         assert!(!text.contains("/api/status/confirm"), "{text}");
+        assert!(
+            html.contains("A provider &lt;edge &amp; core&gt; is down; we are switching."),
+            "{html}"
+        );
+        assert!(html.contains("2023-11-14 22:13:20 UTC"), "{html}");
+    }
+
+    #[test]
+    fn a_multi_tenant_status_letter_scopes_its_link_under_the_organisation_slug() {
+        use ferristrace_domain::{Letter, LetterBody, PageName, Slug};
+
+        let letter = Letter {
+            org_slug: Slug::try_from("mercato").expect("an org slug"),
+            page_name: PageName::try_from("Mercato API").expect("a name"),
+            slug: Slug::try_from("prod").expect("a slug"),
+            body: LetterBody::Confirm,
+            confirm: Some("v1.c.abc.def".into()),
+            unsubscribe: "v1.u.abc.ghi".into(),
+        };
+
+        let links = mailer().status_links(&letter);
+
+        assert_eq!(links.page, "https://app.example.com/status/mercato/prod");
     }
 
     #[test]

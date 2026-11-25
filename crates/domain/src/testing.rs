@@ -1621,7 +1621,14 @@ impl crate::status::StatusPages for StatusLedger {
         Ok(self.with(|held| {
             held.pages
                 .iter()
-                .find(|page| page.public && resolve_org_slug(held, page.org) == *slug)
+                .find(|page| {
+                    page.public && &page.slug == slug && resolve_org_slug(held, page.org) == *slug
+                })
+                .or_else(|| {
+                    held.pages
+                        .iter()
+                        .find(|page| page.public && resolve_org_slug(held, page.org) == *slug)
+                })
                 .or_else(|| held.pages.iter().find(|page| &page.slug == slug))
                 .cloned()
         }))
@@ -1923,6 +1930,7 @@ impl crate::status::StatusOutbox for StatusLedger {
                         id: letter.id,
                         attempt: letter.attempt,
                         page: page.id,
+                        org_slug: resolve_org_slug(held, page.org),
                         page_name: page.name.clone(),
                         slug: page.slug.clone(),
                         subscriber: subscriber.id,
