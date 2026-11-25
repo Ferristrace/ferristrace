@@ -1,7 +1,8 @@
 use core::future::Future;
 
 use super::entities::{
-    Announcement, ClaimedLetter, Component, Invite, Letter, Saved, StatusPage, Subscriber,
+    Announcement, ClaimedLetter, Component, ComponentEvent, Invite, Letter, Saved, StatusPage,
+    Subscriber,
 };
 use super::value_objects::{ComponentId, LetterId, Slug, StatusPageId, SubscriberId};
 use crate::alerts::{DeliveryError, Settlement};
@@ -80,6 +81,22 @@ pub trait StatusPages {
         page: StatusPageId,
         id: ComponentId,
     ) -> impl Future<Output = Result<bool, StoreError>> + Send;
+
+    fn record_component_event(
+        &self,
+        _event: &ComponentEvent,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send {
+        async { Ok(()) }
+    }
+
+    fn component_events(
+        &self,
+        _org: TenantId,
+        _page: StatusPageId,
+        _from_ms: u64,
+    ) -> impl Future<Output = Result<Vec<ComponentEvent>, StoreError>> + Send {
+        async { Ok(Vec::new()) }
+    }
 }
 
 pub trait StatusSubscribers {

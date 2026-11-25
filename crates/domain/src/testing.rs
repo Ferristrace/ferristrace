@@ -1522,6 +1522,7 @@ struct Board {
     org_slugs: Vec<(TenantId, crate::status::Slug)>,
     pages: Vec<crate::status::StatusPage>,
     components: Vec<(TenantId, crate::status::Component)>,
+    component_events: Vec<crate::status::ComponentEvent>,
     subscribers: Vec<crate::status::Subscriber>,
     letters: Vec<QueuedLetter>,
 }
@@ -1564,6 +1565,10 @@ impl StatusLedger {
 
     pub fn letters(&self) -> Vec<QueuedLetter> {
         self.with(|held| held.letters.clone())
+    }
+
+    pub fn component_events(&self) -> Vec<crate::status::ComponentEvent> {
+        self.with(|held| held.component_events.clone())
     }
 
     pub fn put_org_slug(&self, org: TenantId, slug: crate::status::Slug) {
@@ -1704,8 +1709,16 @@ impl crate::status::StatusPages for StatusLedger {
                 .retain(|page| !(page.org == org && page.id == id));
             let gone = held.pages.len() != before;
             if gone {
+                let removed: Vec<_> = held
+                    .components
+                    .iter()
+                    .filter(|(_, component)| component.page == id)
+                    .map(|(_, component)| component.id)
+                    .collect();
                 held.components
                     .retain(|(_, component)| component.page != id);
+                held.component_events
+                    .retain(|event| !removed.contains(&event.component));
                 held.subscribers.retain(|subscriber| subscriber.page != id);
                 held.letters.retain(|letter| letter.page != id);
             }
@@ -1775,7 +1788,53 @@ impl crate::status::StatusPages for StatusLedger {
             held.components.retain(|(kept, component)| {
                 !(*kept == org && component.page == page && component.id == id)
             });
-            held.components.len() != before
+            let removed = held.components.len() != before;
+            if removed {
+                held.component_events.retain(|event| event.component != id);
+            }
+            removed
+        }))
+    }
+
+    async fn record_component_event(
+        &self,
+        event: &crate::status::ComponentEvent,
+    ) -> Result<(), StoreError> {
+        self.with(|held| held.component_events.push(*event));
+        Ok(())
+    }
+
+    async fn component_events(
+        &self,
+        org: TenantId,
+        page: crate::status::StatusPageId,
+        from_ms: u64,
+    ) -> Result<Vec<crate::status::ComponentEvent>, StoreError> {
+        Ok(self.with(|held| {
+            let ids: Vec<_> = held
+                .components
+                .iter()
+                .filter(|(kept, component)| *kept == org && component.page == page)
+                .map(|(_, component)| component.id)
+                .collect();
+            let mut found = Vec::new();
+            for id in &ids {
+                if let Some(baseline) = held
+                    .component_events
+                    .iter()
+                    .rfind(|event| event.component == *id && event.at_ms <= from_ms)
+                {
+                    found.push(*baseline);
+                }
+                found.extend(
+                    held.component_events
+                        .iter()
+                        .copied()
+                        .filter(|event| event.component == *id && event.at_ms > from_ms),
+                );
+            }
+            found.sort_by_key(|event| event.at_ms);
+            found
         }))
     }
 }

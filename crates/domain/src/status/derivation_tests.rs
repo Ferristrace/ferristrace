@@ -1,11 +1,13 @@
 use uuid::Uuid;
 
 use super::derivation::{
-    alert_days_from_state, by_error_rate, derive, derive_days, overall, public_updates, redacted,
-    service_days_from_points, shown,
+    alert_days_from_state, by_error_rate, derive, derive_days, manual_days_from_events, overall,
+    public_updates, redacted, service_days_from_points, shown,
 };
-use super::entities::{Link, Observed, PublicComponent, ServiceLoad};
-use super::value_objects::{ComponentName, ComponentStatus, ServiceName, UPTIME_DAYS, UpdateKind};
+use super::entities::{ComponentEvent, Link, Observed, PublicComponent, ServiceLoad};
+use super::value_objects::{
+    ComponentId, ComponentName, ComponentStatus, ServiceName, UPTIME_DAYS, UpdateKind,
+};
 use crate::alerts::{AlertEvent, AlertSeverity, AlertStatus, EventId, Labels, RuleId};
 use crate::catalogue::ProjectId;
 use crate::explore::ServicePoint;
@@ -145,6 +147,7 @@ fn a_silent_service_degrades_the_component_and_marks_today_without_touching_idle
 
     let current = derive(&service("checkout", None), None, &observed);
     let days = derive_days(
+        ComponentId::fresh(),
         &service("checkout", None),
         current,
         &observed,
@@ -434,7 +437,9 @@ fn thirty_day_uptime_bars_reflect_service_points_and_alert_events() {
     assert_eq!(alert_days[28], Some(ComponentStatus::Degraded));
     assert_eq!(alert_days[29], Some(ComponentStatus::Operational));
 
+    let manual_id = ComponentId::fresh();
     let manual_days = derive_days(
+        manual_id,
         &Link::Manual,
         ComponentStatus::Degraded,
         &Observed::default(),
@@ -444,4 +449,44 @@ fn thirty_day_uptime_bars_reflect_service_points_and_alert_events() {
     assert_eq!(manual_days.len(), UPTIME_DAYS);
     assert_eq!(manual_days[28], None);
     assert_eq!(manual_days[29], Some(ComponentStatus::Degraded));
+}
+
+#[test]
+fn manual_component_events_preserve_past_outages_after_returning_to_operational() {
+    let id = ComponentId::fresh();
+    let events = [
+        ComponentEvent {
+            component: id,
+            status: ComponentStatus::Operational,
+            at_ms: NOW_MS - 5 * DAY_MS,
+        },
+        ComponentEvent {
+            component: id,
+            status: ComponentStatus::Down,
+            at_ms: NOW_MS - 2 * DAY_MS + 3_600_000,
+        },
+        ComponentEvent {
+            component: id,
+            status: ComponentStatus::Degraded,
+            at_ms: NOW_MS - DAY_MS - 3_600_000,
+        },
+        ComponentEvent {
+            component: id,
+            status: ComponentStatus::Operational,
+            at_ms: NOW_MS - DAY_MS + 3_600_000,
+        },
+    ];
+
+    let days = manual_days_from_events(
+        ComponentStatus::Operational,
+        NOW_MS - 5 * DAY_MS,
+        &events,
+        NOW_MS,
+    );
+
+    assert_eq!(days[24], None);
+    assert_eq!(days[25], Some(ComponentStatus::Operational));
+    assert_eq!(days[27], Some(ComponentStatus::Operational));
+    assert_eq!(days[28], Some(ComponentStatus::Down));
+    assert_eq!(days[29], Some(ComponentStatus::Degraded));
 }

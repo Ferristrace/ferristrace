@@ -767,3 +767,53 @@ async fn a_service_that_reported_within_a_day_and_went_silent_over_ten_minutes_s
     assert_eq!(view.components[1].status, ComponentStatus::Operational);
     assert_eq!(view.overall, ComponentStatus::Degraded);
 }
+
+#[tokio::test]
+async fn a_manual_component_retains_its_past_outage_bar_after_returning_to_operational() {
+    use super::entities::ComponentEvent;
+    use super::ports::StatusPages;
+
+    let world = World::new();
+    let page = world.page("acme", true);
+    let id = ComponentId::fresh();
+    world.status.put_component(
+        org(),
+        Component {
+            id,
+            page,
+            name: ComponentName::try_from("Billing").expect("a name"),
+            link: Link::Manual,
+            manual_status: Some(ComponentStatus::Operational),
+            position: 0,
+            public: true,
+        },
+    );
+    for (status, at_ms) in [
+        (ComponentStatus::Operational, NOW_MS - 3 * DAY_MS),
+        (ComponentStatus::Down, NOW_MS - 2 * DAY_MS + 1_000),
+        (ComponentStatus::Operational, NOW_MS - 2 * DAY_MS + 60_000),
+    ] {
+        world
+            .status
+            .record_component_event(&ComponentEvent {
+                component: id,
+                status,
+                at_ms,
+            })
+            .await
+            .expect("recorded");
+    }
+
+    let view = world
+        .showcase()
+        .view(&slug("acme"), now())
+        .await
+        .expect("shown");
+
+    assert_eq!(view.components[0].status, ComponentStatus::Operational);
+    assert_eq!(view.components[0].days[28], Some(ComponentStatus::Down));
+    assert_eq!(
+        view.components[0].days[29],
+        Some(ComponentStatus::Operational)
+    );
+}

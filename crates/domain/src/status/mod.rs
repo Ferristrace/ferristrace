@@ -24,15 +24,15 @@ mod value_objects;
 mod value_objects_tests;
 
 pub use derivation::{
-    alert_days_from_state, by_error_rate, derive, derive_days, overall, public_updates, redacted,
-    service_days_from_points, shown,
+    alert_days_from_state, by_error_rate, derive, derive_days, manual_days_from_events, overall,
+    public_updates, redacted, service_days_from_points, shown,
 };
 pub use desk::StatusDesk;
 pub use entities::{
-    Announcement, Bulletin, ClaimedLetter, Component, ComponentDraft, ComponentPatch, Heralded,
-    Invite, Landing, Letter, LetterBody, Link, LinkNotice, Listed, Observed, PageDraft, PagePatch,
-    PublicComponent, PublicIncident, PublicPostmortem, PublicUpdate, PublicView, Saved,
-    ServiceHistory, ServiceLoad, Sheet, StatusPage, Subscriber,
+    Announcement, Bulletin, ClaimedLetter, Component, ComponentDraft, ComponentEvent,
+    ComponentPatch, Heralded, Invite, Landing, Letter, LetterBody, Link, LinkNotice, Listed,
+    Observed, PageDraft, PagePatch, PublicComponent, PublicIncident, PublicPostmortem,
+    PublicUpdate, PublicView, Saved, ServiceHistory, ServiceLoad, Sheet, StatusPage, Subscriber,
 };
 pub use errors::{BadStatusPage, LinkRefused, StatusError};
 pub use herald::Herald;

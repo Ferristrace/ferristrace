@@ -1,12 +1,12 @@
 use core::future::Future;
 
 use super::derivation::{
-    alert_days_from_state, derive, derive_days, overall, public_updates, redacted,
-    service_days_from_points, shown,
+    alert_days_from_state, derive, derive_days, manual_days_from_events, overall, public_updates,
+    redacted, service_days_from_points, shown,
 };
 use super::entities::{
-    Link, Observed, PublicComponent, PublicIncident, PublicPostmortem, PublicView, ServiceHistory,
-    ServiceLoad, StatusPage,
+    Component, Link, Observed, PublicComponent, PublicIncident, PublicPostmortem, PublicView,
+    ServiceHistory, ServiceLoad, StatusPage,
 };
 use super::errors::StatusError;
 use super::ports::StatusPages;
@@ -190,12 +190,19 @@ where
             .collect();
         let links: Vec<&Link> = components.iter().map(|component| &component.link).collect();
         let now_ms = now.get().saturating_mul(MILLIS_PER_SECOND);
-        let observed = self.observe(page, &links, now).await?;
+        let observed = self.observe(page, &components, &links, now).await?;
         let shown_components: Vec<PublicComponent> = components
             .iter()
             .map(|component| {
                 let status = derive(&component.link, component.manual_status, &observed);
-                let days = derive_days(&component.link, status, &observed, page.created_ms, now_ms);
+                let days = derive_days(
+                    component.id,
+                    &component.link,
+                    status,
+                    &observed,
+                    page.created_ms,
+                    now_ms,
+                );
                 PublicComponent {
                     name: component.name.clone(),
                     status,
@@ -323,13 +330,53 @@ where
     async fn observe(
         &self,
         page: &StatusPage,
+        components: &[Component],
         links: &[&Link],
         now: UnixSeconds,
     ) -> Result<Observed, StatusError> {
         let mut observed = Observed::default();
+        self.observe_manual(page, components, now, &mut observed)
+            .await?;
         self.observe_alerts(page, links, now, &mut observed).await?;
         self.observe_services(page, links, now, &mut observed).await;
         Ok(observed)
+    }
+
+    async fn observe_manual(
+        &self,
+        page: &StatusPage,
+        components: &[Component],
+        now: UnixSeconds,
+        observed: &mut Observed,
+    ) -> Result<(), StatusError> {
+        let manuals: Vec<&Component> = components
+            .iter()
+            .filter(|component| matches!(component.link, Link::Manual))
+            .collect();
+        if manuals.is_empty() {
+            return Ok(());
+        }
+        let now_ms = now.get().saturating_mul(MILLIS_PER_SECOND);
+        let from_ms = now_ms.saturating_sub((UPTIME_DAYS as u64) * DAY_MS);
+        let events = self
+            .pages
+            .component_events(page.org, page.id, from_ms)
+            .await?;
+        for component in manuals {
+            let own: Vec<_> = events
+                .iter()
+                .copied()
+                .filter(|event| event.component == component.id)
+                .collect();
+            let days = manual_days_from_events(
+                component.manual_status.unwrap_or_default(),
+                page.created_ms,
+                &own,
+                now_ms,
+            );
+            observed.manual_days.push((component.id, days));
+        }
+        Ok(())
     }
 
     async fn observe_alerts(

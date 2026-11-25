@@ -124,7 +124,7 @@ where
             status_subscribers,
             audit,
         )
-        .add_component(who, org, page, draft)
+        .add_component(who, org, page, draft, self.clock.now())
         .await
     }
 
@@ -145,7 +145,7 @@ where
             status_subscribers,
             audit,
         )
-        .change_component(who, org, page, id, patch)
+        .change_component(who, org, page, id, patch, self.clock.now())
         .await
     }
 

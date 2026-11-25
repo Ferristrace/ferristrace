@@ -89,6 +89,13 @@ pub struct ComponentPatch {
     pub public: Option<bool>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ComponentEvent {
+    pub component: ComponentId,
+    pub status: ComponentStatus,
+    pub at_ms: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sheet {
     pub org_slug: Slug,
@@ -133,6 +140,7 @@ pub struct Observed {
     pub silent_services: Vec<(Box<str>, Option<ProjectId>)>,
     pub alert_days: Vec<(RuleId, Vec<Option<ComponentStatus>>)>,
     pub service_days: Vec<ServiceHistory>,
+    pub manual_days: Vec<(ComponentId, Vec<Option<ComponentStatus>>)>,
 }
 
 impl Observed {
@@ -171,6 +179,13 @@ impl Observed {
             .iter()
             .find(|history| &*history.name == name.as_str() && history.project == project)
             .map(|history| history.days.as_slice())
+    }
+
+    pub fn manual_days(&self, id: ComponentId) -> Option<&[Option<ComponentStatus>]> {
+        self.manual_days
+            .iter()
+            .find(|(held, _)| *held == id)
+            .map(|(_, days)| days.as_slice())
     }
 }
 
