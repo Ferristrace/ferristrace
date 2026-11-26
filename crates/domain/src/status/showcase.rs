@@ -10,7 +10,10 @@ use super::entities::{
 };
 use super::errors::StatusError;
 use super::ports::StatusPages;
-use super::value_objects::{SERVICE_WINDOW_SECS, Slug, StatusPageId, UPTIME_DAYS};
+use super::value_objects::{
+    SERVICE_SEEN_SECS, SERVICE_SILENT_SECS, SERVICE_WINDOW_SECS, ServiceName, Slug, StatusPageId,
+    UPTIME_DAYS,
+};
 use crate::access::{ApiKeys, Reader, Readers};
 use crate::alerts::{AlertEvent, AlertEvents, AlertRules, AlertStates, AlertStatus, RuleId};
 use crate::catalogue::ProjectId;
@@ -439,6 +442,9 @@ where
             .collect();
         service_links.sort_unstable();
         service_links.dedup();
+        let seen_since = to.saturating_sub(SERVICE_SEEN_SECS * NANOS_PER_SECOND);
+        let silent_from = to.saturating_sub(SERVICE_SILENT_SECS * NANOS_PER_SECOND);
+        let silent_window = Window::new(silent_from, to).ok();
         for (name, project) in service_links {
             let mut filter = ServiceFilter::over(history_window);
             filter.project = project;
@@ -453,6 +459,30 @@ where
                 project,
                 days: service_days_from_points(&series.points, history_from),
             });
+            let active_now = ServiceName::try_from(name)
+                .ok()
+                .and_then(|svc| observed.load(&svc, project))
+                .is_some_and(|load| load.requests > 0);
+            let seen_today = series.points.iter().any(|point| {
+                point.requests > 0
+                    && point
+                        .start_unix_nanos
+                        .saturating_add(series.step_nanos.max(1))
+                        > seen_since
+            });
+            if !active_now
+                && seen_today
+                && let Some(window) = silent_window
+            {
+                let mut recent_filter = ServiceFilter::over(window);
+                recent_filter.project = project;
+                if let Ok(recent) = spans.series(page.org, Some(name), &recent_filter).await
+                    && recent.requests == 0
+                    && recent.points.iter().all(|point| point.requests == 0)
+                {
+                    observed.silent_services.push((name.into(), project));
+                }
+            }
         }
     }
 }

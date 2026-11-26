@@ -130,6 +130,7 @@ pub struct ServiceHistory {
 pub struct Observed {
     pub firing: Vec<(RuleId, AlertSeverity)>,
     pub services: Vec<ServiceLoad>,
+    pub silent_services: Vec<(Box<str>, Option<ProjectId>)>,
     pub alert_days: Vec<(RuleId, Vec<Option<ComponentStatus>>)>,
     pub service_days: Vec<ServiceHistory>,
 }
@@ -146,6 +147,12 @@ impl Observed {
         self.services
             .iter()
             .find(|load| &*load.name == name.as_str() && load.project == project)
+    }
+
+    pub fn is_silent(&self, name: &ServiceName, project: Option<ProjectId>) -> bool {
+        self.silent_services
+            .iter()
+            .any(|(held, held_project)| &**held == name.as_str() && *held_project == project)
     }
 
     pub fn alert_days(&self, rule: RuleId) -> Option<&[Option<ComponentStatus>]> {
