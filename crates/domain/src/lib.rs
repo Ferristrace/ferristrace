@@ -178,15 +178,16 @@ pub use releases::{
 pub use secret::{KEY_PREFIX, SecretHash, SessionToken};
 pub use status::{
     ANNOUNCE_TICK_SECS, Accent, AlertHistory, Announcement, BadStatusPage, Bulletin,
-    CONFIRM_LIFETIME_SECS, ClaimedLetter, Component, ComponentDraft, ComponentId, ComponentName,
-    ComponentPatch, ComponentStatus, DEGRADED_ERROR_PERCENT, DOWN_ERROR_PERCENT, Herald, Heralded,
-    Intro, Invite, Landing, Letter, LetterBody, LetterId, Link, LinkClaim, LinkKey, LinkNotice,
-    LinkRefused, Listed, MAX_COMPONENTS, Mode, Observed, PUBLIC_WINDOW_DAYS, PageDraft, PageName,
-    PagePatch, PublicComponent, PublicIncident, PublicPostmortem, PublicUpdate, PublicView,
-    Purpose, RESEND_AFTER_SECS, SERVICE_WINDOW_SECS, Saved, ServiceHistory, ServiceLoad,
-    ServiceName, Sheet, Showcase, Slug, StatusDesk, StatusError, StatusMailer, StatusOutbox,
-    StatusPage, StatusPageId, StatusPages, StatusSubscribers, Subscriber, SubscriberId,
-    Subscriptions, Theme, UNSUBSCRIBE_LIFETIME_SECS, UPTIME_DAYS, UpdateKind,
+    CONFIRM_LIFETIME_SECS, ClaimedLetter, Component, ComponentDraft, ComponentEvent, ComponentId,
+    ComponentName, ComponentPatch, ComponentStatus, DEGRADED_ERROR_PERCENT, DOWN_ERROR_PERCENT,
+    Herald, Heralded, Intro, Invite, Landing, Letter, LetterBody, LetterId, Link, LinkClaim,
+    LinkKey, LinkNotice, LinkRefused, Listed, MAX_COMPONENTS, Mode, Observed, PUBLIC_WINDOW_DAYS,
+    PageDraft, PageName, PagePatch, PublicComponent, PublicIncident, PublicPostmortem,
+    PublicUpdate, PublicView, Purpose, RESEND_AFTER_SECS, SERVICE_WINDOW_SECS, Saved,
+    ServiceHistory, ServiceLoad, ServiceName, Sheet, Showcase, Slug, StatusDesk, StatusError,
+    StatusMailer, StatusOutbox, StatusPage, StatusPageId, StatusPages, StatusSubscribers,
+    Subscriber, SubscriberId, Subscriptions, Theme, UNSUBSCRIBE_LIFETIME_SECS, UPTIME_DAYS,
+    UpdateKind, manual_days_from_events,
 };
 pub use store::StoreError;
 pub use subscriptions::{

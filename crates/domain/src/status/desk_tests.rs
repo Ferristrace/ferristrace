@@ -317,7 +317,7 @@ async fn components_are_added_in_order_reordered_changed_and_removed() {
     let desk = world.desk(OrgRole::Admin);
 
     let website = desk
-        .add_component(&session(), an_org(MINE), page, &manual("Website"))
+        .add_component(&session(), an_org(MINE), page, &manual("Website"), at(1))
         .await
         .expect("added");
     let checkout = desk
@@ -332,6 +332,7 @@ async fn components_are_added_in_order_reordered_changed_and_removed() {
                 },
                 ..manual("Checkout")
             },
+            at(2),
         )
         .await
         .expect("added");
@@ -344,6 +345,7 @@ async fn components_are_added_in_order_reordered_changed_and_removed() {
                 link: Link::Alert(rule),
                 ..manual("Payments")
             },
+            at(3),
         )
         .await
         .expect("added");
@@ -379,12 +381,25 @@ async fn components_are_added_in_order_reordered_changed_and_removed() {
                 public: Some(false),
                 ..ComponentPatch::default()
             },
+            at(4),
         )
         .await
         .expect("changed");
     assert_eq!(changed.manual_status, Some(ComponentStatus::Degraded));
     assert!(!changed.public);
     assert_eq!(changed.position, 1);
+    assert_eq!(
+        world
+            .status
+            .component_events()
+            .iter()
+            .map(|event| (event.component, event.status, event.at_ms))
+            .collect::<Vec<_>>(),
+        vec![
+            (website.id, ComponentStatus::Operational, (NOW + 1) * 1_000),
+            (website.id, ComponentStatus::Degraded, (NOW + 4) * 1_000),
+        ]
+    );
     desk.remove_component(&session(), an_org(MINE), page, checkout.id)
         .await
         .expect("removed");
@@ -431,6 +446,7 @@ async fn a_link_names_an_alert_and_a_project_of_the_organisation() {
                 link: Link::Alert(theirs),
                 ..manual("Payments")
             },
+            at(1),
         )
         .await;
     let foreign_project = desk
@@ -445,6 +461,7 @@ async fn a_link_names_an_alert_and_a_project_of_the_organisation() {
                 },
                 ..manual("Checkout")
             },
+            at(1),
         )
         .await;
 
@@ -458,11 +475,11 @@ async fn an_order_names_every_component_exactly_once() {
     let page = world.a_page("acme").await;
     let desk = world.desk(OrgRole::Admin);
     let one = desk
-        .add_component(&session(), an_org(MINE), page, &manual("One"))
+        .add_component(&session(), an_org(MINE), page, &manual("One"), at(1))
         .await
         .expect("added");
     let two = desk
-        .add_component(&session(), an_org(MINE), page, &manual("Two"))
+        .add_component(&session(), an_org(MINE), page, &manual("Two"), at(2))
         .await
         .expect("added");
 
@@ -486,7 +503,7 @@ async fn deleting_a_page_is_audited_and_takes_its_components() {
     let world = World::new();
     let page = world.a_page("acme").await;
     let desk = world.desk(OrgRole::Admin);
-    desk.add_component(&session(), an_org(MINE), page, &manual("One"))
+    desk.add_component(&session(), an_org(MINE), page, &manual("One"), at(1))
         .await
         .expect("added");
 

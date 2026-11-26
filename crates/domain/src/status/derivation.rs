@@ -1,7 +1,7 @@
-use super::entities::{Link, Observed, PublicComponent, PublicUpdate};
+use super::entities::{ComponentEvent, Link, Observed, PublicComponent, PublicUpdate};
 use super::value_objects::{
-    ComponentStatus, DEGRADED_ERROR_PERCENT, DOWN_ERROR_PERCENT, PUBLIC_WINDOW_DAYS, UPTIME_DAYS,
-    UpdateKind,
+    ComponentId, ComponentStatus, DEGRADED_ERROR_PERCENT, DOWN_ERROR_PERCENT, PUBLIC_WINDOW_DAYS,
+    UPTIME_DAYS, UpdateKind,
 };
 use crate::alerts::{AlertEvent, AlertSeverity, AlertStatus};
 use crate::explore::ServicePoint;
@@ -33,6 +33,7 @@ pub fn derive(
 }
 
 pub fn derive_days(
+    id: ComponentId,
     link: &Link,
     current: ComponentStatus,
     observed: &Observed,
@@ -41,12 +42,17 @@ pub fn derive_days(
 ) -> Vec<Option<ComponentStatus>> {
     let from_ms = now_ms.saturating_sub((UPTIME_DAYS as u64) * DAY_MS);
     let mut days = match link {
-        Link::Manual => (0..UPTIME_DAYS)
-            .map(|idx| {
-                let day_end = from_ms.saturating_add(((idx + 1) as u64) * DAY_MS);
-                (day_end > since_ms).then_some(ComponentStatus::Operational)
-            })
-            .collect(),
+        Link::Manual => observed.manual_days(id).map_or_else(
+            || {
+                (0..UPTIME_DAYS)
+                    .map(|idx| {
+                        let day_end = from_ms.saturating_add(((idx + 1) as u64) * DAY_MS);
+                        (day_end > since_ms).then_some(ComponentStatus::Operational)
+                    })
+                    .collect()
+            },
+            <[Option<ComponentStatus>]>::to_vec,
+        ),
         Link::Alert(rule) => observed.alert_days(*rule).map_or_else(
             || vec![None; UPTIME_DAYS],
             <[Option<ComponentStatus>]>::to_vec,
@@ -76,6 +82,57 @@ pub fn derive_days(
                 *today = Some(today.map_or(current, |prev| prev.max(current)));
             }
         }
+    }
+    days
+}
+
+pub fn manual_days_from_events(
+    current: ComponentStatus,
+    since_ms: u64,
+    events: &[ComponentEvent],
+    now_ms: u64,
+) -> Vec<Option<ComponentStatus>> {
+    let from_ms = now_ms.saturating_sub((UPTIME_DAYS as u64) * DAY_MS);
+    if events.is_empty() {
+        let mut days: Vec<Option<ComponentStatus>> = (0..UPTIME_DAYS)
+            .map(|idx| {
+                let day_end = from_ms.saturating_add(((idx + 1) as u64) * DAY_MS);
+                (day_end > since_ms).then_some(ComponentStatus::Operational)
+            })
+            .collect();
+        if let Some(today) = days.last_mut() {
+            *today = Some(today.map_or(current, |prev| prev.max(current)));
+        }
+        return days;
+    }
+    let active_since = events[0].at_ms.max(since_ms);
+    let mut days = Vec::with_capacity(UPTIME_DAYS);
+    for idx in 0..UPTIME_DAYS {
+        let day_start = from_ms.saturating_add((idx as u64) * DAY_MS);
+        let day_end = day_start.saturating_add(DAY_MS);
+        if day_end <= active_since {
+            days.push(None);
+            continue;
+        }
+        let effective_start = day_start.max(active_since);
+        let mut worst = events
+            .iter()
+            .rfind(|event| event.at_ms <= effective_start)
+            .map_or(ComponentStatus::Operational, |event| event.status);
+        for event in events {
+            if event.at_ms > effective_start && event.at_ms < day_end {
+                worst = worst.max(event.status);
+            }
+        }
+        if idx == UPTIME_DAYS - 1 {
+            for event in events {
+                if event.at_ms >= day_end {
+                    worst = worst.max(event.status);
+                }
+            }
+            worst = worst.max(current);
+        }
+        days.push(Some(worst));
     }
     days
 }

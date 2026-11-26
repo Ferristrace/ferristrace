@@ -1,6 +1,6 @@
 use super::entities::{
-    Component, ComponentDraft, ComponentPatch, Link, Listed, PageDraft, PagePatch, Saved, Sheet,
-    StatusPage,
+    Component, ComponentDraft, ComponentEvent, ComponentPatch, Link, Listed, PageDraft, PagePatch,
+    Saved, Sheet, StatusPage,
 };
 use super::errors::StatusError;
 use super::ports::{StatusPages, StatusSubscribers};
@@ -210,6 +210,7 @@ where
         org: TenantId,
         page: StatusPageId,
         draft: &ComponentDraft,
+        now: UnixSeconds,
     ) -> Result<Component, StatusError> {
         let by = self.admin(who, org).await?;
         self.page(org, page).await?;
@@ -237,6 +238,15 @@ where
         if !self.pages.add_component(org, &component).await? {
             return Err(StatusError::NoSuchPage);
         }
+        if matches!(component.link, Link::Manual) {
+            self.pages
+                .record_component_event(&ComponentEvent {
+                    component: component.id,
+                    status: component.manual_status.unwrap_or_default(),
+                    at_ms: millis(now),
+                })
+                .await?;
+        }
         self.note_component(&component, org, by, Action::StatusComponentCreated)
             .await?;
         Ok(component)
@@ -249,6 +259,7 @@ where
         page: StatusPageId,
         id: ComponentId,
         patch: ComponentPatch,
+        now: UnixSeconds,
     ) -> Result<Component, StatusError> {
         let by = self.admin(who, org).await?;
         let held = self.component(org, page, id).await?;
@@ -267,6 +278,18 @@ where
         }
         if !self.pages.keep_component(org, &changed).await? {
             return Err(StatusError::NoSuchComponent);
+        }
+        let became_manual = !matches!(held.link, Link::Manual);
+        let status_moved =
+            changed.manual_status.unwrap_or_default() != held.manual_status.unwrap_or_default();
+        if matches!(changed.link, Link::Manual) && (became_manual || status_moved) {
+            self.pages
+                .record_component_event(&ComponentEvent {
+                    component: changed.id,
+                    status: changed.manual_status.unwrap_or_default(),
+                    at_ms: millis(now),
+                })
+                .await?;
         }
         self.note_component(&changed, org, by, Action::StatusComponentUpdated)
             .await?;

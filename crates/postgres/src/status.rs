@@ -1,10 +1,10 @@
 use ferristrace_application::repository;
 use ferristrace_domain::{
-    Accent, Announcement, Bulletin, ClaimedLetter, Component, ComponentId, ComponentName,
-    ComponentStatus, DeliveryStatus, Email, IncidentStatus, IncidentTitle, Intro, Invite,
-    LetterBody, LetterId, Link, Mode, PageName, ProjectId, RuleId, Saved, ServiceName, Settlement,
-    Slug, StatusOutbox, StatusPage, StatusPageId, StatusPages, StatusSubscribers, StoreError,
-    Subscriber, SubscriberId, TenantId, Theme, UpdateKind,
+    Accent, Announcement, Bulletin, ClaimedLetter, Component, ComponentEvent, ComponentId,
+    ComponentName, ComponentStatus, DeliveryStatus, Email, IncidentStatus, IncidentTitle, Intro,
+    Invite, LetterBody, LetterId, Link, Mode, PageName, ProjectId, RuleId, Saved, ServiceName,
+    Settlement, Slug, StatusOutbox, StatusPage, StatusPageId, StatusPages, StatusSubscribers,
+    StoreError, Subscriber, SubscriberId, TenantId, Theme, UpdateKind,
 };
 use sqlx::Row;
 use sqlx::postgres::PgRow;
@@ -428,6 +428,59 @@ impl StatusPages for PostgresStatusPages {
         .await
         .map_err(unreachable("remove a status component"))?;
         Ok(done.rows_affected() == 1)
+    }
+
+    async fn record_component_event(&self, event: &ComponentEvent) -> Result<(), StoreError> {
+        let mut tx = self.tx.lock().await;
+        sqlx::query(
+            "INSERT INTO status_component_events (component_id, status, at_ms) \
+             VALUES ($1, $2, $3)",
+        )
+        .bind(event.component.as_uuid())
+        .bind(event.status.as_str())
+        .bind(signed(event.at_ms))
+        .execute(&mut **tx)
+        .await
+        .map_err(unreachable("record a status component event"))?;
+        Ok(())
+    }
+
+    async fn component_events(
+        &self,
+        org: TenantId,
+        page: StatusPageId,
+        from_ms: u64,
+    ) -> Result<Vec<ComponentEvent>, StoreError> {
+        let mut tx = self.tx.lock().await;
+        let rows = sqlx::query(
+            "(SELECT DISTINCT ON (e.component_id) e.component_id, e.status, e.at_ms, e.seq \
+              FROM status_component_events e \
+              JOIN status_components c ON c.id = e.component_id \
+              WHERE c.org_id = $1 AND c.page_id = $2 AND e.at_ms <= $3 \
+              ORDER BY e.component_id, e.at_ms DESC, e.seq DESC) \
+             UNION ALL \
+             (SELECT e.component_id, e.status, e.at_ms, e.seq \
+              FROM status_component_events e \
+              JOIN status_components c ON c.id = e.component_id \
+              WHERE c.org_id = $1 AND c.page_id = $2 AND e.at_ms > $3) \
+             ORDER BY at_ms, seq",
+        )
+        .bind(org.as_uuid())
+        .bind(page.as_uuid())
+        .bind(signed(from_ms))
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unreachable("read the status component events"))?;
+        rows.iter()
+            .map(|row| {
+                Ok(ComponentEvent {
+                    component: ComponentId::new(row.get("component_id")),
+                    status: ComponentStatus::parse(row.get::<&str, _>("status"))
+                        .ok_or_else(|| refused("component_event_status"))?,
+                    at_ms: unsigned(row.get("at_ms")),
+                })
+            })
+            .collect()
     }
 }
 
