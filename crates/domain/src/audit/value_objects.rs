@@ -136,6 +136,10 @@ pub enum Action {
     StatusComponentCreated,
     StatusComponentUpdated,
     StatusComponentDeleted,
+    StatusMaintenanceScheduled,
+    StatusMaintenanceUpdated,
+    StatusMaintenanceEnded,
+    StatusMaintenanceCancelled,
     PriceCreated,
     PriceDeleted,
     AgentRegistered,
@@ -147,7 +151,7 @@ pub enum Action {
 }
 
 impl Action {
-    pub const ALL: [Self; 66] = [
+    pub const ALL: [Self; 70] = [
         Self::OrgFounded,
         Self::OrgRenamed,
         Self::OrgLogoSet,
@@ -206,6 +210,10 @@ impl Action {
         Self::StatusComponentCreated,
         Self::StatusComponentUpdated,
         Self::StatusComponentDeleted,
+        Self::StatusMaintenanceScheduled,
+        Self::StatusMaintenanceUpdated,
+        Self::StatusMaintenanceEnded,
+        Self::StatusMaintenanceCancelled,
         Self::PriceCreated,
         Self::PriceDeleted,
         Self::AgentRegistered,
@@ -276,6 +284,10 @@ impl Action {
             Self::StatusComponentCreated => "status_component.created",
             Self::StatusComponentUpdated => "status_component.updated",
             Self::StatusComponentDeleted => "status_component.deleted",
+            Self::StatusMaintenanceScheduled => "status_maintenance.scheduled",
+            Self::StatusMaintenanceUpdated => "status_maintenance.updated",
+            Self::StatusMaintenanceEnded => "status_maintenance.ended",
+            Self::StatusMaintenanceCancelled => "status_maintenance.cancelled",
             Self::PriceCreated => "price.created",
             Self::PriceDeleted => "price.deleted",
             Self::AgentRegistered => "agent.registered",
@@ -315,13 +327,14 @@ pub enum TargetKind {
     Postmortem,
     StatusPage,
     StatusComponent,
+    StatusMaintenance,
     Price,
     Agent,
     Dashboard,
 }
 
 impl TargetKind {
-    const ALL: [Self; 18] = [
+    const ALL: [Self; 19] = [
         Self::Org,
         Self::Project,
         Self::Team,
@@ -337,6 +350,7 @@ impl TargetKind {
         Self::Postmortem,
         Self::StatusPage,
         Self::StatusComponent,
+        Self::StatusMaintenance,
         Self::Price,
         Self::Agent,
         Self::Dashboard,
@@ -359,6 +373,7 @@ impl TargetKind {
             Self::Postmortem => "postmortem",
             Self::StatusPage => "status_page",
             Self::StatusComponent => "status_component",
+            Self::StatusMaintenance => "status_maintenance",
             Self::Price => "price",
             Self::Agent => "agent",
             Self::Dashboard => "dashboard",

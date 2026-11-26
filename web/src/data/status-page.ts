@@ -58,6 +58,42 @@ export type PublicIncident = {
   postmortem_url: string | null
 }
 
+export type ShownStatus = ComponentStatus | 'maintenance'
+
+export type MaintenancePhase = 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+
+export type PublicMaintenance = {
+  id: string
+  title: string
+  details: string | null
+  starts_ms: number
+  ends_ms: number
+  ended_ms: number | null
+  phase: MaintenancePhase
+  components: string[]
+}
+
+export type Maintenance = {
+  id: string
+  title: string
+  details: string | null
+  starts_ms: number
+  ends_ms: number
+  phase: MaintenancePhase
+  closed_ms: number | null
+  components: string[]
+  created_ms: number
+  updated_ms: number
+}
+
+export type MaintenanceTarget = { id: string; name: string; page_id: string; page_name: string }
+
+export type MaintenanceList = { maintenances: Maintenance[]; components: MaintenanceTarget[] }
+
+export type MaintenanceDraft = { title: string; details?: string | null; starts_ms: number; ends_ms: number; components: string[] }
+
+export type MaintenanceChange = Partial<MaintenanceDraft>
+
 export type PublicStatus = {
   page: {
     org_slug?: string
@@ -68,9 +104,10 @@ export type PublicStatus = {
     hide_from_search: boolean
     updated_ms?: number
   }
-  overall: ComponentStatus
-  components: { name: string; status: ComponentStatus; days?: (ComponentStatus | null)[] }[]
+  overall: ShownStatus
+  components: { name: string; status: ShownStatus; days?: (ShownStatus | null)[] }[]
   incidents: PublicIncident[]
+  maintenances?: PublicMaintenance[]
 }
 
 export type PublicPostmortem = { title: string; body: string; published_ms: number }
@@ -229,10 +266,130 @@ export function useSubscribe(slug: string | undefined, org?: string) {
   })
 }
 
-export const STATUS_WORDS: Record<ComponentStatus, string> = { operational: 'Operational', degraded: 'Degraded', down: 'Down' }
+export const STATUS_WORDS: Record<ShownStatus, string> = {
+  operational: 'Operational',
+  maintenance: 'Under maintenance',
+  degraded: 'Degraded',
+  down: 'Down',
+}
 
-export const OVERALL_WORDS: Record<ComponentStatus, string> = {
+export const OVERALL_WORDS: Record<ShownStatus, string> = {
   operational: 'All systems operational',
+  maintenance: 'Maintenance in progress',
   degraded: 'Some systems are degraded',
   down: 'Some systems are down',
 }
+
+export const PHASE_WORDS: Record<MaintenancePhase, string> = {
+  scheduled: 'Scheduled',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+}
+
+const DAY_SCORE: Record<ShownStatus, number> = { operational: 1, maintenance: 1, degraded: 0.5, down: 0 }
+
+export const uptimeLabel = (days: (ShownStatus | null)[]): string => {
+  const known = days.filter((day): day is ShownStatus => day !== null)
+  if (known.length === 0) return '— uptime'
+  const pct = (known.reduce((acc, status) => acc + DAY_SCORE[status], 0) / known.length) * 100
+  return `${pct === 100 ? '100%' : `${pct.toFixed(2).replace(/\.?0+$/, '')}%`} uptime`
+}
+
+export type PublicAgenda = { running: PublicMaintenance[]; upcoming: PublicMaintenance[]; recent: PublicMaintenance[] }
+
+export const publicAgenda = (maintenances: PublicMaintenance[] | undefined): PublicAgenda => {
+  const all = maintenances ?? []
+  return {
+    running: all.filter((one) => one.phase === 'in_progress').sort((a, b) => a.ends_ms - b.ends_ms),
+    upcoming: all.filter((one) => one.phase === 'scheduled').sort((a, b) => a.starts_ms - b.starts_ms),
+    recent: all.filter((one) => one.phase === 'completed').sort((a, b) => (b.ended_ms ?? b.ends_ms) - (a.ended_ms ?? a.ends_ms)),
+  }
+}
+
+export type Agenda = { running: Maintenance[]; upcoming: Maintenance[]; past: Maintenance[] }
+
+export const agendaOf = (maintenances: Maintenance[] | undefined): Agenda => {
+  const all = maintenances ?? []
+  return {
+    running: all.filter((one) => one.phase === 'in_progress').sort((a, b) => a.ends_ms - b.ends_ms),
+    upcoming: all.filter((one) => one.phase === 'scheduled').sort((a, b) => a.starts_ms - b.starts_ms),
+    past: all.filter((one) => one.phase === 'completed' || one.phase === 'cancelled').sort((a, b) => b.ends_ms - a.ends_ms),
+  }
+}
+
+const two = (n: number) => String(n).padStart(2, '0')
+
+export const toLocalInput = (ms: number): string => {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}T${two(d.getHours())}:${two(d.getMinutes())}`
+}
+
+export const fromLocalInput = (value: string): number | null => {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null
+  const ms = new Date(value).getTime()
+  return Number.isNaN(ms) ? null : ms
+}
+
+export const MAX_MAINTENANCE_MS = 7 * 86_400_000
+
+export const windowProblem = (starts: number | null, ends: number | null, nowMs: number): string | null =>
+  starts === null || ends === null
+    ? 'Choose a start and an end.'
+    : ends <= starts
+      ? 'The end must be after the start.'
+      : ends - starts > MAX_MAINTENANCE_MS
+        ? 'A maintenance lasts at most 7 days.'
+        : ends <= nowMs
+          ? 'The end must be in the future.'
+          : null
+
+export const groupByPage = (components: MaintenanceTarget[]): { page_id: string; page_name: string; components: MaintenanceTarget[] }[] => {
+  const groups: { page_id: string; page_name: string; components: MaintenanceTarget[] }[] = []
+  for (const component of components) {
+    const group = groups.find((one) => one.page_id === component.page_id)
+    if (group) group.components.push(component)
+    else groups.push({ page_id: component.page_id, page_name: component.page_name, components: [component] })
+  }
+  return groups
+}
+
+const maintenanceKey = (org: string | undefined) => ['org', org, 'status-maintenances']
+
+export function useMaintenances() {
+  const { active } = useOrganisations()
+  const { data, isPending, error } = useQuery({
+    queryKey: maintenanceKey(active?.org),
+    enabled: Boolean(active),
+    staleTime: FRESH_MS,
+    retry: retryable,
+    queryFn: async () => json<MaintenanceList>(await get(`/api/orgs/${active?.org}/status-maintenances`)),
+  })
+  return { list: data, pending: isPending, failed: error }
+}
+
+function useMaintaining<T>(send: (org: string, asked: T) => Promise<Maintenance>) {
+  const { active } = useOrganisations()
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async (asked: T) => send(active?.org ?? '', asked),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: maintenanceKey(active?.org) })
+      void client.invalidateQueries({ queryKey: key(active?.org) })
+    },
+  })
+}
+
+const maintenanceAt = (org: string, id?: string) => `/api/orgs/${org}/status-maintenances${id ? `/${id}` : ''}`
+
+export const useScheduleMaintenance = () =>
+  useMaintaining<MaintenanceDraft>(async (org, asked) => json(await post(maintenanceAt(org), asked)))
+
+export const useChangeMaintenance = () =>
+  useMaintaining<{ id: string; change: MaintenanceChange }>(async (org, asked) => json(await patch(maintenanceAt(org, asked.id), asked.change)))
+
+export const useEndMaintenance = () =>
+  useMaintaining<string>(async (org, id) => json(await post(`${maintenanceAt(org, id)}/end`, {})))
+
+export const useCancelMaintenance = () =>
+  useMaintaining<string>(async (org, id) => json(await post(`${maintenanceAt(org, id)}/cancel`, {})))

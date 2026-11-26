@@ -1,9 +1,10 @@
 use core::future::Future;
 
 use ferristrace_domain::{
-    Clock, ComponentDraft, ComponentId, ComponentPatch, Email, Herald, Heralded, IncidentId,
-    Landing, Listed, PageDraft, PagePatch, PublicPostmortem, PublicView, Reader, Readers, Sheet,
-    Showcase, Slug, StatusDesk, StatusError, StatusPageId, Subscriptions, TenantId, Whoami,
+    Agenda, Clock, ComponentDraft, ComponentId, ComponentPatch, Email, Herald, Heralded,
+    IncidentId, Landing, Listed, Maintenance, MaintenanceDraft, MaintenanceId, MaintenancePatch,
+    PageDraft, PagePatch, Planner, PublicPostmortem, PublicView, Reader, Readers, Sheet, Showcase,
+    Slug, StatusDesk, StatusError, StatusPageId, Subscriptions, TenantId, Whoami,
 };
 
 use crate::registry::StatusRepos;
@@ -186,6 +187,90 @@ where
             audit,
         )
         .order(who, org, page, ids)
+        .await
+    }
+
+    pub fn status_now_ms(&self) -> u64 {
+        self.clock.now().get().saturating_mul(1_000)
+    }
+
+    #[transactional(sessions, memberships, api_keys, status_pages, audit, unavailable = StatusError::StoreUnreachable)]
+    pub async fn status_maintenances(
+        &self,
+        who: &Reader,
+        org: TenantId,
+    ) -> Result<Agenda, StatusError> {
+        Planner::new(
+            Readers::new(Whoami::new(sessions, memberships), api_keys),
+            status_pages,
+            audit,
+        )
+        .list(who, org, self.clock.now())
+        .await
+    }
+
+    #[transactional(sessions, memberships, api_keys, status_pages, audit, unavailable = StatusError::StoreUnreachable)]
+    pub async fn schedule_status_maintenance(
+        &self,
+        who: &Reader,
+        org: TenantId,
+        draft: &MaintenanceDraft,
+    ) -> Result<Maintenance, StatusError> {
+        Planner::new(
+            Readers::new(Whoami::new(sessions, memberships), api_keys),
+            status_pages,
+            audit,
+        )
+        .schedule(who, org, draft, self.clock.now())
+        .await
+    }
+
+    #[transactional(sessions, memberships, api_keys, status_pages, audit, unavailable = StatusError::StoreUnreachable)]
+    pub async fn change_status_maintenance(
+        &self,
+        who: &Reader,
+        org: TenantId,
+        id: MaintenanceId,
+        patch: MaintenancePatch,
+    ) -> Result<Maintenance, StatusError> {
+        Planner::new(
+            Readers::new(Whoami::new(sessions, memberships), api_keys),
+            status_pages,
+            audit,
+        )
+        .change(who, org, id, patch, self.clock.now())
+        .await
+    }
+
+    #[transactional(sessions, memberships, api_keys, status_pages, audit, unavailable = StatusError::StoreUnreachable)]
+    pub async fn end_status_maintenance(
+        &self,
+        who: &Reader,
+        org: TenantId,
+        id: MaintenanceId,
+    ) -> Result<Maintenance, StatusError> {
+        Planner::new(
+            Readers::new(Whoami::new(sessions, memberships), api_keys),
+            status_pages,
+            audit,
+        )
+        .end(who, org, id, self.clock.now())
+        .await
+    }
+
+    #[transactional(sessions, memberships, api_keys, status_pages, audit, unavailable = StatusError::StoreUnreachable)]
+    pub async fn cancel_status_maintenance(
+        &self,
+        who: &Reader,
+        org: TenantId,
+        id: MaintenanceId,
+    ) -> Result<Maintenance, StatusError> {
+        Planner::new(
+            Readers::new(Whoami::new(sessions, memberships), api_keys),
+            status_pages,
+            audit,
+        )
+        .cancel(who, org, id, self.clock.now())
         .await
     }
 

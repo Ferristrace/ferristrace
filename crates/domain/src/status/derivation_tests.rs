@@ -6,7 +6,7 @@ use super::derivation::{
 };
 use super::entities::{ComponentEvent, Link, Observed, PublicComponent, ServiceLoad};
 use super::value_objects::{
-    ComponentId, ComponentName, ComponentStatus, ServiceName, UPTIME_DAYS, UpdateKind,
+    ComponentId, ComponentName, ComponentStatus, ServiceName, ShownStatus, UPTIME_DAYS, UpdateKind,
 };
 use crate::alerts::{AlertEvent, AlertSeverity, AlertStatus, EventId, Labels, RuleId};
 use crate::catalogue::ProjectId;
@@ -177,7 +177,7 @@ fn a_manual_link_shows_its_manual_status_or_operational() {
     );
 }
 
-fn component(status: ComponentStatus) -> PublicComponent {
+fn component(status: ShownStatus) -> PublicComponent {
     PublicComponent {
         name: ComponentName::try_from("Checkout").expect("a name"),
         status,
@@ -187,24 +187,24 @@ fn component(status: ComponentStatus) -> PublicComponent {
 
 #[test]
 fn the_overall_status_is_the_worst_component_and_an_open_incident_degrades_it() {
-    assert_eq!(overall(&[], false), ComponentStatus::Operational);
+    assert_eq!(overall(&[], false), ShownStatus::Operational);
     assert_eq!(
         overall(
             &[
-                component(ComponentStatus::Degraded),
-                component(ComponentStatus::Operational)
+                component(ShownStatus::Degraded),
+                component(ShownStatus::Operational)
             ],
             false
         ),
-        ComponentStatus::Degraded
+        ShownStatus::Degraded
     );
     assert_eq!(
-        overall(&[component(ComponentStatus::Down)], true),
-        ComponentStatus::Down
+        overall(&[component(ShownStatus::Down)], true),
+        ShownStatus::Down
     );
     assert_eq!(
-        overall(&[component(ComponentStatus::Operational)], true),
-        ComponentStatus::Degraded
+        overall(&[component(ShownStatus::Operational)], true),
+        ShownStatus::Degraded
     );
 }
 

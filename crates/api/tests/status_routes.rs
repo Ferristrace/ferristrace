@@ -1232,3 +1232,237 @@ async fn spec_l2_8_every_status_page_write_is_audited() {
         ]
     );
 }
+
+const NOW_MS: u64 = NOW * 1_000;
+const HOUR_MS: u64 = 3_600_000;
+
+fn maintenances(org: u128) -> String {
+    format!("/api/orgs/{}/status-maintenances", id(org))
+}
+
+fn maintenance_at(maintenance: &Value) -> String {
+    format!(
+        "{}/{}",
+        maintenances(MINE),
+        maintenance["id"].as_str().expect("an id")
+    )
+}
+
+async fn a_maintenance(harness: &Harness, starts_ms: u64, components: Value) -> Value {
+    let (status, maintenance) = harness
+        .admin(
+            Method::POST,
+            &maintenances(MINE),
+            Some(json!({
+                "title": "Database upgrade",
+                "details": "Read only for a while",
+                "starts_ms": starts_ms,
+                "ends_ms": starts_ms + 2 * HOUR_MS,
+                "components": components,
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{maintenance}");
+    maintenance
+}
+
+#[tokio::test]
+async fn an_administrator_schedules_lists_changes_and_cancels_a_maintenance() {
+    let harness = Harness::new();
+    let page = harness.a_page("acme", true).await;
+    let web = harness
+        .a_component(&page, json!({"name": "Web", "link": {"kind": "manual"}}))
+        .await;
+
+    let scheduled = a_maintenance(&harness, NOW_MS + HOUR_MS, json!([web["id"]])).await;
+    let (listed, agenda) = harness.member(Method::GET, &maintenances(MINE), None).await;
+    let (changed, after) = harness
+        .admin(
+            Method::PATCH,
+            &maintenance_at(&scheduled),
+            Some(json!({"title": "Upgrade", "details": null, "components": []})),
+        )
+        .await;
+    let (half, _) = harness
+        .admin(
+            Method::PATCH,
+            &maintenance_at(&scheduled),
+            Some(json!({"starts_ms": NOW_MS + 2 * HOUR_MS})),
+        )
+        .await;
+    let (cancelled, gone) = harness
+        .admin(
+            Method::POST,
+            &format!("{}/cancel", maintenance_at(&scheduled)),
+            None,
+        )
+        .await;
+
+    assert_eq!(scheduled["phase"], "scheduled");
+    assert_eq!(scheduled["details"], "Read only for a while");
+    assert_eq!(scheduled["components"], json!([web["id"]]));
+    assert_eq!(scheduled["closed_ms"], Value::Null);
+    assert_eq!(listed, StatusCode::OK);
+    assert_eq!(agenda["maintenances"][0]["id"], scheduled["id"]);
+    assert_eq!(agenda["components"][0]["id"], web["id"]);
+    assert_eq!(agenda["components"][0]["name"], "Web");
+    assert_eq!(agenda["components"][0]["page_id"], page["id"]);
+    assert_eq!(agenda["components"][0]["page_name"], "Acme");
+    assert_eq!(changed, StatusCode::OK);
+    assert_eq!(after["title"], "Upgrade");
+    assert_eq!(after["details"], Value::Null);
+    assert_eq!(after["components"], json!([]));
+    assert_eq!(half, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(cancelled, StatusCode::OK);
+    assert_eq!(gone["phase"], "cancelled");
+    assert_eq!(gone["closed_ms"], NOW_MS);
+}
+
+#[tokio::test]
+async fn a_running_maintenance_can_end_but_not_cancel_and_a_closed_one_is_final() {
+    let harness = Harness::new();
+    let running = a_maintenance(&harness, NOW_MS - HOUR_MS, json!([])).await;
+    let path = maintenance_at(&running);
+
+    let (early, _) = harness
+        .admin(Method::POST, &format!("{path}/cancel"), None)
+        .await;
+    let (ended, done) = harness
+        .admin(Method::POST, &format!("{path}/end"), None)
+        .await;
+    let (again, _) = harness
+        .admin(Method::POST, &format!("{path}/cancel"), None)
+        .await;
+    let (changed, _) = harness
+        .admin(Method::PATCH, &path, Some(json!({"title": "Late"})))
+        .await;
+
+    assert_eq!(running["phase"], "in_progress");
+    assert_eq!(early, StatusCode::CONFLICT);
+    assert_eq!(ended, StatusCode::OK);
+    assert_eq!(done["phase"], "completed");
+    assert_eq!(done["closed_ms"], NOW_MS);
+    assert_eq!(again, StatusCode::CONFLICT);
+    assert_eq!(changed, StatusCode::CONFLICT);
+}
+
+fn asked(starts_ms: u64, ends_ms: u64, components: &Value) -> Value {
+    json!({"title": "T", "starts_ms": starts_ms, "ends_ms": ends_ms, "components": components})
+}
+
+#[tokio::test]
+async fn maintenances_are_for_administrators_and_refuse_bad_input() {
+    let harness = Harness::new();
+    let scheduled = a_maintenance(&harness, NOW_MS + HOUR_MS, json!([])).await;
+    let unknown = format!("{}/{}", maintenances(MINE), id(404));
+
+    let (member, _) = harness
+        .member(
+            Method::POST,
+            &maintenances(MINE),
+            Some(asked(NOW_MS + HOUR_MS, NOW_MS + 2 * HOUR_MS, &json!([]))),
+        )
+        .await;
+    let (member_cancels, _) = harness
+        .member(
+            Method::POST,
+            &format!("{}/cancel", maintenance_at(&scheduled)),
+            None,
+        )
+        .await;
+    let (nobody, _) = harness.public(Method::GET, &maintenances(MINE), None).await;
+    let (stranger, _) = harness
+        .admin(Method::GET, &maintenances(THEIRS), None)
+        .await;
+    let (missing, _) = harness
+        .admin(Method::POST, &format!("{unknown}/cancel"), None)
+        .await;
+    let (missing_patch, _) = harness
+        .admin(Method::PATCH, &unknown, Some(json!({"title": "x"})))
+        .await;
+    let (reversed, _) = harness
+        .admin(
+            Method::POST,
+            &maintenances(MINE),
+            Some(asked(NOW_MS + 2 * HOUR_MS, NOW_MS + HOUR_MS, &json!([]))),
+        )
+        .await;
+    let (past, _) = harness
+        .admin(
+            Method::POST,
+            &maintenances(MINE),
+            Some(asked(NOW_MS - 3 * HOUR_MS, NOW_MS - HOUR_MS, &json!([]))),
+        )
+        .await;
+    let (foreign, _) = harness
+        .admin(
+            Method::POST,
+            &maintenances(MINE),
+            Some(asked(
+                NOW_MS + HOUR_MS,
+                NOW_MS + 2 * HOUR_MS,
+                &json!([id(777)]),
+            )),
+        )
+        .await;
+    let (untitled, _) = harness
+        .admin(
+            Method::POST,
+            &maintenances(MINE),
+            Some(json!({"title": " ", "starts_ms": NOW_MS, "ends_ms": NOW_MS + HOUR_MS})),
+        )
+        .await;
+
+    assert_eq!(member, StatusCode::FORBIDDEN);
+    assert_eq!(member_cancels, StatusCode::FORBIDDEN);
+    assert_eq!(nobody, StatusCode::UNAUTHORIZED);
+    assert_eq!(stranger, StatusCode::NOT_FOUND);
+    assert_eq!(missing, StatusCode::NOT_FOUND);
+    assert_eq!(missing_patch, StatusCode::NOT_FOUND);
+    assert_eq!(reversed, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(past, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(foreign, StatusCode::NOT_FOUND);
+    assert_eq!(untitled, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn the_public_json_carries_maintenances_and_the_maintenance_status() {
+    let harness = Harness::new();
+    let page = harness.a_page("acme", true).await;
+    let web = harness
+        .a_component(&page, json!({"name": "Web", "link": {"kind": "manual"}}))
+        .await;
+    harness
+        .a_component(
+            &page,
+            json!({"name": "Hidden", "link": {"kind": "manual"}, "public": false}),
+        )
+        .await;
+    let (_, before) = harness.public(Method::GET, "/api/status/acme", None).await;
+    let running = a_maintenance(&harness, NOW_MS - HOUR_MS, json!([web["id"]])).await;
+    let upcoming = a_maintenance(&harness, NOW_MS + 24 * HOUR_MS, json!([web["id"]])).await;
+
+    let (status, view) = harness.public(Method::GET, "/api/status/acme", None).await;
+    let (previewed, preview) = harness
+        .member(Method::GET, &format!("{}/preview", page_at(&page)), None)
+        .await;
+
+    assert_eq!(before["components"][0]["status"], "operational");
+    assert_eq!(before["maintenances"], json!([]));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(view["components"][0]["name"], "Web");
+    assert_eq!(view["components"][0]["status"], "maintenance");
+    assert_eq!(view["overall"], "maintenance");
+    let listed = view["maintenances"].as_array().expect("a list");
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0]["id"], running["id"]);
+    assert_eq!(listed[0]["phase"], "in_progress");
+    assert_eq!(listed[0]["title"], "Database upgrade");
+    assert_eq!(listed[0]["ended_ms"], Value::Null);
+    assert_eq!(listed[0]["components"], json!(["Web"]));
+    assert_eq!(listed[1]["id"], upcoming["id"]);
+    assert_eq!(listed[1]["phase"], "scheduled");
+    assert!(!view.to_string().contains("Hidden"));
+    assert_eq!(previewed, StatusCode::OK);
+    assert_eq!(preview["components"][0]["status"], "maintenance");
+}

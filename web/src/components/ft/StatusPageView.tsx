@@ -1,29 +1,34 @@
-import { Bell, CircleCheck, CircleMinus, CircleX, FileText, TriangleAlert } from 'lucide-react'
+import { Bell, CircleCheck, CircleMinus, CircleX, FileText, TriangleAlert, Wrench } from 'lucide-react'
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Logo } from './Logo'
-import { OVERALL_WORDS, STATUS_WORDS, UPTIME_DAYS, type ComponentStatus, type PublicIncident, type PublicStatus } from '@/data/status-page'
+import { OVERALL_WORDS, STATUS_WORDS, UPTIME_DAYS, publicAgenda, uptimeLabel, type PublicIncident, type PublicMaintenance, type PublicStatus, type ShownStatus } from '@/data/status-page'
 import { cn } from '@/lib/utils'
 
 const DAY_MS = 86_400_000
 
-const CHIP: Record<ComponentStatus, 'success' | 'warning' | 'destructive'> = { operational: 'success', degraded: 'warning', down: 'destructive' }
+const MAINTENANCE_BADGE = 'border-sev-info-bd bg-sev-info-bg text-sev-info-fg'
 
-const BAR_COLOR: Record<ComponentStatus, string> = {
+const CHIP: Record<ShownStatus, 'success' | 'warning' | 'destructive' | 'outline'> = { operational: 'success', maintenance: 'outline', degraded: 'warning', down: 'destructive' }
+
+const BAR_COLOR: Record<ShownStatus, string> = {
   operational: 'bg-[#27c9b0]',
+  maintenance: 'bg-sev-info-fg',
   degraded: 'bg-[#f5a742]',
   down: 'bg-[#ff6b81]',
 }
 
-const STATUS_ICON: Record<ComponentStatus, { Icon: typeof CircleCheck; color: string }> = {
+const STATUS_ICON: Record<ShownStatus, { Icon: typeof CircleCheck; color: string }> = {
   operational: { Icon: CircleCheck, color: 'text-[#27c9b0]' },
+  maintenance: { Icon: Wrench, color: 'text-sev-info-fg' },
   degraded: { Icon: TriangleAlert, color: 'text-[#f5a742]' },
   down: { Icon: CircleX, color: 'text-[#ff6b81]' },
 }
 
-const BANNER: Record<ComponentStatus, { box: string; badge: string; Icon: typeof CircleCheck }> = {
+const BANNER: Record<ShownStatus, { box: string; badge: string; Icon: typeof CircleCheck }> = {
+  maintenance: { box: 'border-sev-info-bd bg-sev-info-bg', badge: 'bg-sev-info-bg text-sev-info-fg', Icon: Wrench },
   operational: { box: 'border-success-border bg-success-subtle', badge: 'bg-success-subtle text-success-text', Icon: CircleCheck },
   degraded: { box: 'border-warning-border bg-warning-subtle', badge: 'bg-warning-subtle text-warning-text', Icon: TriangleAlert },
   down: { box: 'border-destructive-border bg-destructive-subtle', badge: 'bg-destructive-subtle text-destructive-text', Icon: CircleX },
@@ -56,14 +61,7 @@ const formatFullDate = (ms: number) =>
 const formatShortDate = (ms: number) =>
   new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
-const computeUptime = (days: (ComponentStatus | null)[]) => {
-  const known = days.filter((day): day is ComponentStatus => day !== null)
-  if (known.length === 0) return '— uptime'
-  const score = known.reduce((acc, status) => acc + (status === 'operational' ? 1 : status === 'degraded' ? 0.5 : 0), 0)
-  const pct = (score / known.length) * 100
-  const formatted = pct === 100 ? '100%' : `${pct.toFixed(2).replace(/\.?0+$/, '')}%`
-  return `${formatted} uptime`
-}
+const windowWords = (starts: number, ends: number) => `${when(starts)} to ${when(ends)}`
 
 const incidentsOnDay = (incidents: PublicIncident[], startMs: number, endMs: number) =>
   incidents.filter((incident) => incident.opened_ms <= endMs && (incident.resolved_ms ?? Infinity) >= startMs)
@@ -75,13 +73,17 @@ export function StatusPageView({ view, compact, subscribe }: { view: PublicStatu
   const banner = BANNER[view.overall]
   const open = view.incidents.filter((incident) => incident.status !== 'resolved')
   const past = view.incidents.filter((incident) => incident.status === 'resolved')
-  const degradedComponents = view.components.filter((component) => component.status !== 'operational')
+  const agenda = publicAgenda(view.maintenances)
+  const degradedComponents = view.components.filter((component) => component.status === 'degraded' || component.status === 'down')
+  const underMaintenance = view.components.filter((component) => component.status === 'maintenance')
   const bannerSub =
     open[0]?.updates[0]?.text ??
     (page.intro?.trim() ||
       (degradedComponents.length > 0
         ? `${degradedComponents.map((component) => component.name).join(', ')} ${degradedComponents.length === 1 ? 'is' : 'are'} experiencing issues. We are investigating.`
-        : null))
+        : underMaintenance.length > 0
+          ? `${underMaintenance.map((component) => component.name).join(', ')} ${underMaintenance.length === 1 ? 'is' : 'are'} under scheduled maintenance.`
+          : null))
 
   const nowMs = Date.now()
   const rangeStartLabel = formatShortDate(nowMs - (UPTIME_DAYS - 1) * DAY_MS)
@@ -112,6 +114,7 @@ export function StatusPageView({ view, compact, subscribe }: { view: PublicStatu
           </div>
         </section>
         {open.map((incident, index) => <IncidentCard key={`${incident.opened_ms}-${index}`} incident={incident} />)}
+        {agenda.running.map((one) => <MaintenanceCard key={one.id} maintenance={one} />)}
         <section className=" rounded-md border bg-card" aria-label="Components">
           {view.components.length === 0 ? <div className="px-4 py-3 text-control text-muted-foreground">No components are shown yet.</div> : null}
           {view.components.map((component) => (
@@ -124,6 +127,18 @@ export function StatusPageView({ view, compact, subscribe }: { view: PublicStatu
             />
           ))}
         </section>
+        {agenda.upcoming.length ? (
+          <section className="flex flex-col gap-3" aria-label="Upcoming maintenance">
+            <h2 className="text-heading">Upcoming maintenance</h2>
+            {agenda.upcoming.map((one) => <MaintenanceCard key={one.id} maintenance={one} />)}
+          </section>
+        ) : null}
+        {agenda.recent.length ? (
+          <section className="flex flex-col gap-3" aria-label="Past maintenance">
+            <h2 className="text-heading">Maintenance completed in the last seven days</h2>
+            {agenda.recent.map((one) => <MaintenanceCard key={one.id} maintenance={one} />)}
+          </section>
+        ) : null}
         {past.length ? (
           <section className="flex flex-col gap-3" aria-label="Past incidents">
             <h2 className="text-heading">Resolved in the last seven days</h2>
@@ -151,7 +166,7 @@ function ComponentRow({
   rangeStartLabel: string
 }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null)
-  const days: (ComponentStatus | null)[] =
+  const days: (ShownStatus | null)[] =
     component.days?.length === UPTIME_DAYS
       ? component.days
       : Array.from({ length: UPTIME_DAYS }, (_, idx) => (idx === UPTIME_DAYS - 1 ? component.status : null))
@@ -165,8 +180,8 @@ function ComponentRow({
           <span className="truncate text-control font-semibold">{component.name}</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-caption text-muted-foreground">{computeUptime(days)}</span>
-          <Badge variant={CHIP[component.status]} mono className="w-[100px] shrink-0 justify-center">
+          <span className="font-mono text-caption text-muted-foreground">{uptimeLabel(days)}</span>
+          <Badge variant={CHIP[component.status]} mono className={cn('w-[100px] shrink-0 justify-center', component.status === 'maintenance' && MAINTENANCE_BADGE)}>
             {STATUS_WORDS[component.status]}
           </Badge>
         </div>
@@ -234,6 +249,8 @@ function ComponentRow({
                     <div className="mt-1.5 flex items-center gap-2 text-control">
                       {dayStatus === 'down' ? (
                         <CircleX className="size-4 shrink-0 text-[#ff6b81]" aria-hidden />
+                      ) : dayStatus === 'maintenance' ? (
+                        <Wrench className="size-4 shrink-0 text-sev-info-fg" aria-hidden />
                       ) : (
                         <TriangleAlert className="size-4 shrink-0 text-[#f5a742]" aria-hidden />
                       )}
@@ -257,6 +274,25 @@ function ComponentRow({
         <span>Today</span>
       </div>
     </div>
+  )
+}
+
+function MaintenanceCard({ maintenance }: { maintenance: PublicMaintenance }) {
+  const running = maintenance.phase === 'in_progress'
+  const done = maintenance.phase === 'completed'
+  const end = done ? (maintenance.ended_ms ?? maintenance.ends_ms) : maintenance.ends_ms
+  return (
+    <article className={cn('overflow-hidden rounded-md border bg-card', running && 'border-sev-info-bd')}>
+      <div className={cn('flex flex-col gap-1.5 px-5 py-4', running && 'bg-sev-info-bg')}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className={running ? MAINTENANCE_BADGE : undefined}><Wrench aria-hidden />{running ? 'In progress' : done ? 'Completed' : 'Scheduled'}</Badge>
+          <span className="text-control text-muted-foreground">{windowWords(maintenance.starts_ms, end)}</span>
+        </div>
+        <h2 className="text-heading">{maintenance.title}</h2>
+        {maintenance.details ? <p className="m-0 whitespace-pre-wrap text-body">{maintenance.details}</p> : null}
+        {maintenance.components.length ? <p className="m-0 text-control text-muted-foreground">Affects {maintenance.components.join(', ')}</p> : null}
+      </div>
+    </article>
   )
 }
 

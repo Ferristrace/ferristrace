@@ -8,9 +8,11 @@ use axum::routing::{get, patch, post};
 use ferristrace_application::Stack;
 use ferristrace_application::registry::StatusRepos;
 use ferristrace_domain::{
-    Accent, BadStatusPage, Component, ComponentDraft, ComponentId, ComponentName, ComponentPatch,
-    ComponentStatus, Email, IncidentId, Intro, Landing, Link, LinkRefused, Listed, Mode, PageDraft,
-    PageName, PagePatch, ProjectId, PublicIncident, PublicView, RuleId, ServiceName, Sheet, Slug,
+    Accent, BadStatusPage, Closure, Component, ComponentDraft, ComponentId, ComponentName,
+    ComponentPatch, ComponentStatus, Email, IncidentId, Intro, Landing, Link, LinkRefused, Listed,
+    Maintenance, MaintenanceDetails, MaintenanceDraft, MaintenanceId, MaintenancePatch,
+    MaintenanceTitle, MaintenanceWindow, Mode, PageDraft, PageName, PagePatch, Placed, ProjectId,
+    PublicIncident, PublicMaintenance, PublicView, RuleId, ServiceName, Sheet, ShownStatus, Slug,
     StatusError, StatusPage, StatusPageId, TenantId, Theme,
 };
 use serde::{Deserialize, Deserializer, Serialize};
@@ -51,6 +53,22 @@ where
         .route(
             "/api/orgs/{org}/status-pages/{id}/components/{component}",
             patch(change_component::<S>).delete(remove_component::<S>),
+        )
+        .route(
+            "/api/orgs/{org}/status-maintenances",
+            get(maintenances::<S>).post(schedule::<S>),
+        )
+        .route(
+            "/api/orgs/{org}/status-maintenances/{id}",
+            patch(change_maintenance::<S>),
+        )
+        .route(
+            "/api/orgs/{org}/status-maintenances/{id}/end",
+            post(end_maintenance::<S>),
+        )
+        .route(
+            "/api/orgs/{org}/status-maintenances/{id}/cancel",
+            post(cancel_maintenance::<S>),
         )
         .route("/api/status/confirm", get(confirm::<S>))
         .route("/api/status/unsubscribe", get(unsubscribe::<S>))
@@ -468,6 +486,7 @@ pub struct PublicBody {
     overall: &'static str,
     components: Vec<PublicComponentBody>,
     incidents: Vec<PublicIncidentBody>,
+    maintenances: Vec<PublicMaintenanceBody>,
 }
 
 impl From<&PublicView> for PublicBody {
@@ -493,7 +512,7 @@ impl From<&PublicView> for PublicBody {
                         .days
                         .iter()
                         .copied()
-                        .map(|day| day.map(ComponentStatus::as_str))
+                        .map(|day| day.map(ShownStatus::as_str))
                         .collect(),
                 })
                 .collect(),
@@ -502,7 +521,188 @@ impl From<&PublicView> for PublicBody {
                 .iter()
                 .map(|incident| PublicIncidentBody::of(incident, view))
                 .collect(),
+            maintenances: view
+                .maintenances
+                .iter()
+                .map(PublicMaintenanceBody::from)
+                .collect(),
         }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublicMaintenanceBody {
+    id: Uuid,
+    title: String,
+    details: Option<String>,
+    starts_ms: u64,
+    ends_ms: u64,
+    ended_ms: Option<u64>,
+    phase: &'static str,
+    components: Vec<String>,
+}
+
+impl From<&PublicMaintenance> for PublicMaintenanceBody {
+    fn from(maintenance: &PublicMaintenance) -> Self {
+        Self {
+            id: maintenance.id.as_uuid(),
+            title: maintenance.title.as_str().to_owned(),
+            details: maintenance
+                .details
+                .as_ref()
+                .map(|details| details.as_str().to_owned()),
+            starts_ms: maintenance.starts_ms,
+            ends_ms: maintenance.ends_ms,
+            ended_ms: maintenance.ended_ms,
+            phase: maintenance.phase.as_str(),
+            components: maintenance
+                .components
+                .iter()
+                .map(|name| name.as_str().to_owned())
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct MaintenanceBody {
+    id: Uuid,
+    title: String,
+    details: Option<String>,
+    starts_ms: u64,
+    ends_ms: u64,
+    phase: &'static str,
+    closed_ms: Option<u64>,
+    components: Vec<Uuid>,
+    created_ms: u64,
+    updated_ms: u64,
+}
+
+impl MaintenanceBody {
+    fn of(maintenance: &Maintenance, now_ms: u64) -> Self {
+        Self {
+            id: maintenance.id.as_uuid(),
+            title: maintenance.title.as_str().to_owned(),
+            details: maintenance
+                .details
+                .as_ref()
+                .map(|details| details.as_str().to_owned()),
+            starts_ms: maintenance.window.starts_ms(),
+            ends_ms: maintenance.window.ends_ms(),
+            phase: maintenance.phase(now_ms).as_str(),
+            closed_ms: maintenance.closure.map(Closure::at_ms),
+            components: maintenance
+                .components
+                .iter()
+                .copied()
+                .map(ComponentId::as_uuid)
+                .collect(),
+            created_ms: maintenance.created_ms,
+            updated_ms: maintenance.updated_ms,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct PlacedBody {
+    id: Uuid,
+    name: String,
+    page_id: Uuid,
+    page_name: String,
+}
+
+impl From<&Placed> for PlacedBody {
+    fn from(placed: &Placed) -> Self {
+        Self {
+            id: placed.component.as_uuid(),
+            name: placed.name.as_str().to_owned(),
+            page_id: placed.page.as_uuid(),
+            page_name: placed.page_name.as_str().to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct AgendaBody {
+    maintenances: Vec<MaintenanceBody>,
+    components: Vec<PlacedBody>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MaintenanceAsked {
+    title: String,
+    #[serde(default)]
+    details: Option<String>,
+    starts_ms: u64,
+    ends_ms: u64,
+    #[serde(default)]
+    components: Vec<Uuid>,
+}
+
+fn details_of(text: &str) -> Result<Option<MaintenanceDetails>, StatusRefused> {
+    if text.trim().is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(MaintenanceDetails::try_from(text)?))
+    }
+}
+
+fn targets_of(ids: &[Uuid]) -> Vec<ComponentId> {
+    ids.iter().copied().map(ComponentId::new).collect()
+}
+
+impl MaintenanceAsked {
+    fn draft(&self) -> Result<MaintenanceDraft, StatusRefused> {
+        Ok(MaintenanceDraft {
+            title: MaintenanceTitle::try_from(self.title.as_str())?,
+            details: self
+                .details
+                .as_deref()
+                .map(details_of)
+                .transpose()?
+                .flatten(),
+            window: MaintenanceWindow::new(self.starts_ms, self.ends_ms)?,
+            components: targets_of(&self.components),
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MaintenanceChanged {
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    details: Given<String>,
+    #[serde(default)]
+    starts_ms: Option<u64>,
+    #[serde(default)]
+    ends_ms: Option<u64>,
+    #[serde(default)]
+    components: Option<Vec<Uuid>>,
+}
+
+impl MaintenanceChanged {
+    fn patch(&self) -> Result<MaintenancePatch, StatusRefused> {
+        Ok(MaintenancePatch {
+            title: self
+                .title
+                .as_deref()
+                .map(MaintenanceTitle::try_from)
+                .transpose()?,
+            details: match &self.details {
+                Given::Absent => None,
+                Given::Cleared => Some(None),
+                Given::Set(text) => Some(details_of(text)?),
+            },
+            window: match (self.starts_ms, self.ends_ms) {
+                (Some(starts), Some(ends)) => Some(MaintenanceWindow::new(starts, ends)?),
+                (None, None) => None,
+                (Some(_), None) | (None, Some(_)) => {
+                    return Err(StatusRefused::Malformed("starts_ms and ends_ms together"));
+                }
+            },
+            components: self.components.as_deref().map(targets_of),
+        })
     }
 }
 
@@ -705,6 +905,108 @@ where
     }))
 }
 
+async fn maintenances<S: Stack>(
+    State(state): State<AppState<S>>,
+    Path(org): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<AgendaBody>, StatusRefused>
+where
+    S::Repos: StatusRepos,
+{
+    let who = reading(&state, &headers).await?;
+    let agenda = state
+        .app
+        .status_maintenances(&who, TenantId::new(org))
+        .await?;
+    let now_ms = state.app.status_now_ms();
+    Ok(Json(AgendaBody {
+        maintenances: agenda
+            .maintenances
+            .iter()
+            .map(|maintenance| MaintenanceBody::of(maintenance, now_ms))
+            .collect(),
+        components: agenda.components.iter().map(PlacedBody::from).collect(),
+    }))
+}
+
+async fn schedule<S: Stack>(
+    State(state): State<AppState<S>>,
+    Path(org): Path<Uuid>,
+    headers: HeaderMap,
+    Json(asked): Json<MaintenanceAsked>,
+) -> Result<(StatusCode, Json<MaintenanceBody>), StatusRefused>
+where
+    S::Repos: StatusRepos,
+{
+    let who = reading(&state, &headers).await?;
+    let draft = asked.draft()?;
+    let scheduled = state
+        .app
+        .schedule_status_maintenance(&who, TenantId::new(org), &draft)
+        .await?;
+    tracing::info!(org = %org, maintenance = %scheduled.id, "a status maintenance was scheduled");
+    Ok((
+        StatusCode::CREATED,
+        Json(MaintenanceBody::of(&scheduled, state.app.status_now_ms())),
+    ))
+}
+
+async fn change_maintenance<S: Stack>(
+    State(state): State<AppState<S>>,
+    Path((org, id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(asked): Json<MaintenanceChanged>,
+) -> Result<Json<MaintenanceBody>, StatusRefused>
+where
+    S::Repos: StatusRepos,
+{
+    let who = reading(&state, &headers).await?;
+    let patch = asked.patch()?;
+    let changed = state
+        .app
+        .change_status_maintenance(&who, TenantId::new(org), MaintenanceId::new(id), patch)
+        .await?;
+    Ok(Json(MaintenanceBody::of(
+        &changed,
+        state.app.status_now_ms(),
+    )))
+}
+
+async fn end_maintenance<S: Stack>(
+    State(state): State<AppState<S>>,
+    Path((org, id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Json<MaintenanceBody>, StatusRefused>
+where
+    S::Repos: StatusRepos,
+{
+    let who = reading(&state, &headers).await?;
+    let ended = state
+        .app
+        .end_status_maintenance(&who, TenantId::new(org), MaintenanceId::new(id))
+        .await?;
+    Ok(Json(MaintenanceBody::of(&ended, state.app.status_now_ms())))
+}
+
+async fn cancel_maintenance<S: Stack>(
+    State(state): State<AppState<S>>,
+    Path((org, id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Json<MaintenanceBody>, StatusRefused>
+where
+    S::Repos: StatusRepos,
+{
+    let who = reading(&state, &headers).await?;
+    let cancelled = state
+        .app
+        .cancel_status_maintenance(&who, TenantId::new(org), MaintenanceId::new(id))
+        .await?;
+    Ok(Json(MaintenanceBody::of(
+        &cancelled,
+        state.app.status_now_ms(),
+    )))
+}
+
 async fn public<S: Stack>(
     State(state): State<AppState<S>>,
     Path(slug): Path<String>,
@@ -869,15 +1171,21 @@ fn status_of(error: StatusError) -> StatusCode {
         | StatusError::NoSuchPage
         | StatusError::NoSuchComponent
         | StatusError::NoSuchPostmortem
+        | StatusError::NoSuchMaintenance
         | StatusError::NoSuchSubscriber => StatusCode::NOT_FOUND,
         StatusError::ReadOnly
         | StatusError::OutOfScope
         | StatusError::NotAdmin
         | StatusError::Link(LinkRefused::Tampered) => StatusCode::FORBIDDEN,
         StatusError::Link(LinkRefused::Expired) => StatusCode::GONE,
-        StatusError::SlugTaken => StatusCode::CONFLICT,
+        StatusError::SlugTaken
+        | StatusError::MaintenanceClosed
+        | StatusError::MaintenanceNotRunning
+        | StatusError::MaintenanceStarted => StatusCode::CONFLICT,
         StatusError::NoSuchAlert
         | StatusError::NoSuchProject
+        | StatusError::WindowPassed
+        | StatusError::TooManyTargets { .. }
         | StatusError::TooManyComponents { .. }
         | StatusError::Order
         | StatusError::Page(_) => StatusCode::UNPROCESSABLE_ENTITY,
