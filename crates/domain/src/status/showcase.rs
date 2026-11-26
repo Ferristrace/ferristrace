@@ -1,8 +1,9 @@
 use core::future::Future;
 
 use super::derivation::{
-    alert_days_from_state, derive, derive_days, manual_days_from_events, overall, public_updates,
-    redacted, service_days_from_points, shown,
+    alert_days_from_state, derive, derive_days, manual_days_from_events, overall,
+    public_maintenances, public_updates, redacted, service_days_from_points, shown, shown_days,
+    under_maintenance,
 };
 use super::entities::{
     Component, Link, Observed, PublicComponent, PublicIncident, PublicPostmortem, PublicView,
@@ -11,8 +12,8 @@ use super::entities::{
 use super::errors::StatusError;
 use super::ports::StatusPages;
 use super::value_objects::{
-    SERVICE_SEEN_SECS, SERVICE_SILENT_SECS, SERVICE_WINDOW_SECS, ServiceName, Slug, StatusPageId,
-    UPTIME_DAYS,
+    SERVICE_SEEN_SECS, SERVICE_SILENT_SECS, SERVICE_WINDOW_SECS, ServiceName, ShownStatus, Slug,
+    StatusPageId, UPTIME_DAYS,
 };
 use crate::access::{ApiKeys, Reader, Readers};
 use crate::alerts::{AlertEvent, AlertEvents, AlertRules, AlertStates, AlertStatus, RuleId};
@@ -191,22 +192,34 @@ where
         let links: Vec<&Link> = components.iter().map(|component| &component.link).collect();
         let now_ms = now.get().saturating_mul(MILLIS_PER_SECOND);
         let observed = self.observe(page, &components, &links, now).await?;
+        let maintenances = self
+            .pages
+            .maintenances(
+                page.org,
+                now_ms.saturating_sub((UPTIME_DAYS as u64) * DAY_MS),
+            )
+            .await?;
         let shown_components: Vec<PublicComponent> = components
             .iter()
             .map(|component| {
-                let status = derive(&component.link, component.manual_status, &observed);
+                let derived = derive(&component.link, component.manual_status, &observed);
                 let days = derive_days(
                     component.id,
                     &component.link,
-                    status,
+                    derived,
                     &observed,
                     page.created_ms,
                     now_ms,
                 );
+                let status = if under_maintenance(component.id, &maintenances, now_ms) {
+                    ShownStatus::Maintenance
+                } else {
+                    ShownStatus::from(derived)
+                };
                 PublicComponent {
                     name: component.name.clone(),
                     status,
-                    days,
+                    days: shown_days(component.id, &days, &maintenances, now_ms),
                 }
             })
             .collect();
@@ -223,6 +236,7 @@ where
             overall: overall(&shown_components, open),
             components: shown_components,
             incidents,
+            maintenances: public_maintenances(&maintenances, &components, now_ms),
         })
     }
 

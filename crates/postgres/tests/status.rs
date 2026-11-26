@@ -3,9 +3,10 @@ use std::time::Duration;
 
 use ferristrace_application::registry::{RepoFor, Settle, UnitOfWork, domain};
 use ferristrace_domain::{
-    Accent, AccountId, Announcement, ClaimedLetter, Component, ComponentId, ComponentName,
+    Accent, AccountId, Announcement, ClaimedLetter, Closure, Component, ComponentId, ComponentName,
     ComponentStatus, Email, Incident, IncidentId, IncidentSeverity, IncidentStatus, IncidentTitle,
-    Incidents, Intro, Invite, LetterBody, LetterId, Link, Mode, PageName, ProjectId, Saved,
+    Incidents, Intro, Invite, LetterBody, LetterId, Link, Maintenance, MaintenanceDetails,
+    MaintenanceId, MaintenanceTitle, MaintenanceWindow, Mode, PageName, ProjectId, Saved,
     ServiceName, Settlement, Slug, StatusOutbox, StatusPage, StatusPageId, StatusPages,
     StatusSubscribers, Subscriber, SubscriberId, TenantId, Theme, UpdateKind,
 };
@@ -286,6 +287,196 @@ async fn components_are_kept_per_organisation_and_go_with_their_page() {
     assert!(!removed_by_them);
     assert!(deleted);
     assert!(left.is_empty());
+}
+
+fn a_maintenance(
+    org: TenantId,
+    title: &str,
+    starts_ms: u64,
+    components: &[&Component],
+) -> Maintenance {
+    Maintenance {
+        id: MaintenanceId::fresh(),
+        org,
+        title: MaintenanceTitle::try_from(title).expect("a title"),
+        details: Some(MaintenanceDetails::try_from("Database upgrade").expect("details")),
+        window: MaintenanceWindow::new(starts_ms, starts_ms + 3_600_000).expect("a window"),
+        components: components.iter().map(|component| component.id).collect(),
+        closure: None,
+        created_ms: 10,
+        updated_ms: 20,
+    }
+}
+
+#[tokio::test]
+async fn a_maintenance_reads_back_whole_and_is_filtered_by_its_end() {
+    let Some(pool) = control_plane("status_maintenance_round_trip", 2).await else {
+        return;
+    };
+    let pg = backend_of(&pool);
+    let (org, _) = an_org(&pool, "Acme", "owner@example.com").await;
+    let page = a_page(org, "acme", true);
+    let first = a_component(&page, "First", Link::Manual, 0);
+    let second = a_component(&page, "Second", Link::Manual, 1);
+    let mut late = a_maintenance(org, "Late", 9_000_000, &[&second, &first]);
+    late.details = None;
+    let early = a_maintenance(org, "Early", 1_000_000, &[&first]);
+
+    let (placed, one, everything, recent, upcoming, missing) =
+        committed!(pg, |pages: StatusPages| {
+            pages.create(&page).await.expect("created");
+            pages.add_component(org, &second).await.expect("added");
+            pages.add_component(org, &first).await.expect("added");
+            pages.add_maintenance(&late).await.expect("scheduled");
+            pages.add_maintenance(&early).await.expect("scheduled");
+            let placed = pages.org_components(org).await.expect("placed");
+            let one = pages.maintenance(org, late.id).await.expect("read");
+            let everything = pages.maintenances(org, 0).await.expect("listed");
+            let recent = pages
+                .maintenances(org, early.window.ends_ms())
+                .await
+                .expect("listed");
+            let upcoming = pages
+                .maintenances(org, early.window.ends_ms() + 1)
+                .await
+                .expect("listed");
+            let missing = pages
+                .maintenance(org, MaintenanceId::fresh())
+                .await
+                .expect("read");
+            (placed, one, everything, recent, upcoming, missing)
+        });
+
+    assert_eq!(
+        placed.iter().map(|held| held.component).collect::<Vec<_>>(),
+        vec![first.id, second.id]
+    );
+    assert_eq!(placed[0].page, page.id);
+    assert_eq!(placed[0].page_name, page.name);
+    assert_eq!(one, Some(late.clone()));
+    assert_eq!(everything, vec![early.clone(), late.clone()]);
+    assert_eq!(recent, vec![early, late.clone()]);
+    assert_eq!(upcoming, vec![late]);
+    assert_eq!(missing, None);
+}
+
+#[tokio::test]
+async fn keeping_a_maintenance_replaces_its_components_and_closure() {
+    let Some(pool) = control_plane("status_maintenance_keep", 2).await else {
+        return;
+    };
+    let pg = backend_of(&pool);
+    let (org, _) = an_org(&pool, "Acme", "owner@example.com").await;
+    let page = a_page(org, "acme", true);
+    let first = a_component(&page, "First", Link::Manual, 0);
+    let second = a_component(&page, "Second", Link::Manual, 1);
+    let third = a_component(&page, "Third", Link::Manual, 2);
+    let scheduled = a_maintenance(org, "Upgrade", 1_000_000, &[&first, &second]);
+    let mut changed = scheduled.clone();
+    changed.title = MaintenanceTitle::try_from("Upgrade, moved").expect("a title");
+    changed.window = MaintenanceWindow::new(2_000_000, 5_000_000).expect("a window");
+    changed.components = vec![third.id, first.id];
+    changed.closure = Some(Closure::Cancelled { at_ms: 1_500_000 });
+    changed.updated_ms = 30;
+    let mut ended = changed.clone();
+    ended.closure = Some(Closure::Ended { at_ms: 4_000_000 });
+    let stranger = a_maintenance(org, "Stranger", 1_000_000, &[]);
+
+    let (kept, after, closed, after_end, refused) = committed!(pg, |pages: StatusPages| {
+        pages.create(&page).await.expect("created");
+        for component in [&first, &second, &third] {
+            pages.add_component(org, component).await.expect("added");
+        }
+        pages.add_maintenance(&scheduled).await.expect("scheduled");
+        let kept = pages.keep_maintenance(&changed).await.expect("kept");
+        let after = pages.maintenance(org, scheduled.id).await.expect("read");
+        let closed = pages.keep_maintenance(&ended).await.expect("kept");
+        let after_end = pages.maintenance(org, scheduled.id).await.expect("read");
+        let refused = pages.keep_maintenance(&stranger).await.expect("refused");
+        (kept, after, closed, after_end, refused)
+    });
+
+    assert!(kept);
+    assert_eq!(after, Some(changed));
+    assert!(closed);
+    assert_eq!(after_end, Some(ended));
+    assert!(!refused);
+}
+
+#[tokio::test]
+async fn deleting_a_component_removes_it_from_its_maintenance() {
+    let Some(pool) = control_plane("status_maintenance_component_gone", 2).await else {
+        return;
+    };
+    let pg = backend_of(&pool);
+    let (org, _) = an_org(&pool, "Acme", "owner@example.com").await;
+    let page = a_page(org, "acme", true);
+    let first = a_component(&page, "First", Link::Manual, 0);
+    let second = a_component(&page, "Second", Link::Manual, 1);
+    let maintenance = a_maintenance(org, "Upgrade", 1_000_000, &[&first, &second]);
+
+    let (removed, after) = committed!(pg, |pages: StatusPages| {
+        pages.create(&page).await.expect("created");
+        pages.add_component(org, &first).await.expect("added");
+        pages.add_component(org, &second).await.expect("added");
+        pages
+            .add_maintenance(&maintenance)
+            .await
+            .expect("scheduled");
+        let removed = pages
+            .remove_component(org, page.id, first.id)
+            .await
+            .expect("removed");
+        let after = pages.maintenance(org, maintenance.id).await.expect("read");
+        (removed, after)
+    });
+
+    assert!(removed);
+    assert_eq!(
+        after.map(|held| held.components),
+        Some(vec![second.id]),
+        "the maintenance survives with its other components"
+    );
+}
+
+#[tokio::test]
+async fn another_organisation_never_sees_a_maintenance() {
+    let Some(pool) = control_plane("status_maintenance_tenancy", 2).await else {
+        return;
+    };
+    let pg = backend_of(&pool);
+    let (mine, _) = an_org(&pool, "Acme", "owner@example.com").await;
+    let (theirs, _) = an_org(&pool, "Globex", "owner@globex.example.com").await;
+    let page = a_page(mine, "acme", true);
+    let component = a_component(&page, "First", Link::Manual, 0);
+    let maintenance = a_maintenance(mine, "Upgrade", 1_000_000, &[&component]);
+    let mut hijack = maintenance.clone();
+    hijack.org = theirs;
+    hijack.title = MaintenanceTitle::try_from("Hijacked").expect("a title");
+
+    let (listed, found, hijacked, placed, untouched) = committed!(pg, |pages: StatusPages| {
+        pages.create(&page).await.expect("created");
+        pages.add_component(mine, &component).await.expect("added");
+        pages
+            .add_maintenance(&maintenance)
+            .await
+            .expect("scheduled");
+        let listed = pages.maintenances(theirs, 0).await.expect("listed");
+        let found = pages
+            .maintenance(theirs, maintenance.id)
+            .await
+            .expect("read");
+        let hijacked = pages.keep_maintenance(&hijack).await.expect("refused");
+        let placed = pages.org_components(theirs).await.expect("placed");
+        let untouched = pages.maintenance(mine, maintenance.id).await.expect("read");
+        (listed, found, hijacked, placed, untouched)
+    });
+
+    assert!(listed.is_empty());
+    assert_eq!(found, None);
+    assert!(!hijacked);
+    assert!(placed.is_empty());
+    assert_eq!(untouched, Some(maintenance));
 }
 
 #[tokio::test]

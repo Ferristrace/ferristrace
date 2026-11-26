@@ -1,10 +1,12 @@
 use core::future::Future;
 
 use super::entities::{
-    Announcement, ClaimedLetter, Component, ComponentEvent, Invite, Letter, Saved, StatusPage,
-    Subscriber,
+    Announcement, ClaimedLetter, Component, ComponentEvent, Invite, Letter, Maintenance, Placed,
+    Saved, StatusPage, Subscriber,
 };
-use super::value_objects::{ComponentId, LetterId, Slug, StatusPageId, SubscriberId};
+use super::value_objects::{
+    ComponentId, LetterId, MaintenanceId, Slug, StatusPageId, SubscriberId,
+};
 use crate::alerts::{DeliveryError, Settlement};
 use crate::identity::Email;
 use crate::store::StoreError;
@@ -97,6 +99,33 @@ pub trait StatusPages {
     ) -> impl Future<Output = Result<Vec<ComponentEvent>, StoreError>> + Send {
         async { Ok(Vec::new()) }
     }
+
+    fn org_components(
+        &self,
+        org: TenantId,
+    ) -> impl Future<Output = Result<Vec<Placed>, StoreError>> + Send;
+
+    fn maintenances(
+        &self,
+        org: TenantId,
+        ending_after_ms: u64,
+    ) -> impl Future<Output = Result<Vec<Maintenance>, StoreError>> + Send;
+
+    fn maintenance(
+        &self,
+        org: TenantId,
+        id: MaintenanceId,
+    ) -> impl Future<Output = Result<Option<Maintenance>, StoreError>> + Send;
+
+    fn add_maintenance(
+        &self,
+        maintenance: &Maintenance,
+    ) -> impl Future<Output = Result<(), StoreError>> + Send;
+
+    fn keep_maintenance(
+        &self,
+        maintenance: &Maintenance,
+    ) -> impl Future<Output = Result<bool, StoreError>> + Send;
 }
 
 pub trait StatusSubscribers {

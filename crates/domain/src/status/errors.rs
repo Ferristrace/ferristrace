@@ -22,6 +22,12 @@ pub enum BadStatusPage {
     Mode,
     #[error("a component status is one of operational, degraded or down")]
     Status,
+    #[error("a maintenance needs a title of at most {max} bytes")]
+    MaintenanceTitle { max: usize },
+    #[error("maintenance details hold between one and {max} bytes")]
+    MaintenanceDetails { max: usize },
+    #[error("a maintenance ends after it starts and lasts at most {max_days} days")]
+    Window { max_days: u64 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -62,6 +68,18 @@ pub enum StatusError {
     TooManyComponents { max: usize },
     #[error("an order lists every component of the page exactly once")]
     Order,
+    #[error("no maintenance of this organisation carries that id")]
+    NoSuchMaintenance,
+    #[error("this maintenance is completed or cancelled and no longer changes")]
+    MaintenanceClosed,
+    #[error("only a maintenance in progress ends early")]
+    MaintenanceNotRunning,
+    #[error("a maintenance that has started is ended, not cancelled")]
+    MaintenanceStarted,
+    #[error("a maintenance ends in the future")]
+    WindowPassed,
+    #[error("a maintenance targets at most {max} components")]
+    TooManyTargets { max: usize },
     #[error(transparent)]
     Page(#[from] BadStatusPage),
     #[error(transparent)]

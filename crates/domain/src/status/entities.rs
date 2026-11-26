@@ -1,6 +1,7 @@
 use super::value_objects::{
-    ComponentId, ComponentName, ComponentStatus, Intro, LetterId, PageName, ServiceName, Slug,
-    StatusPageId, SubscriberId, Theme, UpdateKind,
+    ComponentId, ComponentName, ComponentStatus, Intro, LetterId, MaintenanceDetails,
+    MaintenanceId, MaintenancePhase, MaintenanceTitle, MaintenanceWindow, PageName, ServiceName,
+    ShownStatus, Slug, StatusPageId, SubscriberId, Theme, UpdateKind,
 };
 use crate::alerts::{AlertSeverity, RuleId};
 use crate::catalogue::ProjectId;
@@ -211,8 +212,100 @@ pub struct PublicIncident {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicComponent {
     pub name: ComponentName,
-    pub status: ComponentStatus,
-    pub days: Vec<Option<ComponentStatus>>,
+    pub status: ShownStatus,
+    pub days: Vec<Option<ShownStatus>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Closure {
+    Ended { at_ms: u64 },
+    Cancelled { at_ms: u64 },
+}
+
+impl Closure {
+    pub fn at_ms(self) -> u64 {
+        match self {
+            Self::Ended { at_ms } | Self::Cancelled { at_ms } => at_ms,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Maintenance {
+    pub id: MaintenanceId,
+    pub org: TenantId,
+    pub title: MaintenanceTitle,
+    pub details: Option<MaintenanceDetails>,
+    pub window: MaintenanceWindow,
+    pub components: Vec<ComponentId>,
+    pub closure: Option<Closure>,
+    pub created_ms: u64,
+    pub updated_ms: u64,
+}
+
+impl Maintenance {
+    pub fn phase(&self, now_ms: u64) -> MaintenancePhase {
+        match self.closure {
+            Some(Closure::Cancelled { .. }) => MaintenancePhase::Cancelled,
+            Some(Closure::Ended { .. }) => MaintenancePhase::Completed,
+            None if now_ms >= self.window.ends_ms() => MaintenancePhase::Completed,
+            None if now_ms >= self.window.starts_ms() => MaintenancePhase::InProgress,
+            None => MaintenancePhase::Scheduled,
+        }
+    }
+
+    pub fn real_end_ms(&self) -> u64 {
+        match self.closure {
+            Some(Closure::Ended { at_ms }) => at_ms.min(self.window.ends_ms()),
+            Some(Closure::Cancelled { .. }) | None => self.window.ends_ms(),
+        }
+    }
+
+    pub fn targets(&self, component: ComponentId) -> bool {
+        self.components.contains(&component)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MaintenanceDraft {
+    pub title: MaintenanceTitle,
+    pub details: Option<MaintenanceDetails>,
+    pub window: MaintenanceWindow,
+    pub components: Vec<ComponentId>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MaintenancePatch {
+    pub title: Option<MaintenanceTitle>,
+    pub details: Option<Option<MaintenanceDetails>>,
+    pub window: Option<MaintenanceWindow>,
+    pub components: Option<Vec<ComponentId>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placed {
+    pub component: ComponentId,
+    pub name: ComponentName,
+    pub page: StatusPageId,
+    pub page_name: PageName,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Agenda {
+    pub maintenances: Vec<Maintenance>,
+    pub components: Vec<Placed>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublicMaintenance {
+    pub id: MaintenanceId,
+    pub title: MaintenanceTitle,
+    pub details: Option<MaintenanceDetails>,
+    pub starts_ms: u64,
+    pub ends_ms: u64,
+    pub ended_ms: Option<u64>,
+    pub phase: MaintenancePhase,
+    pub components: Vec<ComponentName>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -224,9 +317,10 @@ pub struct PublicView {
     pub intro: Option<Intro>,
     pub hide_from_search: bool,
     pub updated_ms: u64,
-    pub overall: ComponentStatus,
+    pub overall: ShownStatus,
     pub components: Vec<PublicComponent>,
     pub incidents: Vec<PublicIncident>,
+    pub maintenances: Vec<PublicMaintenance>,
 }
 
 pub fn status_path(org_slug: &Slug, slug: &Slug) -> String {

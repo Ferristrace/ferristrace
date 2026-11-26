@@ -358,20 +358,7 @@ where
     }
 
     async fn admin(&self, who: &Reader, org: TenantId) -> Result<AccountId, StatusError> {
-        match who {
-            Reader::Key(_) | Reader::Agent(_) => {
-                self.readers.grant(who, org).await?;
-                Err(StatusError::ReadOnly)
-            }
-            Reader::Session(token) => {
-                let who = self.readers.whoami().of(token).await?;
-                match who.role_in(org) {
-                    None => Err(StatusError::NotYours),
-                    Some(role) if role.at_least(OrgRole::Admin) => Ok(who.account),
-                    Some(_) => Err(StatusError::NotAdmin),
-                }
-            }
-        }
+        admin(&self.readers, who, org).await
     }
 
     async fn page(&self, org: TenantId, id: StatusPageId) -> Result<StatusPage, StatusError> {
@@ -478,6 +465,32 @@ where
                 detail,
             })
             .await?)
+    }
+}
+
+pub(super) async fn admin<S, G, K>(
+    readers: &Readers<S, G, K>,
+    who: &Reader,
+    org: TenantId,
+) -> Result<AccountId, StatusError>
+where
+    S: SessionStore,
+    G: Memberships,
+    K: ApiKeys,
+{
+    match who {
+        Reader::Key(_) | Reader::Agent(_) => {
+            readers.grant(who, org).await?;
+            Err(StatusError::ReadOnly)
+        }
+        Reader::Session(token) => {
+            let who = readers.whoami().of(token).await?;
+            match who.role_in(org) {
+                None => Err(StatusError::NotYours),
+                Some(role) if role.at_least(OrgRole::Admin) => Ok(who.account),
+                Some(_) => Err(StatusError::NotAdmin),
+            }
+        }
     }
 }
 

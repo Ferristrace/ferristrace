@@ -22,6 +22,11 @@ pub const CONFIRM_LIFETIME_SECS: u64 = 7 * 24 * 3_600;
 pub const UNSUBSCRIBE_LIFETIME_SECS: u64 = 90 * 24 * 3_600;
 pub const RESEND_AFTER_SECS: u64 = 3_600;
 pub const ANNOUNCE_TICK_SECS: u64 = 30;
+pub const MAX_MAINTENANCE_TITLE_BYTES: usize = 200;
+pub const MAX_MAINTENANCE_DETAILS_BYTES: usize = 2_000;
+pub const MAX_MAINTENANCE_DAYS: u64 = 7;
+pub const MAX_MAINTENANCE_COMPONENTS: usize = 100;
+const DAY_MS: u64 = 86_400_000;
 const RESERVED_SLUGS: [&str; 2] = ["confirm", "unsubscribe"];
 
 macro_rules! identifier {
@@ -55,6 +60,7 @@ identifier!(StatusPageId);
 identifier!(ComponentId);
 identifier!(SubscriberId);
 identifier!(LetterId);
+identifier!(MaintenanceId);
 
 macro_rules! spelled {
     ($name:ident { $($variant:ident => $spelling:literal),+ $(,)? }) => {
@@ -132,6 +138,72 @@ spelled!(ComponentStatus {
     Down => "down",
 });
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub enum ShownStatus {
+    #[default]
+    Operational,
+    Maintenance,
+    Degraded,
+    Down,
+}
+
+spelled!(ShownStatus {
+    Operational => "operational",
+    Maintenance => "maintenance",
+    Degraded => "degraded",
+    Down => "down",
+});
+
+impl From<ComponentStatus> for ShownStatus {
+    fn from(status: ComponentStatus) -> Self {
+        match status {
+            ComponentStatus::Operational => Self::Operational,
+            ComponentStatus::Degraded => Self::Degraded,
+            ComponentStatus::Down => Self::Down,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MaintenancePhase {
+    Scheduled,
+    InProgress,
+    Completed,
+    Cancelled,
+}
+
+spelled!(MaintenancePhase {
+    Scheduled => "scheduled",
+    InProgress => "in_progress",
+    Completed => "completed",
+    Cancelled => "cancelled",
+});
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MaintenanceWindow {
+    starts_ms: u64,
+    ends_ms: u64,
+}
+
+impl MaintenanceWindow {
+    pub fn new(starts_ms: u64, ends_ms: u64) -> Result<Self, BadStatusPage> {
+        if ends_ms <= starts_ms || ends_ms - starts_ms > MAX_MAINTENANCE_DAYS * DAY_MS {
+            return Err(BadStatusPage::Window {
+                max_days: MAX_MAINTENANCE_DAYS,
+            });
+        }
+        Ok(Self { starts_ms, ends_ms })
+    }
+
+    pub fn starts_ms(self) -> u64 {
+        self.starts_ms
+    }
+
+    pub fn ends_ms(self) -> u64 {
+        self.ends_ms
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UpdateKind {
     Opened,
@@ -205,6 +277,20 @@ text!(
     MAX_SERVICE_NAME_BYTES,
     BadStatusPage::Service {
         max: MAX_SERVICE_NAME_BYTES
+    }
+);
+text!(
+    MaintenanceTitle,
+    MAX_MAINTENANCE_TITLE_BYTES,
+    BadStatusPage::MaintenanceTitle {
+        max: MAX_MAINTENANCE_TITLE_BYTES
+    }
+);
+text!(
+    MaintenanceDetails,
+    MAX_MAINTENANCE_DETAILS_BYTES,
+    BadStatusPage::MaintenanceDetails {
+        max: MAX_MAINTENANCE_DETAILS_BYTES
     }
 );
 text!(

@@ -1,10 +1,11 @@
 use ferristrace_application::repository;
 use ferristrace_domain::{
-    Accent, Announcement, Bulletin, ClaimedLetter, Component, ComponentEvent, ComponentId,
+    Accent, Announcement, Bulletin, ClaimedLetter, Closure, Component, ComponentEvent, ComponentId,
     ComponentName, ComponentStatus, DeliveryStatus, Email, IncidentStatus, IncidentTitle, Intro,
-    Invite, LetterBody, LetterId, Link, Mode, PageName, ProjectId, RuleId, Saved, ServiceName,
-    Settlement, Slug, StatusOutbox, StatusPage, StatusPageId, StatusPages, StatusSubscribers,
-    StoreError, Subscriber, SubscriberId, TenantId, Theme, UpdateKind,
+    Invite, LetterBody, LetterId, Link, Maintenance, MaintenanceDetails, MaintenanceId,
+    MaintenanceTitle, MaintenanceWindow, Mode, PageName, Placed, ProjectId, RuleId, Saved,
+    ServiceName, Settlement, Slug, StatusOutbox, StatusPage, StatusPageId, StatusPages,
+    StatusSubscribers, StoreError, Subscriber, SubscriberId, TenantId, Theme, UpdateKind,
 };
 use sqlx::Row;
 use sqlx::postgres::PgRow;
@@ -20,6 +21,12 @@ const QUALIFIED_PAGE_COLUMNS: &str = "p.id, p.org_id, p.name, p.slug, p.public, 
                                       p.created_ms, p.updated_ms";
 const COMPONENT_COLUMNS: &str = "id, page_id, name, link_kind, service, project_id, rule_id, \
                                  manual_status, position, public";
+const MAINTENANCE_COLUMNS: &str = "m.id, m.org_id, m.title, m.details, m.starts_ms, m.ends_ms, \
+                                    m.closure, m.closed_ms, m.created_ms, m.updated_ms, \
+                                    ARRAY(SELECT c.component_id \
+                                          FROM status_maintenance_components c \
+                                          WHERE c.maintenance_id = m.id \
+                                          ORDER BY c.position, c.component_id) AS components";
 const SUBSCRIBER_COLUMNS: &str = "id, page_id, email, confirmed, invited_ms";
 
 fn unreachable(doing: &'static str) -> impl FnOnce(sqlx::Error) -> StoreError {
@@ -113,6 +120,70 @@ fn read_subscriber(row: &PgRow) -> Result<Subscriber, StoreError> {
         confirmed: row.get("confirmed"),
         invited_ms: unsigned(row.get("invited_ms")),
     })
+}
+
+fn read_maintenance(row: &PgRow) -> Result<Maintenance, StoreError> {
+    let closed_ms = row.get::<Option<i64>, _>("closed_ms").map(unsigned);
+    let closure = match (row.get::<Option<&str>, _>("closure"), closed_ms) {
+        (None, None) => None,
+        (Some("ended"), Some(at_ms)) => Some(Closure::Ended { at_ms }),
+        (Some("cancelled"), Some(at_ms)) => Some(Closure::Cancelled { at_ms }),
+        _ => return Err(refused("closure")),
+    };
+    Ok(Maintenance {
+        id: MaintenanceId::new(row.get("id")),
+        org: TenantId::new(row.get("org_id")),
+        title: MaintenanceTitle::try_from(row.get::<&str, _>("title"))
+            .map_err(|_| refused("title"))?,
+        details: row
+            .get::<Option<&str>, _>("details")
+            .map(MaintenanceDetails::try_from)
+            .transpose()
+            .map_err(|_| refused("details"))?,
+        window: MaintenanceWindow::new(
+            unsigned(row.get("starts_ms")),
+            unsigned(row.get("ends_ms")),
+        )
+        .map_err(|_| refused("window"))?,
+        components: row
+            .get::<Vec<Uuid>, _>("components")
+            .into_iter()
+            .map(ComponentId::new)
+            .collect(),
+        closure,
+        created_ms: unsigned(row.get("created_ms")),
+        updated_ms: unsigned(row.get("updated_ms")),
+    })
+}
+
+fn closure_columns(closure: Option<Closure>) -> (Option<&'static str>, Option<i64>) {
+    match closure {
+        None => (None, None),
+        Some(Closure::Ended { at_ms }) => (Some("ended"), Some(signed(at_ms))),
+        Some(Closure::Cancelled { at_ms }) => (Some("cancelled"), Some(signed(at_ms))),
+    }
+}
+
+async fn place_components(
+    connection: &mut sqlx::PgConnection,
+    maintenance: &Maintenance,
+) -> Result<(), StoreError> {
+    let components: Vec<Uuid> = maintenance
+        .components
+        .iter()
+        .map(|component| component.as_uuid())
+        .collect();
+    sqlx::query(
+        "INSERT INTO status_maintenance_components (maintenance_id, component_id, position) \
+         SELECT $1, t.component, (t.ordinal - 1)::int \
+         FROM unnest($2::uuid[]) WITH ORDINALITY AS t(component, ordinal)",
+    )
+    .bind(maintenance.id.as_uuid())
+    .bind(components)
+    .execute(connection)
+    .await
+    .map_err(unreachable("place the components of a maintenance"))?;
+    Ok(())
 }
 
 struct LinkColumns<'a> {
@@ -428,6 +499,124 @@ impl StatusPages for PostgresStatusPages {
         .await
         .map_err(unreachable("remove a status component"))?;
         Ok(done.rows_affected() == 1)
+    }
+
+    async fn org_components(&self, org: TenantId) -> Result<Vec<Placed>, StoreError> {
+        let mut tx = self.tx.lock().await;
+        let rows = sqlx::query(
+            "SELECT c.id, c.name, p.id AS page_id, p.name AS page_name \
+             FROM status_components c JOIN status_pages p ON p.id = c.page_id \
+             WHERE p.org_id = $1 ORDER BY p.created_ms, p.id, c.position, c.id",
+        )
+        .bind(org.as_uuid())
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unreachable("list the components of an organisation"))?;
+        rows.iter()
+            .map(|row| {
+                Ok(Placed {
+                    component: ComponentId::new(row.get("id")),
+                    name: ComponentName::try_from(row.get::<&str, _>("name"))
+                        .map_err(|_| refused("name"))?,
+                    page: StatusPageId::new(row.get("page_id")),
+                    page_name: PageName::try_from(row.get::<&str, _>("page_name"))
+                        .map_err(|_| refused("page_name"))?,
+                })
+            })
+            .collect()
+    }
+
+    async fn maintenances(
+        &self,
+        org: TenantId,
+        ending_after_ms: u64,
+    ) -> Result<Vec<Maintenance>, StoreError> {
+        let mut tx = self.tx.lock().await;
+        let rows = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "SELECT {MAINTENANCE_COLUMNS} FROM status_maintenances m \
+             WHERE m.org_id = $1 AND m.ends_ms >= $2 ORDER BY m.starts_ms, m.id"
+        )))
+        .bind(org.as_uuid())
+        .bind(signed(ending_after_ms))
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(unreachable("list the maintenances"))?;
+        rows.iter().map(read_maintenance).collect()
+    }
+
+    async fn maintenance(
+        &self,
+        org: TenantId,
+        id: MaintenanceId,
+    ) -> Result<Option<Maintenance>, StoreError> {
+        let mut tx = self.tx.lock().await;
+        let row = sqlx::query(sqlx::AssertSqlSafe(format!(
+            "SELECT {MAINTENANCE_COLUMNS} FROM status_maintenances m \
+             WHERE m.org_id = $1 AND m.id = $2"
+        )))
+        .bind(org.as_uuid())
+        .bind(id.as_uuid())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(unreachable("read a maintenance"))?;
+        row.as_ref().map(read_maintenance).transpose()
+    }
+
+    async fn add_maintenance(&self, maintenance: &Maintenance) -> Result<(), StoreError> {
+        let (closure, closed_ms) = closure_columns(maintenance.closure);
+        let mut tx = self.tx.lock().await;
+        sqlx::query(
+            "INSERT INTO status_maintenances \
+             (id, org_id, title, details, starts_ms, ends_ms, closure, closed_ms, \
+              created_ms, updated_ms) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+        )
+        .bind(maintenance.id.as_uuid())
+        .bind(maintenance.org.as_uuid())
+        .bind(maintenance.title.as_str())
+        .bind(maintenance.details.as_ref().map(MaintenanceDetails::as_str))
+        .bind(signed(maintenance.window.starts_ms()))
+        .bind(signed(maintenance.window.ends_ms()))
+        .bind(closure)
+        .bind(closed_ms)
+        .bind(signed(maintenance.created_ms))
+        .bind(signed(maintenance.updated_ms))
+        .execute(&mut **tx)
+        .await
+        .map_err(unreachable("schedule a maintenance"))?;
+        place_components(&mut tx, maintenance).await
+    }
+
+    async fn keep_maintenance(&self, maintenance: &Maintenance) -> Result<bool, StoreError> {
+        let (closure, closed_ms) = closure_columns(maintenance.closure);
+        let mut tx = self.tx.lock().await;
+        let done = sqlx::query(
+            "UPDATE status_maintenances SET title = $3, details = $4, starts_ms = $5, \
+             ends_ms = $6, closure = $7, closed_ms = $8, updated_ms = $9 \
+             WHERE org_id = $1 AND id = $2",
+        )
+        .bind(maintenance.org.as_uuid())
+        .bind(maintenance.id.as_uuid())
+        .bind(maintenance.title.as_str())
+        .bind(maintenance.details.as_ref().map(MaintenanceDetails::as_str))
+        .bind(signed(maintenance.window.starts_ms()))
+        .bind(signed(maintenance.window.ends_ms()))
+        .bind(closure)
+        .bind(closed_ms)
+        .bind(signed(maintenance.updated_ms))
+        .execute(&mut **tx)
+        .await
+        .map_err(unreachable("change a maintenance"))?;
+        if done.rows_affected() != 1 {
+            return Ok(false);
+        }
+        sqlx::query("DELETE FROM status_maintenance_components WHERE maintenance_id = $1")
+            .bind(maintenance.id.as_uuid())
+            .execute(&mut **tx)
+            .await
+            .map_err(unreachable("clear the components of a maintenance"))?;
+        place_components(&mut tx, maintenance).await?;
+        Ok(true)
     }
 
     async fn record_component_event(&self, event: &ComponentEvent) -> Result<(), StoreError> {

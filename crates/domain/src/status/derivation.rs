@@ -1,7 +1,10 @@
-use super::entities::{ComponentEvent, Link, Observed, PublicComponent, PublicUpdate};
+use super::entities::{
+    Closure, Component, ComponentEvent, Link, Maintenance, Observed, PublicComponent,
+    PublicMaintenance, PublicUpdate,
+};
 use super::value_objects::{
-    ComponentId, ComponentStatus, DEGRADED_ERROR_PERCENT, DOWN_ERROR_PERCENT, PUBLIC_WINDOW_DAYS,
-    UPTIME_DAYS, UpdateKind,
+    ComponentId, ComponentStatus, DEGRADED_ERROR_PERCENT, DOWN_ERROR_PERCENT, MaintenancePhase,
+    PUBLIC_WINDOW_DAYS, ShownStatus, UPTIME_DAYS, UpdateKind,
 };
 use crate::alerts::{AlertEvent, AlertSeverity, AlertStatus};
 use crate::explore::ServicePoint;
@@ -212,17 +215,106 @@ pub fn by_error_rate(requests: u64, errors: u64) -> ComponentStatus {
     }
 }
 
-pub fn overall(components: &[PublicComponent], incident_open: bool) -> ComponentStatus {
+pub fn overall(components: &[PublicComponent], incident_open: bool) -> ShownStatus {
     let worst = components
         .iter()
         .map(|component| component.status)
         .max()
         .unwrap_or_default();
     if incident_open {
-        worst.max(ComponentStatus::Degraded)
+        worst.max(ShownStatus::Degraded)
     } else {
         worst
     }
+}
+
+pub fn under_maintenance(
+    component: ComponentId,
+    maintenances: &[Maintenance],
+    now_ms: u64,
+) -> bool {
+    maintenances.iter().any(|maintenance| {
+        maintenance.targets(component) && maintenance.phase(now_ms) == MaintenancePhase::InProgress
+    })
+}
+
+pub fn shown_days(
+    component: ComponentId,
+    days: &[Option<ComponentStatus>],
+    maintenances: &[Maintenance],
+    now_ms: u64,
+) -> Vec<Option<ShownStatus>> {
+    let from_ms = now_ms.saturating_sub((UPTIME_DAYS as u64) * DAY_MS);
+    let spans: Vec<(u64, u64)> = maintenances
+        .iter()
+        .filter(|maintenance| {
+            maintenance.targets(component)
+                && !matches!(maintenance.closure, Some(Closure::Cancelled { .. }))
+        })
+        .map(|maintenance| {
+            (
+                maintenance.window.starts_ms(),
+                maintenance.real_end_ms().min(now_ms),
+            )
+        })
+        .filter(|(starts_ms, ends_ms)| starts_ms <= ends_ms)
+        .collect();
+    let last = days.len().saturating_sub(1);
+    days.iter()
+        .enumerate()
+        .map(|(idx, day)| {
+            let day_start = from_ms.saturating_add((idx as u64) * DAY_MS);
+            let day_end = if idx == last {
+                u64::MAX
+            } else {
+                day_start.saturating_add(DAY_MS)
+            };
+            let touched = spans
+                .iter()
+                .any(|(starts_ms, ends_ms)| *starts_ms < day_end && *ends_ms > day_start);
+            if touched {
+                Some(ShownStatus::Maintenance)
+            } else {
+                day.map(ShownStatus::from)
+            }
+        })
+        .collect()
+}
+
+pub fn public_maintenances(
+    maintenances: &[Maintenance],
+    components: &[Component],
+    now_ms: u64,
+) -> Vec<PublicMaintenance> {
+    maintenances
+        .iter()
+        .filter_map(|maintenance| {
+            let phase = maintenance.phase(now_ms);
+            let recent = maintenance
+                .real_end_ms()
+                .saturating_add(PUBLIC_WINDOW_DAYS * DAY_MS)
+                >= now_ms;
+            let listed = match phase {
+                MaintenancePhase::Scheduled | MaintenancePhase::InProgress => true,
+                MaintenancePhase::Completed => recent,
+                MaintenancePhase::Cancelled => false,
+            };
+            listed.then(|| PublicMaintenance {
+                id: maintenance.id,
+                title: maintenance.title.clone(),
+                details: maintenance.details.clone(),
+                starts_ms: maintenance.window.starts_ms(),
+                ends_ms: maintenance.window.ends_ms(),
+                ended_ms: (phase == MaintenancePhase::Completed).then(|| maintenance.real_end_ms()),
+                phase,
+                components: components
+                    .iter()
+                    .filter(|component| component.public && maintenance.targets(component.id))
+                    .map(|component| component.name.clone())
+                    .collect(),
+            })
+        })
+        .collect()
 }
 
 pub fn shown(incident: &Incident, now_ms: u64) -> bool {

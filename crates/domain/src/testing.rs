@@ -1523,8 +1523,17 @@ struct Board {
     pages: Vec<crate::status::StatusPage>,
     components: Vec<(TenantId, crate::status::Component)>,
     component_events: Vec<crate::status::ComponentEvent>,
+    maintenances: Vec<crate::status::Maintenance>,
     subscribers: Vec<crate::status::Subscriber>,
     letters: Vec<QueuedLetter>,
+}
+
+fn forget_components(held: &mut Board, removed: &[crate::status::ComponentId]) {
+    held.component_events
+        .retain(|event| !removed.contains(&event.component));
+    for maintenance in &mut held.maintenances {
+        maintenance.components.retain(|id| !removed.contains(id));
+    }
 }
 
 fn default_org_slug(org: TenantId) -> crate::status::Slug {
@@ -1588,6 +1597,14 @@ impl StatusLedger {
 
     pub fn put_subscriber(&self, subscriber: crate::status::Subscriber) {
         self.with(|held| held.subscribers.push(subscriber));
+    }
+
+    pub fn put_maintenance(&self, maintenance: crate::status::Maintenance) {
+        self.with(|held| held.maintenances.push(maintenance));
+    }
+
+    pub fn all_maintenances(&self) -> Vec<crate::status::Maintenance> {
+        self.with(|held| held.maintenances.clone())
     }
 }
 
@@ -1717,8 +1734,7 @@ impl crate::status::StatusPages for StatusLedger {
                     .collect();
                 held.components
                     .retain(|(_, component)| component.page != id);
-                held.component_events
-                    .retain(|event| !removed.contains(&event.component));
+                forget_components(held, &removed);
                 held.subscribers.retain(|subscriber| subscriber.page != id);
                 held.letters.retain(|letter| letter.page != id);
             }
@@ -1790,7 +1806,7 @@ impl crate::status::StatusPages for StatusLedger {
             });
             let removed = held.components.len() != before;
             if removed {
-                held.component_events.retain(|event| event.component != id);
+                forget_components(held, &[id]);
             }
             removed
         }))
@@ -1835,6 +1851,93 @@ impl crate::status::StatusPages for StatusLedger {
             }
             found.sort_by_key(|event| event.at_ms);
             found
+        }))
+    }
+
+    async fn org_components(
+        &self,
+        org: TenantId,
+    ) -> Result<Vec<crate::status::Placed>, StoreError> {
+        Ok(self.with(|held| {
+            let mut found: Vec<(u64, u32, crate::status::Placed)> = held
+                .components
+                .iter()
+                .filter(|(kept, _)| *kept == org)
+                .filter_map(|(_, component)| {
+                    held.pages
+                        .iter()
+                        .find(|page| page.org == org && page.id == component.page)
+                        .map(|page| {
+                            (
+                                page.created_ms,
+                                component.position,
+                                crate::status::Placed {
+                                    component: component.id,
+                                    name: component.name.clone(),
+                                    page: page.id,
+                                    page_name: page.name.clone(),
+                                },
+                            )
+                        })
+                })
+                .collect();
+            found.sort_by_key(|(created_ms, position, placed)| {
+                (*created_ms, placed.page, *position)
+            });
+            found.into_iter().map(|(_, _, placed)| placed).collect()
+        }))
+    }
+
+    async fn maintenances(
+        &self,
+        org: TenantId,
+        ending_after_ms: u64,
+    ) -> Result<Vec<crate::status::Maintenance>, StoreError> {
+        Ok(self.with(|held| {
+            let mut found: Vec<crate::status::Maintenance> = held
+                .maintenances
+                .iter()
+                .filter(|maintenance| {
+                    maintenance.org == org && maintenance.window.ends_ms() >= ending_after_ms
+                })
+                .cloned()
+                .collect();
+            found.sort_by_key(|maintenance| (maintenance.window.starts_ms(), maintenance.id));
+            found
+        }))
+    }
+
+    async fn maintenance(
+        &self,
+        org: TenantId,
+        id: crate::status::MaintenanceId,
+    ) -> Result<Option<crate::status::Maintenance>, StoreError> {
+        Ok(self.with(|held| {
+            held.maintenances
+                .iter()
+                .find(|maintenance| maintenance.org == org && maintenance.id == id)
+                .cloned()
+        }))
+    }
+
+    async fn add_maintenance(
+        &self,
+        maintenance: &crate::status::Maintenance,
+    ) -> Result<(), StoreError> {
+        self.with(|held| held.maintenances.push(maintenance.clone()));
+        Ok(())
+    }
+
+    async fn keep_maintenance(
+        &self,
+        maintenance: &crate::status::Maintenance,
+    ) -> Result<bool, StoreError> {
+        Ok(self.with(|held| {
+            held.maintenances
+                .iter_mut()
+                .find(|kept| kept.org == maintenance.org && kept.id == maintenance.id)
+                .map(|kept| *kept = maintenance.clone())
+                .is_some()
         }))
     }
 }

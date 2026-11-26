@@ -7,8 +7,8 @@ use super::entities::{Component, Link, StatusPage};
 use super::errors::StatusError;
 use super::showcase::Showcase;
 use super::value_objects::{
-    ComponentId, ComponentName, ComponentStatus, PageName, ServiceName, Slug, StatusPageId, Theme,
-    UpdateKind,
+    ComponentId, ComponentName, ComponentStatus, PageName, ServiceName, ShownStatus, Slug,
+    StatusPageId, Theme, UpdateKind,
 };
 use crate::alerts::{
     AlertRules, AlertSeverity, AlertStates, AlertStatus, Comparison, Condition, Definition,
@@ -434,11 +434,11 @@ async fn spec_l2_7_a_public_page_shows_its_public_components_and_only_public_inc
             .map(|component| (component.name.as_str(), component.status))
             .collect::<Vec<_>>(),
         vec![
-            ("Payments", ComponentStatus::Down),
-            ("Payouts", ComponentStatus::Degraded),
+            ("Payments", ShownStatus::Down),
+            ("Payouts", ShownStatus::Degraded),
         ]
     );
-    assert_eq!(view.overall, ComponentStatus::Down);
+    assert_eq!(view.overall, ShownStatus::Down);
     assert!(view.hide_from_search);
     assert_eq!(view.incidents.len(), 1);
     let shown = &view.incidents[0];
@@ -512,7 +512,7 @@ async fn an_incident_resolved_more_than_seven_days_ago_leaves_the_page() {
     );
     assert_eq!(
         view.overall,
-        ComponentStatus::Operational,
+        ShownStatus::Operational,
         "a resolved incident leaves the page operational"
     );
 }
@@ -556,7 +556,7 @@ async fn a_service_link_reads_the_last_five_minutes_of_its_project() {
             .iter()
             .map(|component| component.status)
             .collect::<Vec<_>>(),
-        [ComponentStatus::Down, ComponentStatus::Degraded]
+        [ShownStatus::Down, ShownStatus::Degraded]
     );
     let asked = world.loads.asked.lock().expect("the lock").clone();
     assert_eq!(asked.len(), 2, "one read per project");
@@ -683,19 +683,16 @@ async fn view_in_org_isolates_pages_sharing_the_same_slug_and_populates_thirty_d
     assert_eq!(mercato.components[0].days.len(), 30);
     assert_eq!(
         mercato.components[0].days[28],
-        Some(ComponentStatus::Operational)
+        Some(ShownStatus::Operational)
     );
-    assert_eq!(
-        mercato.components[0].days[29],
-        Some(ComponentStatus::Degraded)
-    );
+    assert_eq!(mercato.components[0].days[29], Some(ShownStatus::Degraded));
 
     assert_eq!(globex.org_slug.as_str(), "globex");
     assert_eq!(globex.components.len(), 1);
     assert_eq!(globex.components[0].name.as_str(), "Billing");
     assert_eq!(
         globex.components[0].days[29],
-        Some(ComponentStatus::Operational)
+        Some(ShownStatus::Operational)
     );
 }
 
@@ -762,10 +759,10 @@ async fn a_service_that_reported_within_a_day_and_went_silent_over_ten_minutes_s
         .await
         .expect("shown");
 
-    assert_eq!(view.components[0].status, ComponentStatus::Degraded);
-    assert_eq!(view.components[0].days[29], Some(ComponentStatus::Degraded));
-    assert_eq!(view.components[1].status, ComponentStatus::Operational);
-    assert_eq!(view.overall, ComponentStatus::Degraded);
+    assert_eq!(view.components[0].status, ShownStatus::Degraded);
+    assert_eq!(view.components[0].days[29], Some(ShownStatus::Degraded));
+    assert_eq!(view.components[1].status, ShownStatus::Operational);
+    assert_eq!(view.overall, ShownStatus::Degraded);
 }
 
 #[tokio::test]
@@ -810,10 +807,84 @@ async fn a_manual_component_retains_its_past_outage_bar_after_returning_to_opera
         .await
         .expect("shown");
 
-    assert_eq!(view.components[0].status, ComponentStatus::Operational);
-    assert_eq!(view.components[0].days[28], Some(ComponentStatus::Down));
+    assert_eq!(view.components[0].status, ShownStatus::Operational);
+    assert_eq!(view.components[0].days[28], Some(ShownStatus::Down));
+    assert_eq!(view.components[0].days[29], Some(ShownStatus::Operational));
+}
+
+#[tokio::test]
+async fn spec_maintenance_3_a_running_maintenance_shows_its_public_targets_as_maintenance() {
+    use super::entities::{Closure, Maintenance};
+    use super::ports::StatusPages;
+    use super::value_objects::{
+        MaintenanceId, MaintenancePhase, MaintenanceTitle, MaintenanceWindow,
+    };
+
+    let world = World::new();
+    let page = world.page("acme", true);
+    world.component_with(
+        page,
+        "Payments",
+        Link::Manual,
+        Some(ComponentStatus::Down),
+        true,
+    );
+    world.component_with(
+        page,
+        "Payouts",
+        Link::Manual,
+        Some(ComponentStatus::Operational),
+        true,
+    );
+    let ids: Vec<ComponentId> = world
+        .status
+        .components(org(), page)
+        .await
+        .expect("read")
+        .iter()
+        .map(|component| component.id)
+        .collect();
+    let held = |starts_ms: u64, ends_ms: u64, closure: Option<Closure>| Maintenance {
+        id: MaintenanceId::fresh(),
+        org: org(),
+        title: MaintenanceTitle::try_from("Payments upgrade").expect("a title"),
+        details: None,
+        window: MaintenanceWindow::new(starts_ms, ends_ms).expect("a window"),
+        components: vec![ids[0]],
+        closure,
+        created_ms: 1,
+        updated_ms: 1,
+    };
+    world
+        .status
+        .put_maintenance(held(NOW_MS - 60_000, NOW_MS + 60_000, None));
+    world
+        .status
+        .put_maintenance(held(NOW_MS + DAY_MS, NOW_MS + 2 * DAY_MS, None));
+    world.status.put_maintenance(held(
+        NOW_MS + DAY_MS,
+        NOW_MS + 2 * DAY_MS,
+        Some(Closure::Cancelled { at_ms: 1 }),
+    ));
+
+    let view = world
+        .showcase()
+        .view(&slug("acme"), now())
+        .await
+        .expect("shown");
+
+    assert_eq!(view.components[0].status, ShownStatus::Maintenance);
+    assert_eq!(view.components[0].days[29], Some(ShownStatus::Maintenance));
+    assert_eq!(view.components[1].status, ShownStatus::Operational);
+    assert_eq!(view.overall, ShownStatus::Maintenance);
     assert_eq!(
-        view.components[0].days[29],
-        Some(ComponentStatus::Operational)
+        view.maintenances
+            .iter()
+            .map(|shown| (shown.phase, shown.components.len()))
+            .collect::<Vec<_>>(),
+        vec![
+            (MaintenancePhase::InProgress, 1),
+            (MaintenancePhase::Scheduled, 1)
+        ]
     );
 }

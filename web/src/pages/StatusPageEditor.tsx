@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ExternalLink, Eye, EyeOff, Plus, RadioTower, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, ExternalLink, Eye, EyeOff, Pencil, Plus, RadioTower, Trash2, Wrench } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { because } from '@/auth/client'
@@ -17,9 +17,10 @@ import { useAlerts } from '@/data/alerts'
 import { useProjects } from '@/data/projects'
 import { useServiceNames } from '@/data/services'
 import {
-  ACCENTS, COMPONENT_STATUSES, MODES, STATUS_WORDS, resolveStatusDark, slugProblem, statusPagePath, useAddComponent, useChangeComponent, useChangeStatusPage, useCreateStatusPage,
-  useDeleteStatusPage, useOrderComponents, useRemoveComponent, useStatusPage, useStatusPages, useStatusPreview,
-  type ComponentLink, type ComponentStatus, type Mode, type StatusSheet,
+  ACCENTS, COMPONENT_STATUSES, MODES, PHASE_WORDS, STATUS_WORDS, agendaOf, fromLocalInput, groupByPage, resolveStatusDark, slugProblem, statusPagePath, toLocalInput, useAddComponent,
+  useCancelMaintenance, useChangeComponent, useChangeMaintenance, useChangeStatusPage, useCreateStatusPage, useDeleteStatusPage, useEndMaintenance, useMaintenances, useOrderComponents,
+  useRemoveComponent, useScheduleMaintenance, useStatusPage, useStatusPages, useStatusPreview, windowProblem,
+  type ComponentLink, type ComponentStatus, type Maintenance, type MaintenanceTarget, type Mode, type StatusSheet,
 } from '@/data/status-page'
 import { Link } from '@/lib/router'
 import { cn } from '@/lib/utils'
@@ -59,6 +60,7 @@ export function StatusPageEditor() {
         </EmptyState>
       ) : null}
       {selected ? <Editing key={selected} id={selected} admin={admin} /> : null}
+      {pages && pages.length > 0 ? <Maintenances admin={admin} /> : null}
       <CreateDialog open={creating} onOpenChange={setCreating} orgSlug={current?.org_slug} onCreated={(id) => setChosen(id)} />
     </>
   )
@@ -280,6 +282,111 @@ function CreateDialog({ open, onOpenChange, orgSlug, onCreated }: { open: boolea
           }} placeholder="Acme" /></Field>
           <Field label="Address" htmlFor="new-sp-slug" hint={problem ?? (slug ? `Served at ${statusPagePath({ org_slug: inferredOrg, slug })}` : 'Lowercase letters, digits and hyphens.')}><Input id="new-sp-slug" mono value={slug} onChange={(event) => setSlug(event.target.value)} /></Field>
           <DialogFooter><Button type="button" onClick={() => onOpenChange(false)}>Cancel</Button><Button type="submit" variant="primary" disabled={!name.trim() || !slug || Boolean(problem) || create.isPending}>Create</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+const MAINTENANCE_BADGE = 'border-sev-info-bd bg-sev-info-bg text-sev-info-fg'
+
+const stamp = (ms: number) => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+function Maintenances({ admin }: { admin: boolean }) {
+  const { list, failed } = useMaintenances()
+  const end = useEndMaintenance()
+  const cancel = useCancelMaintenance()
+  const [editing, setEditing] = useState<Maintenance | 'new' | null>(null)
+  const agenda = agendaOf(list?.maintenances)
+  const targets = list?.components ?? []
+  const names = new Map(targets.map((target) => [target.id, target.name]))
+  const rows = [...agenda.running, ...agenda.upcoming, ...agenda.past]
+  const failing = (what: string) => (error: unknown) => toast.error(because(error, what))
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader><CardTitle>Maintenances</CardTitle><CardKind>List</CardKind><span className="flex-1" />{admin ? <Button size="sm" onClick={() => setEditing('new')}><Plus />Schedule maintenance</Button> : null}</CardHeader>
+      {failed ? <div className="px-4 py-3 text-control text-destructive-text">{because(failed, 'The maintenances could not be loaded.')}</div> : null}
+      {list && rows.length === 0 ? <div className="px-4 py-3 text-control text-muted-foreground">No maintenance yet. A scheduled maintenance shows its components as under maintenance on every status page, and the days it covers do not count against uptime.</div> : null}
+      {rows.map((one) => {
+        const open = one.phase === 'scheduled' || one.phase === 'in_progress'
+        const stop = one.closed_ms ?? one.ends_ms
+        return (
+          <div key={one.id} className={cn('flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-2.5 last:border-b-0', !open && 'opacity-60')}>
+            <div className="flex min-w-[200px] flex-1 flex-col gap-0.5">
+              <span className="inline-flex flex-wrap items-center gap-1.5 text-control font-semibold">
+                {one.title}
+                <Badge variant="outline" size="xs" className={one.phase === 'in_progress' ? MAINTENANCE_BADGE : undefined}>{one.phase === 'in_progress' ? <Wrench /> : null}{PHASE_WORDS[one.phase]}</Badge>
+              </span>
+              <span className="font-mono text-[11.5px] text-muted-foreground">{stamp(one.starts_ms)} to {stamp(stop)}</span>
+              <span className="text-caption text-muted-foreground">{one.components.length ? one.components.map((id) => names.get(id) ?? 'a removed component').join(', ') : 'No component targeted'}</span>
+            </div>
+            {admin && open ? (
+              <>
+                <Button variant="ghost" size="icon-sm" aria-label={`Edit ${one.title}`} onClick={() => setEditing(one)}><Pencil /></Button>
+                {one.phase === 'in_progress' ? <Button size="sm" disabled={end.isPending} onClick={() => end.mutate(one.id, { onSuccess: () => toast.success('Maintenance ended'), onError: failing('The maintenance was not ended') })}>End now</Button> : null}
+                {one.phase === 'scheduled' ? <Button variant="ghost" size="sm" className="text-destructive-text" disabled={cancel.isPending} onClick={() => {
+                  if (!window.confirm(`Cancel the maintenance ${one.title}?`)) return
+                  cancel.mutate(one.id, { onSuccess: () => toast.success('Maintenance cancelled'), onError: failing('The maintenance was not cancelled') })
+                }}>Cancel</Button> : null}
+              </>
+            ) : null}
+          </div>
+        )
+      })}
+      {editing ? <MaintenanceDialog key={editing === 'new' ? 'new' : editing.id} maintenance={editing === 'new' ? null : editing} targets={targets} onClose={() => setEditing(null)} /> : null}
+    </Card>
+  )
+}
+
+function MaintenanceDialog({ maintenance, targets, onClose }: { maintenance: Maintenance | null; targets: MaintenanceTarget[]; onClose: () => void }) {
+  const schedule = useScheduleMaintenance()
+  const change = useChangeMaintenance()
+  const [title, setTitle] = useState(maintenance?.title ?? '')
+  const [details, setDetails] = useState(maintenance?.details ?? '')
+  const [starts, setStarts] = useState(maintenance ? toLocalInput(maintenance.starts_ms) : '')
+  const [ends, setEnds] = useState(maintenance ? toLocalInput(maintenance.ends_ms) : '')
+  const [picked, setPicked] = useState<string[]>(maintenance?.components ?? [])
+  const started = maintenance?.phase === 'in_progress'
+  const startMs = fromLocalInput(starts)
+  const endMs = fromLocalInput(ends)
+  const problem = starts || ends ? windowProblem(startMs, endMs, Date.now()) : null
+  const pending = schedule.isPending || change.isPending
+  const toggle = (id: string, on: boolean) => setPicked((now) => (on ? [...now, id] : now.filter((one) => one !== id)))
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent size="md" title={maintenance ? 'Edit maintenance' : 'Schedule maintenance'} description="The chosen components read under maintenance on every status page while it runs.">
+        <form className="flex flex-col gap-4" onSubmit={(event) => {
+          event.preventDefault()
+          if (startMs === null || endMs === null) return
+          const body = { title: title.trim(), details: details.trim() ? details.trim() : null, starts_ms: startMs, ends_ms: endMs, components: picked }
+          const options = {
+            onSuccess: () => {
+              toast.success(maintenance ? 'Maintenance saved' : 'Maintenance scheduled')
+              onClose()
+            },
+            onError: (error: unknown) => toast.error(because(error, 'The maintenance was not saved')),
+          }
+          if (maintenance) change.mutate({ id: maintenance.id, change: body }, options)
+          else schedule.mutate(body, options)
+        }}>
+          <Field label="Title" htmlFor="sm-title"><Input id="sm-title" value={title} maxLength={200} onChange={(event) => setTitle(event.target.value)} placeholder="Database upgrade" /></Field>
+          <Field label="Details" htmlFor="sm-details" hint="Optional. Shown to visitors."><Textarea id="sm-details" rows={3} value={details} maxLength={2000} onChange={(event) => setDetails(event.target.value)} /></Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Starts" htmlFor="sm-start"><Input id="sm-start" type="datetime-local" value={starts} disabled={started} onChange={(event) => setStarts(event.target.value)} /></Field>
+            <Field label="Ends" htmlFor="sm-end"><Input id="sm-end" type="datetime-local" value={ends} onChange={(event) => setEnds(event.target.value)} /></Field>
+          </div>
+          <span className={cn('text-caption', problem ? 'text-destructive-text' : 'text-muted-foreground')}>{problem ?? 'In your browser time zone. At most 7 days.'}</span>
+          <fieldset className="m-0 flex max-h-[240px] flex-col gap-2 overflow-y-auto border-0 p-0">
+            <legend className="mb-1 text-control font-semibold">Components under maintenance</legend>
+            {targets.length === 0 ? <span className="text-caption text-muted-foreground">No component on any status page yet.</span> : null}
+            {groupByPage(targets).map((group) => (
+              <div key={group.page_id} className="flex flex-col">
+                <span className="text-caption font-semibold text-muted-foreground">{group.page_name}</span>
+                {group.components.map((target) => <Switch key={target.id} checked={picked.includes(target.id)} onCheckedChange={(on) => toggle(target.id, on)} label={target.name} />)}
+              </div>
+            ))}
+          </fieldset>
+          <DialogFooter><Button type="button" onClick={onClose}>Close</Button><Button type="submit" variant="primary" disabled={!title.trim() || Boolean(windowProblem(startMs, endMs, Date.now())) || pending}>{maintenance ? 'Save' : 'Schedule'}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

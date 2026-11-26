@@ -310,6 +310,7 @@ async fn only_an_administrator_writes_a_read_key_only_reads_and_a_stranger_sees_
 }
 
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn components_are_added_in_order_reordered_changed_and_removed() {
     let world = World::new();
     let page = world.a_page("acme").await;
