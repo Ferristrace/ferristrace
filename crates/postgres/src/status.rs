@@ -209,7 +209,8 @@ impl StatusPages for PostgresStatusPages {
             "SELECT {QUALIFIED_PAGE_COLUMNS} FROM status_pages p \
              JOIN orgs o ON o.id = p.org_id \
              WHERE (o.slug = $1 AND p.public) OR p.slug = $1 \
-             ORDER BY (o.slug = $1 AND p.public) DESC, p.public DESC, p.created_ms, p.id \
+             ORDER BY (o.slug = $1 AND p.slug = $1 AND p.public) DESC, \
+             (o.slug = $1 AND p.public) DESC, p.public DESC, p.created_ms, p.id \
              LIMIT 1"
         )))
         .bind(slug.as_str())
@@ -567,6 +568,8 @@ fn read_letter(row: &PgRow) -> Result<ClaimedLetter, StoreError> {
         id: LetterId::new(row.get("id")),
         attempt: u32::try_from(row.get::<i32, _>("attempt")).unwrap_or_default(),
         page: StatusPageId::new(row.get("page_id")),
+        org_slug: Slug::try_from(row.get::<&str, _>("org_slug"))
+            .map_err(|_| refused("org_slug"))?,
         page_name: PageName::try_from(row.get::<&str, _>("page_name"))
             .map_err(|_| refused("name"))?,
         slug: Slug::try_from(row.get::<&str, _>("slug")).map_err(|_| refused("slug"))?,
@@ -621,10 +624,11 @@ impl StatusOutbox for PostgresStatusOutbox {
         let mut tx = self.tx.lock().await;
         let rows = sqlx::query(
             "SELECT o.id, o.attempt, o.kind, o.title, o.incident_status, o.body, o.at_ms, \
-             p.id AS page_id, p.name AS page_name, p.slug, \
+             g.slug AS org_slug, p.id AS page_id, p.name AS page_name, p.slug, \
              s.id AS subscriber_id, s.email \
              FROM status_outbox o \
              JOIN status_pages p ON p.id = o.page_id \
+             JOIN orgs g ON g.id = p.org_id \
              JOIN status_subscribers s ON s.id = o.subscriber_id \
              WHERE o.status = 'pending' AND o.next_at_ms <= $1 \
              ORDER BY o.next_at_ms, o.id LIMIT $2 \

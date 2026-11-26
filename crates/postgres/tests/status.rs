@@ -407,7 +407,11 @@ async fn an_announcement_reaches_confirmed_subscribers_of_public_pages_of_its_or
     assert_eq!(update.title.as_str(), "Payments fail");
     assert_eq!(update.kind, UpdateKind::Comment);
     assert_eq!(update.status, IncidentStatus::Identified);
-    assert!(claimed.iter().all(|letter| letter.slug.as_str() == "acme"));
+    assert!(
+        claimed
+            .iter()
+            .all(|letter| letter.org_slug.as_str() == "acme" && letter.slug.as_str() == "acme")
+    );
 }
 
 async fn claim_three(pg: &Postgres<FixedClock>) -> Vec<LetterId> {

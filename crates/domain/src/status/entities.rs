@@ -207,16 +207,20 @@ pub struct PublicView {
     pub incidents: Vec<PublicIncident>,
 }
 
+pub fn status_path(org_slug: &Slug, slug: &Slug) -> String {
+    if org_slug == slug {
+        format!("/status/{slug}")
+    } else {
+        format!("/status/{org_slug}/{slug}")
+    }
+}
+
 impl PublicView {
     pub fn postmortem_path(&self, incident: IncidentId) -> String {
-        if self.org_slug == self.slug {
-            format!("/status/{}/postmortems/{incident}", self.slug)
-        } else {
-            format!(
-                "/status/{}/{}/postmortems/{incident}",
-                self.org_slug, self.slug
-            )
-        }
+        format!(
+            "{}/postmortems/{incident}",
+            status_path(&self.org_slug, &self.slug)
+        )
     }
 }
 
@@ -260,16 +264,11 @@ pub struct Landing {
 
 impl Landing {
     pub fn path(&self) -> String {
-        if self.org_slug == self.slug {
-            format!("/status/{}?notice={}", self.slug, self.notice.as_str())
-        } else {
-            format!(
-                "/status/{}/{}?notice={}",
-                self.org_slug,
-                self.slug,
-                self.notice.as_str()
-            )
-        }
+        format!(
+            "{}?notice={}",
+            status_path(&self.org_slug, &self.slug),
+            self.notice.as_str()
+        )
     }
 }
 
@@ -312,6 +311,7 @@ pub struct ClaimedLetter {
     pub id: LetterId,
     pub attempt: u32,
     pub page: StatusPageId,
+    pub org_slug: Slug,
     pub page_name: PageName,
     pub slug: Slug,
     pub subscriber: SubscriberId,
@@ -321,11 +321,18 @@ pub struct ClaimedLetter {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Letter {
+    pub org_slug: Slug,
     pub page_name: PageName,
     pub slug: Slug,
     pub body: LetterBody,
     pub confirm: Option<Box<str>>,
     pub unsubscribe: Box<str>,
+}
+
+impl Letter {
+    pub fn page_path(&self) -> String {
+        status_path(&self.org_slug, &self.slug)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

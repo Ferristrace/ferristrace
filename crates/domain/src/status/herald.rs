@@ -60,6 +60,7 @@ where
                         )
                     };
                     let letter = Letter {
+                        org_slug: claimed.org_slug.clone(),
                         page_name: claimed.page_name.clone(),
                         slug: claimed.slug.clone(),
                         confirm: matches!(claimed.body, LetterBody::Confirm)
