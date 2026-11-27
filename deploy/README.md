@@ -205,11 +205,11 @@ docker compose exec server ferristrace bootstrap --email you@example.com
 
 ## Using a published image instead of building
 
-Images land on `ghcr.io/ferrislabs/ferristrace` for every released tag:
+Images land on `ghcr.io/ferristrace/ferristrace` for every released tag:
 `1.2.3`, for linux/amd64 and linux/arm64.
 
 ```sh
-export FERRISTRACE_IMAGE=ghcr.io/ferrislabs/ferristrace:1.2.3
+export FERRISTRACE_IMAGE=ghcr.io/ferristrace/ferristrace:1.2.3
 docker compose up --detach --no-build --pull always
 ```
 
@@ -220,9 +220,9 @@ Every published image is signed keyless with cosign, bound to the release
 workflow's identity and recorded in the Sigstore transparency log:
 
 ```sh
-cosign verify ghcr.io/ferrislabs/ferristrace:1.2.3 \
+cosign verify ghcr.io/ferristrace/ferristrace:1.2.3 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github.com/ferrislabs/ferristrace/\.github/workflows/docker\.yaml@'
+  --certificate-identity-regexp '^https://github\.com/[Ff]erristrace/ferristrace/\.github/workflows/docker\.yaml@refs/tags/v'
 ```
 
 ## What to change before this faces anything real
@@ -1108,5 +1108,5 @@ container actually serves.
 A Helm chart lives in [`charts/ferristrace`](../charts/ferristrace): one
 Deployment, with Postgres, ClickHouse and Redis supplied from outside and
 every credential read from an existing Secret by name. Published to
-`oci://ghcr.io/ferrislabs/charts/ferristrace`. An ArgoCD `Application`
+`oci://ghcr.io/ferristrace/charts/ferristrace`. An ArgoCD `Application`
 example is in [`argocd/ferristrace-application.yaml`](argocd/ferristrace-application.yaml).

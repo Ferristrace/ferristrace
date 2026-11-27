@@ -86,7 +86,7 @@ Running the front end against the stack, without rebuilding the image, is in
 
 ## Releases
 
-A tag `vX.Y.Z` publishes `ghcr.io/ferrislabs/ferristrace:X.Y.Z`, the MCP
+A tag `vX.Y.Z` publishes `ghcr.io/ferristrace/ferristrace:X.Y.Z`, the MCP
 server and gateway images, for linux/amd64 and linux/arm64, with provenance
 and an SBOM, and the Helm chart at the same version. Everything is open
 source: there is one build, and the hosted service runs it too.

@@ -38,15 +38,15 @@ The `release` workflow runs four jobs in order:
 
 1. `check` — the tag matches the manifest and the chart, then fmt, clippy, the tests against real Postgres, ClickHouse and Redis services, and the doc tests. Nothing is published before this passes.
 2. `images` — builds and pushes `X.Y.Z` of the server, the MCP server and the MCP gateway for linux/amd64 and linux/arm64, with provenance and an SBOM, and attests them. A stable release also moves `latest`.
-3. `chart` — lints the chart and pushes it to `oci://ghcr.io/ferrislabs/charts/ferristrace` at the tag's version, with the same appVersion. It runs after the images, so a published chart never names an image that is not there.
+3. `chart` — lints the chart and pushes it to `oci://ghcr.io/ferristrace/charts/ferristrace` at the tag's version, with the same appVersion. It runs after the images, so a published chart never names an image that is not there.
 4. `release` — generates the changelog from the commits since the previous tag, measures the published images, and creates the GitHub Release.
 
 ## After
 
 ```sh
-docker pull ghcr.io/ferrislabs/ferristrace:0.2.0
-docker run --rm ghcr.io/ferrislabs/ferristrace:0.2.0 --help
-helm show chart oci://ghcr.io/ferrislabs/charts/ferristrace --version 0.2.0
+docker pull ghcr.io/ferristrace/ferristrace:0.2.0
+docker run --rm ghcr.io/ferristrace/ferristrace:0.2.0 --help
+helm show chart oci://ghcr.io/ferristrace/charts/ferristrace --version 0.2.0
 ```
 
 Then read the release body: the image table carries a line per image and per architecture, and the changelog underneath should name every change an operator would notice. Check that `latest` moved if this was a stable release, and that it did not if this was a candidate.

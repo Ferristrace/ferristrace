@@ -23,7 +23,7 @@ permissions:
 env:
   KUBECONFORM_VERSION: v0.6.7
   KUBECONFORM_SHA256: 95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73
-  REGISTRY: oci://ghcr.io/ferrislabs/charts
+  REGISTRY: oci://ghcr.io/ferristrace/charts
 
 jobs:
   lint:

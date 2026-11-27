@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: ghcr.io/ferrislabs/charts
+    repoURL: ghcr.io/ferristrace/charts
     chart: ferristrace
     targetRevision: 0.0.8
     helm:

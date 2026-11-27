@@ -6,5 +6,5 @@ version: 0.1.0
 appVersion: "0.1.0"
 home: https://github.com/ferrislabs/ferristrace
 sources:
-  - https://github.com/ferrislabs/ferristrace
+  - https://github.com/Ferristrace/ferristrace
 kubeVersion: ">=1.27.0-0"

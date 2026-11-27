@@ -47,7 +47,7 @@ permissions:
   contents: read
 
 env:
-  REGISTRY: ghcr.io/ferrislabs
+  REGISTRY: ghcr.io/ferristrace
 
 jobs:
   # Decides what this run builds. Every run builds the three images for
@@ -394,7 +394,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.images) }}
     env:
-      IMAGE: ${{ format('ghcr.io/ferrislabs/{0}', matrix.repository) }}
+      IMAGE: ${{ format('ghcr.io/ferristrace/{0}', matrix.repository) }}
       # Tag pull requests with their head commit, not the merge commit
       # GitHub checks out for them.
       DOCKER_METADATA_PR_HEAD_SHA: "true"

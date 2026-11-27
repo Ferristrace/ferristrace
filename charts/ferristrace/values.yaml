@@ -5,7 +5,7 @@ fullnameOverride: ""
 
 image:
   # -- Image repository.
-  repository: ghcr.io/ferrislabs/ferristrace
+  repository: ghcr.io/ferristrace/ferristrace
   # -- Image tag. Empty means the chart appVersion.
   tag: ""
   # -- Image pull policy.
@@ -165,7 +165,7 @@ mcp:
   server:
     image:
       # -- Image repository of the MCP server.
-      repository: ghcr.io/ferrislabs/ferristrace-mcp
+      repository: ghcr.io/ferristrace/ferristrace-mcp
       # -- Image tag. Empty means the chart appVersion.
       tag: ""
       pullPolicy: IfNotPresent
@@ -184,7 +184,7 @@ mcp:
   gateway:
     image:
       # -- Image repository of the gateway.
-      repository: ghcr.io/ferrislabs/ferristrace-mcp-gateway
+      repository: ghcr.io/ferristrace/ferristrace-mcp-gateway
       # -- Image tag. Empty means the chart appVersion.
       tag: ""
       pullPolicy: IfNotPresent
