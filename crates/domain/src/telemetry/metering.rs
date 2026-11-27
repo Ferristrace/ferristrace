@@ -52,16 +52,16 @@ where
         let hours = self.history.hours(org, window).await?;
         let projects = by_project(&hours, self.history.project_hours(org, window).await?);
         let used: Split = hours.iter().filter_map(|hour| hour.split).sum();
+        let included = self.history.included(org).await?;
+        let prices = self
+            .prices
+            .map(|prices| prices.including(included.per_signal(prices.included)));
         Ok(Consumption {
             ingested_bytes: self.live.used(org).await.get(),
-            included_bytes: self
-                .history
-                .included(org)
-                .await?
-                .map(DecompressedBytes::get),
+            included_bytes: included.ingest.map(DecompressedBytes::get),
             hours,
-            pricing: self.prices,
-            bill: self.prices.map(|prices| prices.bill(used, window, now)),
+            pricing: prices,
+            bill: prices.map(|prices| prices.bill(used, window, now)),
             projects,
         })
     }

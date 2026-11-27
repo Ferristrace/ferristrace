@@ -5,7 +5,7 @@ use super::metering::Metering;
 use super::ports::{UsageHistory, UsageReader};
 use super::pricing::{Currency, PriceList};
 use super::value_objects::{
-    Consumed, DecompressedBytes, HourVolume, ProjectHours, Split, TenantId,
+    Consumed, DecompressedBytes, HourVolume, PlanIncluded, ProjectHours, Split, TenantId,
 };
 use crate::catalogue::ProjectId;
 use crate::clock::UnixSeconds;
@@ -71,6 +71,7 @@ impl UsageReader for Live {
 struct Rolled {
     asked: Mutex<Vec<TenantId>>,
     included: Option<u64>,
+    spans_included: Option<u64>,
 }
 
 impl UsageHistory for &Rolled {
@@ -94,8 +95,12 @@ impl UsageHistory for &Rolled {
         ])
     }
 
-    async fn included(&self, _org: TenantId) -> Result<Option<DecompressedBytes>, StoreError> {
-        Ok(self.included.map(DecompressedBytes::new))
+    async fn included(&self, _org: TenantId) -> Result<PlanIncluded, StoreError> {
+        Ok(PlanIncluded {
+            ingest: self.included.map(DecompressedBytes::new),
+            spans_bytes: self.spans_included,
+            ..PlanIncluded::default()
+        })
     }
 
     async fn project_hours(
@@ -239,6 +244,30 @@ async fn the_bill_counts_split_hours_only() {
     assert_eq!(consumption.pricing, Some(prices()));
     assert_eq!(bill.logs.used, 2_000_000_000);
     assert_eq!(bill.value_micros(), 2_000_000);
+    assert_eq!(bill.billable_micros(), 1_000_000);
+}
+
+#[tokio::test]
+async fn what_the_plan_includes_replaces_the_server_allowance_per_signal() {
+    let rolled = Rolled {
+        spans_included: Some(100_000_000_000),
+        ..Rolled::default()
+    };
+
+    let consumption = metering(0, &rolled)
+        .priced(Some(prices()))
+        .consumption(&token(), an_org(MINE), a_month(), after_the_window())
+        .await
+        .expect("a member may read");
+
+    let bill = consumption.bill.expect("a bill");
+    let pricing = consumption.pricing.expect("prices");
+    assert_eq!(bill.spans.included, 100_000_000_000, "the plan sets spans");
+    assert_eq!(pricing.included.spans_bytes, 100_000_000_000);
+    assert_eq!(
+        bill.logs.included, 1_000_000_000,
+        "a signal the plan leaves unset keeps the server allowance"
+    );
     assert_eq!(bill.billable_micros(), 1_000_000);
 }
 

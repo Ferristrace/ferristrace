@@ -1,5 +1,5 @@
 use super::errors::InvalidId;
-use super::value_objects::{SpanId, TraceId};
+use super::value_objects::{PlanIncluded, SpanId, Split, TraceId};
 
 #[test]
 fn a_trace_id_needs_sixteen_bytes() {
@@ -95,4 +95,30 @@ fn a_severity_reads_back_from_its_name() {
         super::value_objects::Severity::try_from("loud"),
         Err(super::errors::BadSeverity)
     );
+}
+
+#[test]
+fn a_plan_fills_what_it_sets_and_falls_back_for_the_rest() {
+    let server = Split {
+        spans_bytes: 1,
+        logs_bytes: 2,
+        metrics_points: 3,
+    };
+    let plan = PlanIncluded {
+        ingest: None,
+        spans_bytes: Some(100),
+        logs_bytes: None,
+        metrics_points: Some(0),
+    };
+
+    assert_eq!(
+        plan.per_signal(server),
+        Split {
+            spans_bytes: 100,
+            logs_bytes: 2,
+            metrics_points: 0,
+        },
+        "an explicit zero is a choice, an absent figure is not"
+    );
+    assert_eq!(PlanIncluded::default().per_signal(server), server);
 }

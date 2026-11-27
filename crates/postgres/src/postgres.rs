@@ -22,6 +22,9 @@ pub struct PlanSpec {
     pub overage_price_ref: Option<String>,
     pub overage_grace_gb: i32,
     pub overage_cap_gb: Option<i32>,
+    pub included_spans_gb: Option<i32>,
+    pub included_logs_gb: Option<i32>,
+    pub included_metrics_million: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,14 +44,18 @@ pub async fn sync_plans(pool: &PgPool, plans: &[PlanSpec]) -> Result<(), sqlx::E
         sqlx::query(
             "INSERT INTO plans \
                (id, slug, name, ingest_gb, retention_days, features, price_ref, \
-                overage_price_ref, overage_grace_gb, overage_cap_gb) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+                overage_price_ref, overage_grace_gb, overage_cap_gb, \
+                included_spans_gb, included_logs_gb, included_metrics_million) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) \
              ON CONFLICT (slug) DO UPDATE SET name = excluded.name, \
                ingest_gb = excluded.ingest_gb, retention_days = excluded.retention_days, \
                features = excluded.features, price_ref = excluded.price_ref, \
                overage_price_ref = excluded.overage_price_ref, \
                overage_grace_gb = excluded.overage_grace_gb, \
-               overage_cap_gb = excluded.overage_cap_gb",
+               overage_cap_gb = excluded.overage_cap_gb, \
+               included_spans_gb = excluded.included_spans_gb, \
+               included_logs_gb = excluded.included_logs_gb, \
+               included_metrics_million = excluded.included_metrics_million",
         )
         .bind(uuid::Uuid::new_v4())
         .bind(&plan.slug)
@@ -60,6 +67,9 @@ pub async fn sync_plans(pool: &PgPool, plans: &[PlanSpec]) -> Result<(), sqlx::E
         .bind(plan.overage_price_ref.as_deref())
         .bind(plan.overage_grace_gb)
         .bind(plan.overage_cap_gb)
+        .bind(plan.included_spans_gb)
+        .bind(plan.included_logs_gb)
+        .bind(plan.included_metrics_million)
         .execute(&mut *tx)
         .await?;
     }

@@ -74,6 +74,9 @@ fn hosted_plans() -> Vec<PlanSpec> {
             overage_price_ref: None,
             overage_grace_gb: 0,
             overage_cap_gb: None,
+            included_spans_gb: None,
+            included_logs_gb: None,
+            included_metrics_million: None,
         },
         PlanSpec {
             slug: "pro".into(),
@@ -85,6 +88,9 @@ fn hosted_plans() -> Vec<PlanSpec> {
             overage_price_ref: Some("price_pro_overage".into()),
             overage_grace_gb: 8,
             overage_cap_gb: Some(66),
+            included_spans_gb: Some(100),
+            included_logs_gb: None,
+            included_metrics_million: Some(0),
         },
     ]
 }

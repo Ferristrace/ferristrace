@@ -80,6 +80,12 @@ pub struct PlanConfig {
     pub overage_grace_gb: u32,
     #[serde(default)]
     pub overage_cap_gb: Option<NonZeroU32>,
+    #[serde(default)]
+    pub included_spans_gb: Option<u32>,
+    #[serde(default)]
+    pub included_logs_gb: Option<u32>,
+    #[serde(default)]
+    pub included_metrics_million: Option<u32>,
 }
 
 fn a_month() -> u64 {
@@ -953,6 +959,8 @@ mod tests {
                 retention_days = 30
                 overage = true
                 price = "price_test"
+                included_spans_gb = 100
+                included_metrics_million = 0
                 "#,
             )?;
 
@@ -961,8 +969,12 @@ mod tests {
             assert_eq!(config.plans.len(), 2);
             assert!(!config.plans[0].overage);
             assert_eq!(config.plans[0].price, None);
+            assert_eq!(config.plans[0].included_spans_gb, None);
             assert!(config.plans[1].overage);
             assert_eq!(config.plans[1].price.as_deref(), Some("price_test"));
+            assert_eq!(config.plans[1].included_spans_gb, Some(100));
+            assert_eq!(config.plans[1].included_logs_gb, None);
+            assert_eq!(config.plans[1].included_metrics_million, Some(0));
             Ok(())
         });
     }
@@ -1001,6 +1013,9 @@ mod tests {
             overage_price: None,
             overage_grace_gb: 0,
             overage_cap_gb: None,
+            included_spans_gb: None,
+            included_logs_gb: None,
+            included_metrics_million: None,
         }
     }
 

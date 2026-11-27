@@ -203,10 +203,11 @@ pub use telemetry::{
     Admission, Allowance, BadRetention, BadSeverity, BillingHour, BillingMonth, Carried, Consumed,
     Consumption, CounterUnreachable, DecompressedBytes, HourSplit, HourTotal, HourlyCounters,
     Ingest, IngestError, IngestKey, InvalidId, LogPayload, LogRecord, LogSink, MAX_RETENTION_DAYS,
-    MIN_RETENTION_DAYS, Metering, MonthTotal, Payload, PendingOverageHour, QuotaPolicy,
-    RetentionDays, Scope, Severity, SignalKind, SinkError, Span, SpanEvent, SpanId, SpanKind,
-    SpanSink, SpanStatus, Split, StaticQuota, StoredVolumes, TenantDirectory, TenantId, TraceId,
-    UnknownKey, Unmetered, UsageHistory, UsageLedger, UsageMeter, UsageReader, UsageSyncError,
+    MIN_RETENTION_DAYS, Metering, MonthTotal, Payload, PendingOverageHour, PlanIncluded,
+    QuotaPolicy, RetentionDays, Scope, Severity, SignalKind, SinkError, Span, SpanEvent, SpanId,
+    SpanKind, SpanSink, SpanStatus, Split, StaticQuota, StoredVolumes, TenantDirectory, TenantId,
+    TraceId, UnknownKey, Unmetered, UsageHistory, UsageLedger, UsageMeter, UsageReader,
+    UsageSyncError,
 };
 pub use views::{
     BadViewDefinition, BadViewName, Creation, ExplorerViews, NewView, Saving, View, ViewChange,

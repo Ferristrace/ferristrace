@@ -7,7 +7,7 @@ use ferristrace_api::{AppState, usage_router};
 use ferristrace_application::registry::{RepoFor, domain};
 use ferristrace_application::testing::{Bearers, Inert, Untransacted};
 use ferristrace_application::{Adapters, Ferristrace, Stack};
-use ferristrace_domain::telemetry::{Currency, HourVolume, PriceList, ProjectHours};
+use ferristrace_domain::telemetry::{Currency, HourVolume, PlanIncluded, PriceList, ProjectHours};
 use ferristrace_domain::{
     AccountId, Carried, Consumed, DecompressedBytes, Membership, Memberships, NoPhotos, OrgRole,
     ProjectId, Session, SessionError, SessionStore, SessionToken, Split, StoreError, TenantId,
@@ -111,8 +111,11 @@ impl UsageHistory for Rolled {
         ])
     }
 
-    async fn included(&self, _org: TenantId) -> Result<Option<DecompressedBytes>, StoreError> {
-        Ok(self.included.map(DecompressedBytes::new))
+    async fn included(&self, _org: TenantId) -> Result<PlanIncluded, StoreError> {
+        Ok(PlanIncluded {
+            ingest: self.included.map(DecompressedBytes::new),
+            ..PlanIncluded::default()
+        })
     }
 
     async fn project_hours(

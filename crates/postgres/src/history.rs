@@ -2,8 +2,9 @@ use ferristrace_application::repository;
 use std::collections::BTreeMap;
 
 use ferristrace_domain::telemetry::{
-    BillingHour, BillingMonth, HourSplit, HourTotal, HourVolume, MonthTotal, PendingOverageHour,
-    ProjectHourShare, ProjectHours, ProjectSplit, Split, UsageLedger,
+    BYTES_PER_GB, BillingHour, BillingMonth, HourSplit, HourTotal, HourVolume, MonthTotal,
+    POINTS_PER_MILLION, PendingOverageHour, PlanIncluded, ProjectHourShare, ProjectHours,
+    ProjectSplit, Split, UsageLedger,
 };
 use ferristrace_domain::{
     Consumed, CustomerRef, DecompressedBytes, ProjectId, StoreError, TenantId, UsageHistory, Window,
@@ -55,20 +56,34 @@ impl UsageHistory for PostgresUsage {
             .collect())
     }
 
-    async fn included(&self, org: TenantId) -> Result<Option<DecompressedBytes>, StoreError> {
+    async fn included(&self, org: TenantId) -> Result<PlanIncluded, StoreError> {
         let mut tx = self.tx.lock().await;
         let found = sqlx::query(
-            "SELECT p.ingest_gb AS ingest_gb FROM orgs o JOIN plans p ON p.id = o.plan_id \
-             WHERE o.id = $1",
+            "SELECT p.ingest_gb AS ingest_gb, p.included_spans_gb AS included_spans_gb, \
+             p.included_logs_gb AS included_logs_gb, \
+             p.included_metrics_million AS included_metrics_million \
+             FROM orgs o JOIN plans p ON p.id = o.plan_id WHERE o.id = $1",
         )
         .bind(org.as_uuid())
         .fetch_optional(&mut **tx)
         .await
         .map_err(|error| unreachable(&error, "read what a plan allows"))?;
 
-        Ok(found
-            .and_then(|row| row.get::<Option<i32>, _>("ingest_gb"))
-            .and_then(gigabytes_to_bytes))
+        Ok(found.map_or_else(PlanIncluded::default, |row| {
+            let whole = |column: &str, unit: u64| {
+                row.get::<Option<i32>, _>(column)
+                    .and_then(|value| u64::try_from(value).ok())
+                    .map(|value| value.saturating_mul(unit))
+            };
+            PlanIncluded {
+                ingest: row
+                    .get::<Option<i32>, _>("ingest_gb")
+                    .and_then(gigabytes_to_bytes),
+                spans_bytes: whole("included_spans_gb", BYTES_PER_GB),
+                logs_bytes: whole("included_logs_gb", BYTES_PER_GB),
+                metrics_points: whole("included_metrics_million", POINTS_PER_MILLION),
+            }
+        }))
     }
 
     async fn project_hours(

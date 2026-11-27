@@ -358,13 +358,20 @@ fn plans_of(config: &Config) -> anyhow::Result<Vec<PlanSpec>> {
                 overage_grace_gb: i32::try_from(plan.overage_grace_gb)
                     .context("a plan figure does not fit the control plane")?,
                 overage_cap_gb: plan.overage_cap_gb.map(whole).transpose()?,
+                included_spans_gb: plan.included_spans_gb.map(fits).transpose()?,
+                included_logs_gb: plan.included_logs_gb.map(fits).transpose()?,
+                included_metrics_million: plan.included_metrics_million.map(fits).transpose()?,
             })
         })
         .collect()
 }
 
 fn whole(value: std::num::NonZeroU32) -> anyhow::Result<i32> {
-    i32::try_from(value.get()).context("a plan figure does not fit the control plane")
+    fits(value.get())
+}
+
+fn fits(value: u32) -> anyhow::Result<i32> {
+    i32::try_from(value).context("a plan figure does not fit the control plane")
 }
 
 async fn allowances_of(
