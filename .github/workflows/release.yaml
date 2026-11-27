@@ -13,10 +13,52 @@ env:
   IMAGE: ghcr.io/ferrislabs/ferristrace
 
 jobs:
+  # The same stores as ci.yaml's test job: a tag runs the adapter suites for
+  # real, and REQUIRE_* turns a store that is not there into a failure.
   check:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ferristrace
+          POSTGRES_PASSWORD: ferristrace
+          POSTGRES_DB: ferristrace
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ferristrace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.8
+        env:
+          CLICKHOUSE_PASSWORD: ferristrace
+        ports: ["8123:8123"]
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://ferristrace:ferristrace@localhost:5432/ferristrace
+      REQUIRE_DATABASE_URL: "1"
+      REDIS_URL: redis://localhost:6379
+      REQUIRE_REDIS_URL: "1"
+      CLICKHOUSE_URL: http://localhost:8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ferristrace
+      REQUIRE_CLICKHOUSE_URL: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -46,8 +88,20 @@ jobs:
           cache: false
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          shared-key: rust-release
+          shared-key: rust-test
           save-if: false
+      - name: give ClickHouse a tiered storage policy
+        env:
+          CLICKHOUSE_CONTAINER: ${{ job.services.clickhouse.id }}
+        run: |
+          docker cp .github/clickhouse/tiered.xml "$CLICKHOUSE_CONTAINER":/etc/clickhouse-server/config.d/tiered.xml
+          docker restart "$CLICKHOUSE_CONTAINER"
+          for _ in $(seq 60); do
+            curl -sf http://localhost:8123/ping && exit 0
+            sleep 1
+          done
+          echo "ClickHouse did not come back after the restart" >&2
+          exit 1
       - name: the tag is formatted, lint-clean and green
         run: |
           cargo fmt --all -- --check
