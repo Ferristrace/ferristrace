@@ -19,7 +19,7 @@ use ferristrace_mcp_gateway::{Gateway, Secret, router};
 use jiff::Timestamp;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use p256::SecretKey;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::sec1::ToSec1Point;
 use p256::pkcs8::EncodePrivateKey;
 use serde_json::{Value, json};
 
@@ -224,7 +224,7 @@ fn secret_key(bytes: [u8; 32]) -> SecretKey {
 }
 
 pub fn jwk() -> Value {
-    let point = secret_key(KEY_BYTES).public_key().to_encoded_point(false);
+    let point = secret_key(KEY_BYTES).public_key().to_sec1_point(false);
     json!({
         "kty": "EC", "crv": "P-256", "use": "sig", "alg": "ES256", "kid": KID,
         "x": URL_SAFE_NO_PAD.encode(point.x().unwrap()),
@@ -259,7 +259,7 @@ pub fn sign_hs256(claims: &Value) -> String {
         Algorithm::HS256,
         Some(KID),
         claims,
-        &EncodingKey::from_secret(b"shared-secret"),
+        &EncodingKey::from_secret(b"shared-secret").unwrap(),
     )
 }
 

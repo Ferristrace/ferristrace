@@ -43,6 +43,7 @@ pub fn transactional(args: TokenStream, input: TokenStream) -> TokenStream {
         vis,
         sig,
         block,
+        ..
     } = parse_macro_input!(input as ItemFn);
 
     let bindings = listed.domains.iter().map(|name| {
