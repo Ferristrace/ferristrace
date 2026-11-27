@@ -1255,7 +1255,7 @@ version = "0.0.8"
 dependencies = [
  "hex",
  "hmac 0.13.0",
- "jiff 0.2.46",
+ "jiff 1.0.3",
  "proptest",
  "rand 0.10.4",
  "serde",
@@ -1323,7 +1323,7 @@ dependencies = [
  "axum",
  "ferristrace-mcp-args",
  "figment",
- "jiff 0.2.46",
+ "jiff 1.0.3",
  "reqwest 0.12.28",
  "rmcp",
  "serde",
@@ -1355,7 +1355,7 @@ dependencies = [
  "ferristrace-mcp",
  "ferristrace-mcp-args",
  "figment",
- "jiff 0.2.46",
+ "jiff 1.0.3",
  "jsonwebtoken",
  "opentelemetry-proto",
  "p256",
@@ -2196,7 +2196,6 @@ checksum = "175dc66334db3b9ab9985bf8b61cfed50dc16d20964bb47f9e479adcae984a7f"
 dependencies = [
  "jiff-core 0.1.8",
  "jiff-static 0.2.46",
- "jiff-tzdb 0.1.10",
  "jiff-tzdb-platform 0.1.3",
  "log",
  "portable-atomic",
@@ -2213,6 +2212,7 @@ checksum = "107f2e89536b6818514025f6787b0d94d819e54fe3b40365275fc753de485b3f"
 dependencies = [
  "jiff-core 1.0.2",
  "jiff-static 1.0.3",
+ "jiff-tzdb 1.0.0",
  "jiff-tzdb-platform 1.0.0",
  "log",
  "portable-atomic",

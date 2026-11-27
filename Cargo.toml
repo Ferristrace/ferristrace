@@ -66,7 +66,7 @@ flate2 = "1.1.6"
 hex = "0.4.3"
 hmac = "0.13.0"
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "tokio1", "tokio1-rustls-tls"] }
-jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
+jiff = { version = "1.0.2", default-features = false, features = ["std", "tzdb-bundle-always"] }
 jsonwebtoken = { version = "11.1.0", default-features = false, features = ["use_pem", "rust_crypto"] }
 opentelemetry-proto = { version = "0.33.1", default-features = false, features = ["gen-tonic", "trace", "logs", "metrics", "with-serde"] }
 proc-macro2 = "1.0.107"
