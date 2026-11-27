@@ -1009,11 +1009,12 @@ async fn shutdown() {
 
 async fn roll_up_hourly(usage: Arc<Ferristrace<Production>>) {
     loop {
-        tokio::time::sleep(until_the_next_hour(SystemClock)).await;
         match usage.roll_up_usage().await {
-            Ok(tenants) => tracing::info!(tenants, "the finished hour was rolled up"),
+            Ok(0) => {}
+            Ok(hours) => tracing::info!(hours, "the finished hours were rolled up"),
             Err(error) => tracing::error!(%error, "the usage rollup failed"),
         }
+        tokio::time::sleep(until_the_next_hour(SystemClock)).await;
         flush_pending_overages(&usage).await;
     }
 }

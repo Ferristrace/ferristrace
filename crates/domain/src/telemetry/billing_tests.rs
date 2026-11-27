@@ -113,3 +113,28 @@ fn an_hour_past_the_monthly_cap_clamps_to_the_remaining_cap() {
     assert_eq!(slice(170, 10, 108, Some(66)).billable().get(), 4);
     assert_eq!(slice(175, 10, 108, Some(66)).billable().get(), 0);
 }
+
+#[test]
+fn an_hour_is_read_back_from_its_key() {
+    let hour = BillingHour::containing(UnixSeconds::new(1_700_000_000));
+
+    assert_eq!(BillingHour::from_key(&hour.key()), Some(hour));
+    assert_eq!(
+        BillingHour::from_key("2023111422").map(BillingHour::start_nanos),
+        Some(1_699_999_200_000_000_000)
+    );
+}
+
+#[test]
+fn a_month_key_or_a_malformed_key_names_no_hour() {
+    for key in [
+        "202311",
+        "2023111",
+        "20231114225",
+        "2023131422",
+        "2023111424",
+        "2023abcd22",
+    ] {
+        assert_eq!(BillingHour::from_key(key), None, "{key}");
+    }
+}

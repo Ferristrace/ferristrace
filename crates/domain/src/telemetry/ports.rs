@@ -241,7 +241,7 @@ impl<T: UsageHistory + Send + Sync> UsageHistory for std::sync::Arc<T> {
 }
 
 pub trait HourlyCounters {
-    fn finished(
+    fn closed_before(
         &self,
         hour: BillingHour,
     ) -> impl Future<Output = Result<Vec<HourTotal>, CounterUnreachable>> + Send;
@@ -259,11 +259,11 @@ pub trait HourlyCounters {
 }
 
 impl<T: HourlyCounters + Sync> HourlyCounters for &T {
-    fn finished(
+    fn closed_before(
         &self,
         hour: BillingHour,
     ) -> impl Future<Output = Result<Vec<HourTotal>, CounterUnreachable>> + Send {
-        (*self).finished(hour)
+        (*self).closed_before(hour)
     }
 
     fn discard(
@@ -283,11 +283,11 @@ impl<T: HourlyCounters + Sync> HourlyCounters for &T {
 }
 
 impl<T: HourlyCounters + Send + Sync> HourlyCounters for std::sync::Arc<T> {
-    fn finished(
+    fn closed_before(
         &self,
         hour: BillingHour,
     ) -> impl Future<Output = Result<Vec<HourTotal>, CounterUnreachable>> + Send {
-        self.as_ref().finished(hour)
+        self.as_ref().closed_before(hour)
     }
 
     fn discard(

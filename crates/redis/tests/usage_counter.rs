@@ -541,3 +541,51 @@ async fn a_rolled_hour_carries_what_each_project_added_and_the_rest_is_no_projec
     assert_eq!(org.get::<Option<i64>, _>("logs"), Some(40));
     assert_eq!(org.get::<Option<i64>, _>("points"), Some(7));
 }
+
+#[tokio::test]
+async fn hours_missed_while_the_server_was_down_are_rolled_up_together() {
+    let Some(pool) = control_plane("counter_catchup").await else {
+        return;
+    };
+    let Some(first) = namespaced_meter_at(NOVEMBER, "catchup").await else {
+        return;
+    };
+    let Some(second) = namespaced_meter_at(NOVEMBER + 3600, "catchup").await else {
+        return;
+    };
+    let tenant = seeded_org(&pool).await;
+
+    first
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(100),
+            Carried::spans(100),
+        )
+        .await;
+    second
+        .record_ingest(
+            tenant,
+            None,
+            DecompressedBytes::new(200),
+            Carried::spans(200),
+        )
+        .await;
+    let rolled = driven(&pool, NOVEMBER + 7200, "catchup")
+        .await
+        .expect("the same store")
+        .roll_up_usage()
+        .await
+        .expect("the rollup runs");
+
+    assert_eq!(rolled, 2);
+    let mut hours = billed_hours(&pool, tenant).await;
+    hours.sort_unstable();
+    assert_eq!(
+        hours,
+        vec![
+            (1_699_999_200_000_000_000, 100),
+            (1_699_999_200_000_000_000 + 3_600_000_000_000, 200),
+        ]
+    );
+}

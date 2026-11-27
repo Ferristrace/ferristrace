@@ -54,6 +54,23 @@ impl BillingHour {
         }
     }
 
+    pub fn from_key(key: &str) -> Option<Self> {
+        if key.len() != 10 || !key.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        let year = key[0..4].parse().ok()?;
+        let month = Month::try_from(key[4..6].parse::<u8>().ok()?).ok()?;
+        let day = key[6..8].parse().ok()?;
+        let hour = key[8..10].parse().ok()?;
+        let start = Date::from_calendar_date(year, month, day)
+            .ok()?
+            .with_hms(hour, 0, 0)
+            .ok()?
+            .assume_utc()
+            .unix_timestamp();
+        Some(Self { start })
+    }
+
     pub fn from_start_nanos(nanos: i64) -> Self {
         let seconds = nanos.div_euclid(NANOS_PER_SECOND);
         Self {
