@@ -4,6 +4,7 @@ mod config;
 mod routes;
 
 use std::collections::BTreeMap;
+use std::future::pending;
 use std::net::SocketAddr;
 use std::num::NonZeroU16;
 use std::path::Path;
@@ -41,6 +42,8 @@ use ferristrace_stripe::{StripeGateway, StripeGatewaySettings};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::MissedTickBehavior;
@@ -157,16 +160,7 @@ async fn main() -> anyhow::Result<()> {
         "the ingestion gateway is starting"
     );
 
-    let http = tokio::spawn(serve_http(
-        config.http_address,
-        Arc::clone(&gateway),
-        identity,
-        web_routes(&config),
-    ));
-    let grpc = tokio::spawn(serve_grpc(config.grpc_address, gateway));
-
-    let (http, grpc) = tokio::try_join!(http, grpc).context("joining the listeners")?;
-    stop.send_replace(true);
+    let (http, grpc) = serve(&config, gateway, identity, &stop, stopped).await;
     for loop_ in watching {
         if let Err(error) = loop_.await {
             tracing::error!(%error, "an alert loop did not stop cleanly");
@@ -959,6 +953,7 @@ async fn serve_http(
     gateway: Arc<Ingestion<Production>>,
     identity: Router,
     web: Router,
+    stopped: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
     let listener = TcpListener::bind(address)
         .await
@@ -968,7 +963,7 @@ async fn serve_http(
         .merge(health_router())
         .merge(web);
     axum::serve(listener, served)
-        .with_graceful_shutdown(shutdown())
+        .with_graceful_shutdown(until_stopped(stopped))
         .await
         .context("serving OTLP over HTTP")
 }
@@ -991,20 +986,100 @@ fn web_routes(config: &Config) -> Router {
 async fn serve_grpc(
     address: SocketAddr,
     gateway: Arc<Ingestion<Production>>,
+    stopped: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
     Server::builder()
         .add_service(trace_server(Arc::clone(&gateway)))
         .add_service(logs_server(Arc::clone(&gateway)))
         .add_service(metrics_server(gateway))
-        .serve_with_shutdown(address, shutdown())
+        .serve_with_shutdown(address, until_stopped(stopped))
         .await
         .context("serving OTLP over gRPC")
 }
 
-async fn shutdown() {
-    if let Err(error) = tokio::signal::ctrl_c().await {
-        tracing::error!(%error, "the shutdown signal handler failed");
+async fn serve(
+    config: &Config,
+    gateway: Arc<Ingestion<Production>>,
+    identity: Router,
+    stop: &watch::Sender<bool>,
+    stopped: watch::Receiver<bool>,
+) -> (anyhow::Result<()>, anyhow::Result<()>) {
+    let http = tokio::spawn(serve_http(
+        config.http_address,
+        Arc::clone(&gateway),
+        identity,
+        web_routes(config),
+        stopped.clone(),
+    ));
+    let grpc = tokio::spawn(serve_grpc(config.grpc_address, gateway, stopped.clone()));
+    let ((), http, grpc) = tokio::join!(
+        stop_on_signal(stop, stopped),
+        listening("HTTP", http, stop),
+        listening("gRPC", grpc, stop),
+    );
+    (http, grpc)
+}
+
+async fn until_stopped(mut stopped: watch::Receiver<bool>) {
+    let _ = stopped.wait_for(|stopped| *stopped).await;
+}
+
+async fn stop_on_signal(stop: &watch::Sender<bool>, mut stopped: watch::Receiver<bool>) {
+    tokio::select! {
+        () = shutdown() => {
+            tracing::info!("a stop signal arrived, the listeners are closing");
+            stop.send_replace(true);
+        }
+        _ = stopped.wait_for(|stopped| *stopped) => {}
     }
+}
+
+async fn listening(
+    name: &str,
+    listener: JoinHandle<anyhow::Result<()>>,
+    stop: &watch::Sender<bool>,
+) -> anyhow::Result<()> {
+    let outcome = listener
+        .await
+        .with_context(|| format!("joining the {name} listener"));
+    let running = !*stop.borrow();
+    if running {
+        tracing::error!(
+            listener = name,
+            "a listener stopped on its own, so the server is leaving"
+        );
+        stop.send_replace(true);
+    }
+    outcome?
+}
+
+async fn shutdown() {
+    tokio::select! {
+        interrupted = tokio::signal::ctrl_c() => {
+            if let Err(error) = interrupted {
+                tracing::error!(%error, "SIGINT cannot be watched");
+            }
+        }
+        () = terminated() => {}
+    }
+}
+
+#[cfg(unix)]
+async fn terminated() {
+    match signal(SignalKind::terminate()) {
+        Ok(mut terminate) => {
+            terminate.recv().await;
+        }
+        Err(error) => {
+            tracing::error!(%error, "SIGTERM cannot be watched");
+            pending::<()>().await;
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn terminated() {
+    pending::<()>().await;
 }
 
 async fn roll_up_hourly(usage: Arc<Ferristrace<Production>>) {

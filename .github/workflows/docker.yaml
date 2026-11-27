@@ -363,6 +363,15 @@ jobs:
           test "$code" = "401" || { echo "an anonymous call answered $code"; exit 1; }
           grep -qi '^www-authenticate: Bearer' headers.txt || { cat headers.txt; exit 1; }
 
+      - name: the server leaves cleanly on SIGTERM
+        run: |
+          set -eu
+          docker compose stop --timeout 20 server
+          code=$(docker inspect --format '{{.State.ExitCode}}' "$(docker compose ps --all --quiet server)")
+          test "$code" = "0" || { echo "the server left with exit code $code"; exit 1; }
+          docker compose logs --no-color server | grep -q 'a stop signal arrived' \
+            || { echo "the server never saw the stop signal"; exit 1; }
+
       - name: what the services said
         if: failure()
         run: docker compose logs --no-color ferriskey-init server mcp-gateway

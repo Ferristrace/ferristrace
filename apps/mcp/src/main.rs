@@ -1,9 +1,38 @@
+use std::future::pending;
+
 use anyhow::Context;
 use ferristrace_mcp::{ApiClient, router};
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal};
 use tracing_subscriber::EnvFilter;
 
 async fn shutdown() {
-    let _ = tokio::signal::ctrl_c().await;
+    tokio::select! {
+        interrupted = tokio::signal::ctrl_c() => {
+            if let Err(error) = interrupted {
+                tracing::error!(%error, "SIGINT cannot be watched");
+            }
+        }
+        () = terminated() => {}
+    }
+}
+
+#[cfg(unix)]
+async fn terminated() {
+    match signal(SignalKind::terminate()) {
+        Ok(mut terminate) => {
+            terminate.recv().await;
+        }
+        Err(error) => {
+            tracing::error!(%error, "SIGTERM cannot be watched");
+            pending::<()>().await;
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn terminated() {
+    pending::<()>().await;
 }
 
 #[tokio::main]
