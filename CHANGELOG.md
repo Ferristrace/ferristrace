@@ -4,6 +4,16 @@ All notable changes to FerrisTrace. Generated from the conventional commits betw
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-11-27
+
+### Fixed
+
+- **billing**: Let a plan set what the cost meter includes per signal (#404)
+- **server**: Stop on SIGTERM and commit the last batch before leaving (#405)
+- **web**: Run the tests in parallel without racing on the Vite cache, and run them in CI (#406)
+- **server**: Let the control plane pool size be configured (#407)
+- **usage**: Roll up every closed hour, at start and on each tick (#408)
+
 ## [0.0.8] - 2026-11-26
 
 ### Added
