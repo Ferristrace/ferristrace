@@ -39,7 +39,7 @@ You need Docker, Rust 1.99.1 (pinned in `rust-toolchain.toml`, so `rustup`
 picks it on its own) and, for the front end, Node 26 with pnpm 10.
 
 ```sh
-git clone git@github.com:ferrislabs/ferristrace.git
+git clone git@github.com:Ferristrace/ferristrace.git
 cd ferristrace/deploy
 docker compose up --build --detach
 docker compose exec server ferristrace bootstrap --email you@example.com
@@ -140,7 +140,7 @@ does the merge.
 
 ## Picking something to work on
 
-The [open issues](https://github.com/ferrislabs/ferristrace/issues) carry
+The [open issues](https://github.com/Ferristrace/ferristrace/issues) carry
 labels that say where and how big:
 
 - **`good first issue`** — small, self-contained, and the surrounding code is

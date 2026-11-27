@@ -4,7 +4,7 @@
 
 Do not open a public issue. Report it privately:
 
-**[Open a private report](https://github.com/ferrislabs/ferristrace/security/advisories/new)**
+**[Open a private report](https://github.com/Ferristrace/ferristrace/security/advisories/new)**
 
 That creates a draft advisory visible only to you and the maintainers, with a
 private thread to work in and, once there is a fix, a CVE and a published
@@ -57,7 +57,7 @@ In scope:
 - authentication and authorisation: sessions, OIDC flows and the adoption of
   an account by a verified address, ingest keys, and the isolation of one organisation's traces from
   another's
-- the published images on `ghcr.io/ferrislabs/ferristrace`
+- the published images on `ghcr.io/ferristrace/ferristrace`
 - the self-hosted stack in `deploy/`, run as documented
 
 Out of scope:

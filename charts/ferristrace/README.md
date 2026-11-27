@@ -9,7 +9,7 @@ server applies both databases' migrations itself on start.
 ## Installation
 
 ```sh
-helm install ferristrace oci://ghcr.io/ferrislabs/charts/ferristrace \
+helm install ferristrace oci://ghcr.io/ferristrace/charts/ferristrace \
   --version 0.1.0 -n ferristrace --create-namespace -f my-values.yaml
 ```
 
@@ -34,7 +34,7 @@ them under `secrets.*`. Each entry is `{name, key}`.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `image.repository` | `ghcr.io/ferrislabs/ferristrace` | Image repository |
+| `image.repository` | `ghcr.io/ferristrace/ferristrace` | Image repository |
 | `image.tag` | `""` | Tag, empty means appVersion |
 | `image.pullPolicy` | `IfNotPresent` | Pull policy |
 | `replicaCount` | `1` | Replicas; the PDB exists above 1 |
@@ -55,7 +55,7 @@ them under `secrets.*`. Each entry is `{name, key}`.
 | `config.agents.issuer`, `config.agents.audience` | empty | Issuer and required audience of the access tokens AI agents present; agents stay off without the audience (`FERRISTRACE_AGENTS__*`) |
 | `secrets.*` | see above | Existing Secrets, by name and key |
 | `mcp.enabled` | `false` | Deploy the MCP server and its policy gateway (see below) |
-| `mcp.server.*` | image `ghcr.io/ferrislabs/ferristrace-mcp`, 1 replica, port 8081 | The MCP server; `apiUrl` defaults to this release's Service |
+| `mcp.server.*` | image `ghcr.io/ferristrace/ferristrace-mcp`, 1 replica, port 8081 | The MCP server; `apiUrl` defaults to this release's Service |
 | `mcp.gateway.publicUrl`, `.issuer`, `.pdp.*`, `.exchange.clientId` | required when enabled | Public base url, FerrisKey issuer, FerrisKey base url, realm and policy client, the gateway's own client |
 | `mcp.gateway.agentAudience`, `.apiUrl`, `.scopesSupported`, `.ingestEndpoint` | `config.agents.audience`, this release, the four agent scopes, empty | Optional gateway settings |
 | `mcp.gateway.secrets.*` | `ferristrace-mcp-gateway` | Existing Secrets: `pdpClientSecret` and `exchangeClientSecret` always, `ingestKey` when `name` is set |
