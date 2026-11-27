@@ -271,13 +271,15 @@ const PROVISIONING: ProvisionPolicy = ProvisionPolicy {
 };
 
 const DIRECTORY_CONNECTIONS: u32 = 2;
+const ACQUIRE_CONNECTION_WITHIN: Duration = Duration::from_secs(5);
 
 async fn control_plane_pool(config: &Config) -> anyhow::Result<Option<PgPool>> {
     let Some(url) = config.database_url.as_deref() else {
         return Ok(None);
     };
     let pool = PgPoolOptions::new()
-        .max_connections(2)
+        .max_connections(config.database_connections.get())
+        .acquire_timeout(ACQUIRE_CONNECTION_WITHIN)
         .connect(url)
         .await
         .context("connecting to the control plane")?;
