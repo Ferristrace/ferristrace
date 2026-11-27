@@ -12,7 +12,7 @@ RUN cargo install cargo-chef --version 0.1.77 --locked
 
 FROM chef AS planner
 
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 COPY apps apps
 
@@ -20,12 +20,13 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 
+COPY rust-toolchain.toml ./
 COPY --from=planner /usr/local/src/ferristrace/recipe.json recipe.json
 
 RUN cargo chef cook --release --locked --recipe-path recipe.json \
     --package ferristrace-server --package ferristrace-mcp --package ferristrace-mcp-gateway
 
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 COPY apps apps
 
