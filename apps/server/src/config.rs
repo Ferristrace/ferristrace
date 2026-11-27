@@ -16,6 +16,11 @@ use uuid::Uuid;
 
 const FILE: &str = "ferristrace.toml";
 const PREFIX: &str = "FERRISTRACE_";
+const DEFAULT_DATABASE_CONNECTIONS: NonZeroU32 = NonZeroU32::new(10).unwrap();
+
+fn default_database_connections() -> NonZeroU32 {
+    DEFAULT_DATABASE_CONNECTIONS
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -23,6 +28,8 @@ pub struct Config {
     pub http_address: SocketAddr,
     #[serde(default)]
     pub database_url: Option<String>,
+    #[serde(default = "default_database_connections")]
+    pub database_connections: NonZeroU32,
     #[serde(default)]
     pub redis_url: Option<String>,
     #[serde(default)]
@@ -344,6 +351,7 @@ impl Default for Config {
             grpc_address: SocketAddr::from(([0, 0, 0, 0], 4317)),
             http_address: SocketAddr::from(([0, 0, 0, 0], 4318)),
             database_url: None,
+            database_connections: default_database_connections(),
             redis_url: None,
             spans: None,
             web_root: None,
@@ -394,6 +402,22 @@ mod tests {
             assert_eq!(config.grpc_address.port(), 4317);
             assert_eq!(config.http_address.port(), 4318);
             assert!(config.tenants.is_empty());
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn the_control_plane_pool_holds_ten_connections_unless_told_otherwise() {
+        figment::Jail::expect_with(|jail| {
+            let config: Config = figment().extract()?;
+            assert_eq!(config.database_connections.get(), 10);
+
+            jail.set_env("FERRISTRACE_DATABASE_CONNECTIONS", "4");
+            let config: Config = figment().extract()?;
+            assert_eq!(config.database_connections.get(), 4);
+
+            jail.set_env("FERRISTRACE_DATABASE_CONNECTIONS", "0");
+            assert!(figment().extract::<Config>().is_err());
             Ok(())
         });
     }
