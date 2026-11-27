@@ -144,8 +144,8 @@ impl<C: Clock + Send + Sync> RedisMeter<C> {
 }
 
 impl<C: Clock + Send + Sync> HourlyCounters for RedisMeter<C> {
-    async fn finished(&self, hour: BillingHour) -> Result<Vec<HourTotal>, CounterUnreachable> {
-        let pattern = format!("{}:*:{}", self.prefix, hour.key());
+    async fn closed_before(&self, hour: BillingHour) -> Result<Vec<HourTotal>, CounterUnreachable> {
+        let pattern = format!("{}:*", self.prefix);
         let mut connection = self.connection.clone();
         let mut cursor: u64 = 0;
         let mut totals = Vec::new();
@@ -162,7 +162,7 @@ impl<C: Clock + Send + Sync> HourlyCounters for RedisMeter<C> {
                 .map_err(|error| refused(&error))?;
 
             for key in keys {
-                let Some(tenant) = tenant_of(&key) else {
+                let Some((tenant, closed)) = closed_hour_of(&key, hour) else {
                     continue;
                 };
                 let Some(total) = connection
@@ -172,10 +172,10 @@ impl<C: Clock + Send + Sync> HourlyCounters for RedisMeter<C> {
                 else {
                     continue;
                 };
-                let fields = self.fields_of(&mut connection, tenant, hour).await?;
+                let fields = self.fields_of(&mut connection, tenant, closed).await?;
                 totals.push(HourTotal {
                     tenant,
-                    hour,
+                    hour: closed,
                     ingested: DecompressedBytes::new(total),
                     split: fields.split,
                     projects: fields.projects,
@@ -285,14 +285,15 @@ async fn expire_if_new(
     }
 }
 
-fn tenant_of(key: &str) -> Option<TenantId> {
+fn closed_hour_of(key: &str, before: BillingHour) -> Option<(TenantId, BillingHour)> {
     let mut segments = key.rsplit(':');
-    segments.next()?;
-    segments
+    let hour = BillingHour::from_key(segments.next()?).filter(|hour| *hour < before)?;
+    let tenant = segments
         .next()?
         .parse::<uuid::Uuid>()
         .ok()
-        .map(TenantId::new)
+        .map(TenantId::new)?;
+    Some((tenant, hour))
 }
 
 impl<C: Clock + Send + Sync> UsageReader for RedisMeter<C> {
@@ -320,7 +321,10 @@ mod tests {
     use ferristrace_domain::{ProjectId, SignalKind};
     use uuid::Uuid;
 
-    use super::{HourFields, project_field, read_fields, tenant_of};
+    use ferristrace_domain::UnixSeconds;
+    use ferristrace_domain::telemetry::BillingHour;
+
+    use super::{HourFields, closed_hour_of, project_field, read_fields};
 
     #[test]
     fn the_project_fields_of_an_hour_add_up_per_project_beside_the_split() {
@@ -372,17 +376,29 @@ mod tests {
     }
 
     #[test]
-    fn a_key_names_its_tenant_whatever_the_prefix() {
-        let plain = "usage:2f1e8a4c-0000-4000-8000-000000000001:202311";
+    fn a_closed_hour_key_names_its_tenant_and_hour_whatever_the_prefix() {
+        let now = BillingHour::containing(UnixSeconds::new(1_700_003_600));
+        let plain = "usage:2f1e8a4c-0000-4000-8000-000000000001:2023111422";
         let nested = "test:rollup:2f1e8a4c-0000-4000-8000-000000000001:2023111422";
 
-        assert_eq!(tenant_of(plain), tenant_of(nested));
-        assert!(tenant_of(plain).is_some());
+        assert_eq!(closed_hour_of(plain, now), closed_hour_of(nested, now));
+        let (_, hour) = closed_hour_of(plain, now).expect("a closed hour");
+        assert_eq!(hour.key(), "2023111422");
     }
 
     #[test]
-    fn a_key_without_a_tenant_names_nobody() {
-        assert_eq!(tenant_of("usage:202311"), None);
-        assert_eq!(tenant_of("usage"), None);
+    fn the_current_hour_a_month_key_and_a_key_without_a_tenant_are_skipped() {
+        let now = BillingHour::containing(UnixSeconds::new(1_700_000_000));
+
+        assert_eq!(
+            closed_hour_of("usage:2f1e8a4c-0000-4000-8000-000000000001:2023111422", now),
+            None
+        );
+        assert_eq!(
+            closed_hour_of("usage:2f1e8a4c-0000-4000-8000-000000000001:202311", now),
+            None
+        );
+        assert_eq!(closed_hour_of("usage:2023111421", now), None);
+        assert_eq!(closed_hour_of("usage", now), None);
     }
 }

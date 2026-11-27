@@ -207,10 +207,10 @@ impl UsageReader for Meter {
 }
 
 impl HourlyCounters for Meter {
-    async fn finished(&self, hour: BillingHour) -> Result<Vec<HourTotal>, CounterUnreachable> {
+    async fn closed_before(&self, hour: BillingHour) -> Result<Vec<HourTotal>, CounterUnreachable> {
         match self {
             Self::Memory(_) => Ok(Vec::new()),
-            Self::Redis(meter) => meter.finished(hour).await,
+            Self::Redis(meter) => meter.closed_before(hour).await,
         }
     }
 

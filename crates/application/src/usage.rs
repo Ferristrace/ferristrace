@@ -84,8 +84,8 @@ where
     #[allow(clippy::manual_async_fn)]
     pub fn roll_up_usage(&self) -> impl Future<Output = Result<usize, UsageSyncError>> + Send {
         async move {
-            let hour = BillingHour::containing(self.clock.now()).previous();
-            let finished = self.meter.finished(hour).await?;
+            let current = BillingHour::containing(self.clock.now());
+            let finished = self.meter.closed_before(current).await?;
             let rolled = self.record_hours(&finished).await?;
             for total in finished {
                 self.meter.discard(total).await?;
