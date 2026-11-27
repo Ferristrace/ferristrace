@@ -222,6 +222,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: the front end type checks
         run: pnpm typecheck
+      - name: the front end tests pass
+        run: pnpm test
       - name: the front end builds
         run: pnpm build
 
