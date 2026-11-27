@@ -4,7 +4,11 @@ All notable changes to FerrisTrace. Generated from the conventional commits betw
 
 ## [Unreleased]
 
-## [0.0.9] - 2026-11-27
+## [0.1.0] - 2026-11-27
+
+### Changed
+
+- **release**: Publish the images under `ghcr.io/ferristrace/` and the chart at `oci://ghcr.io/ferristrace/charts/ferristrace` (#412)
 
 ### Fixed
 
