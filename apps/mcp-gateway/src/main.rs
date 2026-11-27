@@ -1,13 +1,41 @@
+use std::future::pending;
 use std::sync::Arc;
 
 use anyhow::Context;
 use ferristrace_mcp_gateway::clock::SystemClock;
 use ferristrace_mcp_gateway::decision::Recorder;
 use ferristrace_mcp_gateway::{Gateway, export, router};
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal};
 use tracing_subscriber::EnvFilter;
 
 async fn shutdown() {
-    let _ = tokio::signal::ctrl_c().await;
+    tokio::select! {
+        interrupted = tokio::signal::ctrl_c() => {
+            if let Err(error) = interrupted {
+                tracing::error!(%error, "SIGINT cannot be watched");
+            }
+        }
+        () = terminated() => {}
+    }
+}
+
+#[cfg(unix)]
+async fn terminated() {
+    match signal(SignalKind::terminate()) {
+        Ok(mut terminate) => {
+            terminate.recv().await;
+        }
+        Err(error) => {
+            tracing::error!(%error, "SIGTERM cannot be watched");
+            pending::<()>().await;
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn terminated() {
+    pending::<()>().await;
 }
 
 #[tokio::main]
