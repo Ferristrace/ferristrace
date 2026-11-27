@@ -45,7 +45,7 @@ pub fn local_time(now: Timestamp, timezone: &str) -> Result<LocalTime, UnknownZo
     let zone = jiff::tz::TimeZone::get(timezone).map_err(|_| UnknownZone(timezone.to_owned()))?;
     let whole =
         Timestamp::from_second(now.as_second()).map_err(|_| UnknownZone(timezone.to_owned()))?;
-    let local = whole.to_zoned(zone);
+    let local = whole.to_zoned_datetime(zone);
     Ok(LocalTime {
         weekday: local.weekday().to_monday_one_offset(),
         hour: local.hour(),

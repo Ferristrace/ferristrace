@@ -12,11 +12,12 @@ use ferristrace_domain::{AgentToken, AgentTokens, SessionToken, TokenRefusal, Us
 use ferristrace_infra::{JwksSettings, JwksVerifier};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use p256::SecretKey;
-use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::elliptic_curve::Generate as _;
+use p256::elliptic_curve::sec1::ToSec1Point;
 use p256::pkcs8::EncodePrivateKey;
+use rsa::PrivateKey;
 use rsa::pkcs1::EncodeRsaPrivateKey;
 use rsa::traits::PublicKeyParts;
-use rsa::{RsaPrivateKey, RsaPublicKey};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 
@@ -27,12 +28,9 @@ const CLIENT: &str = "triage-bot";
 const AUDIENCE: &str = "ferristrace";
 const WEB: &str = "ferristrace-web";
 
-static FIRST_KEY: LazyLock<RsaPrivateKey> =
-    LazyLock::new(|| RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).expect("a key"));
-static SECOND_KEY: LazyLock<RsaPrivateKey> =
-    LazyLock::new(|| RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).expect("a key"));
-static EC_KEY: LazyLock<SecretKey> =
-    LazyLock::new(|| SecretKey::random(&mut rsa::rand_core::OsRng));
+static FIRST_KEY: LazyLock<PrivateKey> = LazyLock::new(PrivateKey::generate);
+static SECOND_KEY: LazyLock<PrivateKey> = LazyLock::new(PrivateKey::generate);
+static EC_KEY: LazyLock<SecretKey> = LazyLock::new(SecretKey::generate);
 
 fn now() -> u64 {
     std::time::SystemTime::now()
@@ -41,20 +39,20 @@ fn now() -> u64 {
         .as_secs()
 }
 
-fn rsa_jwk(kid: &str, key: &RsaPrivateKey) -> Value {
-    let public = RsaPublicKey::from(key);
+fn rsa_jwk(kid: &str, key: &PrivateKey) -> Value {
+    let public = key.to_public_key();
     json!({
         "kty": "RSA",
         "use": "sig",
         "alg": "RS256",
         "kid": kid,
-        "n": URL_SAFE_NO_PAD.encode(public.n().to_bytes_be()),
-        "e": URL_SAFE_NO_PAD.encode(public.e().to_bytes_be())
+        "n": URL_SAFE_NO_PAD.encode(public.n_bytes()),
+        "e": URL_SAFE_NO_PAD.encode(public.e_bytes())
     })
 }
 
 fn ec_jwk(kid: &str) -> Value {
-    let point = EC_KEY.public_key().to_encoded_point(false);
+    let point = EC_KEY.public_key().to_sec1_point(false);
     json!({
         "kty": "EC",
         "crv": "P-256",
@@ -66,7 +64,7 @@ fn ec_jwk(kid: &str) -> Value {
     })
 }
 
-fn rsa_signer(key: &RsaPrivateKey) -> EncodingKey {
+fn rsa_signer(key: &PrivateKey) -> EncodingKey {
     let der = key.to_pkcs1_der().expect("the key encodes");
     EncodingKey::from_rsa_der(der.as_bytes())
 }
@@ -489,9 +487,9 @@ async fn a_token_declaring_no_algorithm_is_refused() {
 async fn a_symmetric_token_is_refused_even_signed_with_the_public_key() {
     let server = issuer_with_keys().await;
     let claims = default_claims(&server.issuer());
-    let public = RsaPublicKey::from(&*FIRST_KEY);
+    let public = FIRST_KEY.to_public_key();
     let published = [
-        public.n().to_bytes_be(),
+        public.n_bytes().into_vec(),
         b"secret".to_vec(),
         FIRST_KEY
             .to_pkcs1_der()
@@ -507,7 +505,7 @@ async fn a_symmetric_token_is_refused_even_signed_with_the_public_key() {
                 algorithm,
                 Some(FIRST),
                 &claims,
-                &EncodingKey::from_secret(secret),
+                &EncodingKey::from_secret(secret).expect("a secret"),
             );
 
             assert_eq!(
@@ -762,7 +760,7 @@ async fn encryption_keys_and_unsupported_keys_are_never_used_to_verify() {
         Algorithm::HS256,
         Some("shared"),
         &claims,
-        &EncodingKey::from_secret(b"secret"),
+        &EncodingKey::from_secret(b"secret").expect("a secret"),
     );
     let good = sign(
         Algorithm::RS256,

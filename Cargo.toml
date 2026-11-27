@@ -66,8 +66,8 @@ flate2 = "1.1.6"
 hex = "0.4.3"
 hmac = "0.13.0"
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "builder", "tokio1", "tokio1-rustls-tls"] }
-jiff = { version = "0.2.38", default-features = false, features = ["std", "tzdb-bundle-always"] }
-jsonwebtoken = { version = "11.1.0", default-features = false, features = ["use_pem", "rust_crypto"] }
+jiff = { version = "1.0.3", default-features = false, features = ["std", "tzdb-bundle-always"] }
+jsonwebtoken = { version = "12.0.0", default-features = false, features = ["use_pem", "rust_crypto"] }
 opentelemetry-proto = { version = "0.33.1", default-features = false, features = ["gen-tonic", "trace", "logs", "metrics", "with-serde"] }
 proc-macro2 = "1.0.107"
 prost = "0.14.4"
@@ -75,7 +75,7 @@ quote = "1.0.47"
 proptest = "1"
 rand = "0.10.3"
 rmcp = { version = "3.6.0", default-features = false, features = ["server", "macros", "transport-streamable-http-server"] }
-reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls", "charset", "json"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "charset", "json", "form", "query"] }
 redis = { version = "1.8.0", default-features = false, features = ["tokio-comp", "connection-manager"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -84,7 +84,7 @@ sha2 = "0.11.1"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid"] }
 subtle = "2.6.1"
 tar = { version = "0.4.45", default-features = false }
-syn = { version = "2.0.119", features = ["full"] }
+syn = { version = "3.0.10", features = ["full"] }
 time = { version = "0.3.47", default-features = false, features = ["std"] }
 thiserror = "2.0.21"
 tokio-stream = "0.1.17"
