@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE: ghcr.io/ferrislabs/ferristrace
+  IMAGE: ghcr.io/ferristrace/ferristrace
 
 jobs:
   # The same stores as ci.yaml's test job: a tag runs the adapter suites for
@@ -160,7 +160,7 @@ jobs:
             echo "| --- | --- | --- |"
           } > sizes.md
           for image in ferristrace ferristrace-mcp ferristrace-mcp-gateway; do
-            ref="ghcr.io/ferrislabs/${image}:${version}"
+            ref="ghcr.io/ferristrace/${image}:${version}"
             docker buildx imagetools inspect "$ref" --raw \
               | jq -r '.manifests[]? | select(.platform.os == "linux")
                        | select(.platform.architecture != "unknown")
@@ -195,7 +195,7 @@ jobs:
             echo "## Helm chart"
             echo
             echo '```sh'
-            echo "helm install ferristrace oci://ghcr.io/ferrislabs/charts/ferristrace --version ${version}"
+            echo "helm install ferristrace oci://ghcr.io/ferristrace/charts/ferristrace --version ${version}"
             echo '```'
           } > body.md
           echo >> body.md
