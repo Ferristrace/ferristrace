@@ -43,6 +43,7 @@ pub use spending::{by_project, project_shares};
 pub use value_objects::{
     Admission, Carried, Consumed, Consumption, DayVolume, DecompressedBytes, HourSplit, HourTotal,
     HourVolume, IngestKey, LogPayload, MAX_RETENTION_DAYS, MIN_RETENTION_DAYS, MonthTotal, Payload,
-    ProjectHourShare, ProjectHourSplit, ProjectHours, ProjectSplit, ProjectUsage, RetentionDays,
-    Scope, Severity, SignalKind, SpanEvent, SpanId, SpanKind, SpanStatus, Split, TenantId, TraceId,
+    PlanIncluded, ProjectHourShare, ProjectHourSplit, ProjectHours, ProjectSplit, ProjectUsage,
+    RetentionDays, Scope, Severity, SignalKind, SpanEvent, SpanId, SpanKind, SpanStatus, Split,
+    TenantId, TraceId,
 };

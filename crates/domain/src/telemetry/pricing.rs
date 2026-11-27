@@ -47,6 +47,11 @@ pub struct PriceList {
 }
 
 impl PriceList {
+    #[must_use]
+    pub fn including(self, included: Split) -> Self {
+        Self { included, ..self }
+    }
+
     fn rate(&self, signal: SignalKind) -> (u64, u64) {
         match signal {
             SignalKind::Spans => (self.spans_gb_micros, BYTES_PER_GB),

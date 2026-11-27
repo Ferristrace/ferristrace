@@ -477,3 +477,22 @@ pub struct MonthTotal {
     pub tenant: TenantId,
     pub ingested: DecompressedBytes,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PlanIncluded {
+    pub ingest: Option<DecompressedBytes>,
+    pub spans_bytes: Option<u64>,
+    pub logs_bytes: Option<u64>,
+    pub metrics_points: Option<u64>,
+}
+
+impl PlanIncluded {
+    #[must_use]
+    pub fn per_signal(self, fallback: Split) -> Split {
+        Split {
+            spans_bytes: self.spans_bytes.unwrap_or(fallback.spans_bytes),
+            logs_bytes: self.logs_bytes.unwrap_or(fallback.logs_bytes),
+            metrics_points: self.metrics_points.unwrap_or(fallback.metrics_points),
+        }
+    }
+}

@@ -5,7 +5,7 @@ use super::entities::{LogRecord, Span};
 use super::errors::{CounterUnreachable, SinkError, UnknownKey};
 use super::value_objects::{
     Admission, Carried, Consumed, DecompressedBytes, HourSplit, HourTotal, IngestKey, MonthTotal,
-    ProjectHourShare, ProjectHourSplit, ProjectHours, Scope, TenantId,
+    PlanIncluded, ProjectHourShare, ProjectHourSplit, ProjectHours, Scope, TenantId,
 };
 use crate::catalogue::ProjectId;
 use crate::explore::Window;
@@ -181,7 +181,7 @@ pub trait UsageHistory {
     fn included(
         &self,
         org: TenantId,
-    ) -> impl Future<Output = Result<Option<DecompressedBytes>, StoreError>> + Send;
+    ) -> impl Future<Output = Result<PlanIncluded, StoreError>> + Send;
 
     fn project_hours(
         &self,
@@ -202,7 +202,7 @@ impl<T: UsageHistory + Sync> UsageHistory for &T {
     fn included(
         &self,
         org: TenantId,
-    ) -> impl Future<Output = Result<Option<DecompressedBytes>, StoreError>> + Send {
+    ) -> impl Future<Output = Result<PlanIncluded, StoreError>> + Send {
         (*self).included(org)
     }
 
@@ -227,7 +227,7 @@ impl<T: UsageHistory + Send + Sync> UsageHistory for std::sync::Arc<T> {
     fn included(
         &self,
         org: TenantId,
-    ) -> impl Future<Output = Result<Option<DecompressedBytes>, StoreError>> + Send {
+    ) -> impl Future<Output = Result<PlanIncluded, StoreError>> + Send {
         self.as_ref().included(org)
     }
 

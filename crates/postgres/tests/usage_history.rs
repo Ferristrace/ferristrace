@@ -3,7 +3,9 @@ use ferristrace_domain::telemetry::{
     BillingHour, BillingMonth, HourSplit, HourTotal, ProjectHourShare, ProjectHourSplit,
     ProjectSplit, ProjectUsage, Split, UsageLedger, by_project, project_shares,
 };
-use ferristrace_domain::{DecompressedBytes, TenantId, UnixSeconds, UsageHistory, Window};
+use ferristrace_domain::{
+    DecompressedBytes, PlanIncluded, TenantId, UnixSeconds, UsageHistory, Window,
+};
 use ferristrace_infra::FixedClock;
 use ferristrace_postgres::{CONTROL_PLANE, Postgres};
 use sqlx::postgres::PgPoolOptions;
@@ -205,9 +207,43 @@ async fn what_a_plan_allows_is_read_in_binary_gigabytes() {
         .expect("the plan is read");
 
     assert_eq!(
-        included,
+        included.ingest,
         Some(DecompressedBytes::new(5 * A_GIGABYTE)),
         "decimal gigabytes would read as a ceiling the quota does not use"
+    );
+}
+
+#[tokio::test]
+async fn what_a_plan_includes_per_signal_is_read_in_decimal_units() {
+    let Some(pool) = control_plane("usage_per_signal").await else {
+        return;
+    };
+    let pg = Postgres::new(pool.clone(), FixedClock::at(1_700_000_000));
+    let org = an_org(&pool, "owner@example.com").await;
+    capped(&pool, org, 5).await;
+    sqlx::query(
+        "UPDATE plans SET included_spans_gb = 100, included_metrics_million = 5 \
+         WHERE id = (SELECT plan_id FROM orgs WHERE id = $1)",
+    )
+    .bind(org.as_uuid())
+    .execute(&pool)
+    .await
+    .expect("setting what the plan includes");
+
+    let included = backend::usage(&pg)
+        .included(org)
+        .await
+        .expect("the plan is read");
+
+    assert_eq!(
+        included,
+        PlanIncluded {
+            ingest: Some(DecompressedBytes::new(5 * A_GIGABYTE)),
+            spans_bytes: Some(100_000_000_000),
+            logs_bytes: None,
+            metrics_points: Some(5_000_000),
+        },
+        "the cost meter prices decimal gigabytes, a NULL column stays unset"
     );
 }
 
@@ -225,7 +261,8 @@ async fn a_plan_with_no_ceiling_includes_nothing() {
         .expect("the plan is read");
 
     assert_eq!(
-        included, None,
+        included,
+        PlanIncluded::default(),
         "the seeded self-hosted plan leaves every limit open"
     );
 }
@@ -242,7 +279,7 @@ async fn an_organisation_nothing_carries_includes_nothing() {
         .await
         .expect("the control plane answers");
 
-    assert_eq!(included, None);
+    assert_eq!(included, PlanIncluded::default());
 }
 
 #[tokio::test]
